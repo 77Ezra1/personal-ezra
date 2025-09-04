@@ -1,0 +1,9 @@
+{
+  "name": "PMS Web",
+  "short_name": "PMS",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#0ea5e9",
+  "background_color": "#0b0b0f",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
