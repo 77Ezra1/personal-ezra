@@ -2,8 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light; --bg:#f7f7f9; --panel:#ffffff; }
-html, body, #root { height: 100%; background: var(--bg); color: #111827; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans', 'Helvetica Neue', Arial, 'Apple Color Emoji', 'Segoe UI Emoji'; }
+:root { color-scheme: light; }
+html, body, #root { height: 100%; }
+body { @apply font-sans bg-[#f7f6f3] text-[#2d2d2d]; }
 table { border-collapse: collapse; }
 th, td { border-color: #eee; }
 a { color: #2563eb }

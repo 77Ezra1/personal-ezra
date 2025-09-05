@@ -236,11 +236,18 @@ export default function Topbar() {
         <div className="grid gap-3">
           <Input type="password" placeholder="请输入主密码" value={mpw} onChange={e => setMpw(e.target.value)} />
           <div className="flex justify-end gap-2">
-            <button className="h-9 px-4 rounded-xl border text-sm" onClick={() => setOpenUnlock(false)}>取消</button>
             <button
-              className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700 active:scale-[0.98]"
+              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
+              onClick={() => setOpenUnlock(false)}
+            >
+              取消
+            </button>
+            <button
+              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
               onClick={() => { unlock(mpw); setMpw(''); setOpenUnlock(false) }}
-            >解锁</button>
+            >
+              解锁
+            </button>
           </div>
         </div>
       </Modal>

@@ -11,7 +11,7 @@ export default function Settings() {
   const [hint, setHint] = useState('')
 
   return (
-    <div className="p-4 space-y-6 text-sm">
+    <div className="max-w-screen-lg mx-auto px-6 py-4 space-y-6 text-sm bg-white rounded-2xl shadow-sm">
       <section>
         <h2 className="text-lg font-medium mb-2">导入 / 导出</h2>
         <div className="flex items-center gap-2">

@@ -13,7 +13,7 @@ export default function IconButton({ className, srLabel, size='md', children, ..
       {...props}
       title={srLabel}
       aria-label={srLabel}
-      className={clsx('inline-flex items-center justify-center rounded-lg border border-transparent bg-white text-gray-700 hover:bg-gray-50 active:bg-gray-100 shadow-sm hover:shadow transition-all disabled:opacity-50', s, className)}
+      className={clsx('inline-flex items-center justify-center rounded-lg border border-gray-300 bg-gray-100 text-gray-800 hover:bg-gray-200 shadow-sm transition-colors disabled:opacity-50', s, className)}
     >
       <span className="sr-only">{srLabel}</span>
       {children}
