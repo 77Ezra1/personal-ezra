@@ -1,0 +1,82 @@
+import { useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import { chatWithLLM } from '../lib/llm'
+
+export default function Notes() {
+  const [content, setContent] = useState('')
+  const [prompt, setPrompt] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [messages, setMessages] = useState<
+    { role: 'user' | 'assistant'; text: string }[]
+  >([])
+
+  const send = async () => {
+    if (!prompt.trim()) return
+    setLoading(true)
+    const question = prompt
+    setMessages(prev => [...prev, { role: 'user', text: question }])
+    setPrompt('')
+    try {
+      const res = await chatWithLLM(question)
+      setMessages(prev => [...prev, { role: 'assistant', text: res }])
+    } catch (e: any) {
+      setMessages(prev => [
+        ...prev,
+        { role: 'assistant', text: e.message },
+      ])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto p-3 space-y-4">
+      <div className="grid gap-2">
+        <textarea
+          value={content}
+          onChange={e => setContent(e.target.value)}
+          className="w-full h-40 p-2 border rounded"
+          placeholder="在此编写 Markdown 笔记"
+        />
+        <div className="border rounded p-2 min-h-[160px] bg-white">
+          <ReactMarkdown>{content}</ReactMarkdown>
+        </div>
+      </div>
+      <div className="grid gap-2">
+        <textarea
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
+          className="w-full h-24 p-2 border rounded"
+          placeholder="向大模型提问..."
+        />
+        <button
+          className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50"
+          onClick={send}
+          disabled={loading}
+        >
+          {loading ? '等待中...' : '发送'}
+        </button>
+        <div className="border rounded p-2 whitespace-pre-wrap bg-gray-50 space-y-2">
+          {messages.map((m, i) => (
+            <div
+              key={i}
+              className={
+                m.role === 'user' ? 'text-right' : 'text-left'
+              }
+            >
+              <span
+                className={
+                  m.role === 'user'
+                    ? 'inline-block px-2 py-1 rounded bg-blue-600 text-white'
+                    : 'inline-block px-2 py-1 rounded bg-white'
+                }
+              >
+                {m.text}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
