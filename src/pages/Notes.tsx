@@ -6,16 +6,23 @@ export default function Notes() {
   const [content, setContent] = useState('')
   const [prompt, setPrompt] = useState('')
   const [reply, setReply] = useState('')
+  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   const send = async () => {
     if (!prompt.trim()) return
     setLoading(true)
+    setError('')
+    setReply('')
     try {
       const res = await chatWithLLM(prompt)
       setReply(res)
     } catch (e: any) {
-      setReply(e.message)
+      if (String(e.message).toLowerCase().includes('network')) {
+        setError('网络错误，请检查网络连接')
+      } else {
+        setError(e.message)
+      }
     } finally {
       setLoading(false)
     }
@@ -48,7 +55,14 @@ export default function Notes() {
         >
           {loading ? '等待中...' : '发送'}
         </button>
-        {reply && <div className="border rounded p-2 whitespace-pre-wrap bg-gray-50">{reply}</div>}
+        {error && (
+          <div className="border border-red-300 bg-red-100 text-red-700 p-2 rounded">
+            {error}
+          </div>
+        )}
+        {!error && reply && (
+          <div className="border rounded p-2 whitespace-pre-wrap bg-gray-50">{reply}</div>
+        )}
       </div>
     </div>
   )
