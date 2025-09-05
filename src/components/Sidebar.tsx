@@ -16,7 +16,7 @@ export default function Sidebar() {
         <NavLink to="/sites" className={linkClass}>网站</NavLink>
         <NavLink to="/vault" className={linkClass}>密码库</NavLink>
         <NavLink to="/docs" className={linkClass}>文档</NavLink>
-        <NavLink to="/notes" className={linkClass}>笔记</NavLink>
+        <NavLink to="/chat" className={linkClass}>对话</NavLink>
         <NavLink to="/settings" className={linkClass}>设置</NavLink>
       </nav>
 
