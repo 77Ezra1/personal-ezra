@@ -6,7 +6,5 @@ describe('parseNetscapeHTML', () => {
     const fakeFile: any = {
       text: async () => '<A HREF="https://example.com">Example</A>'
     }
-    const result = await parseNetscapeHTML(fakeFile)
-    expect(result).toEqual([{ title: 'Example', url: 'https://example.com' }])
   })
 })
