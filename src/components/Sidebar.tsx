@@ -10,7 +10,7 @@ export default function Sidebar() {
       (isActive ? 'bg-blue-50 text-blue-700 border-blue-600' : 'border-transparent')
 
   return (
-    <aside className="border-r p-3 text-sm space-y-3 w-[220px]">
+    <aside className="max-w-screen-lg mx-auto px-6 py-4 text-sm space-y-3 rounded-2xl shadow-sm border-r bg-white">
       <nav className="space-y-1">
         <NavLink to="/" end className={linkClass}>工作台</NavLink>
         <NavLink to="/sites" className={linkClass}>网站</NavLink>

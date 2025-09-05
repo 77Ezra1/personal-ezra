@@ -147,12 +147,17 @@ export default function Docs() {
   const ui = (
     <div className="h-[calc(100dvh-48px)] overflow-auto">
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b">
-        <div className="max-w-7xl mx-auto p-3 flex items-center gap-3">
+        <div className="max-w-screen-lg mx-auto px-6 py-3 flex items-center gap-3 rounded-2xl shadow-sm bg-white">
           <Input placeholder="搜索…" value={q} onChange={e => setQ(e.target.value)} className="flex-1" />
           <Segmented value={view} onChange={setView} options={[{ label: '表格', value: 'table' }, { label: '卡片', value: 'card' }]} />
-          <button className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700 active:scale-[0.98]" onClick={() => setOpenNew(true)}>新建</button>
+          <button
+            className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-gray-800 text-sm shadow-sm hover:bg-gray-200"
+            onClick={() => setOpenNew(true)}
+          >
+            新建
+          </button>
         </div>
-        <div className="max-w-7xl mx-auto px-3 pb-2">
+        <div className="max-w-screen-lg mx-auto px-6 pb-2">
           <TagRow />
           {selection.size > 0 && (
             <div className="mt-2 flex items-center gap-2">
@@ -166,7 +171,7 @@ export default function Docs() {
           )}
         </div>
       </div>
-      <div className="max-w-7xl mx-auto p-3">{view === 'table' ? tableView : cardView}</div>
+      <div className="max-w-screen-lg mx-auto px-6 py-3 bg-white rounded-2xl shadow-sm">{view === 'table' ? tableView : cardView}</div>
     </div>
   )
 
@@ -181,13 +186,20 @@ export default function Docs() {
         title="新建文档"
         footer={
           <>
-            <button className="h-9 px-4 rounded-xl border text-sm" onClick={() => setOpenNew(false)}>取消</button>
-            <button className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700 active:scale-[0.98]"
+            <button
+              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
+              onClick={() => setOpenNew(false)}
+            >
+              取消
+            </button>
+            <button
+              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
               onClick={async () => {
                 if (!nTitle || !nPath) { alert('请填写完整'); return }
                 await addDoc({ title: nTitle, path: nPath, source: 'local', tags: nTags })
                 setOpenNew(false); setNTitle(''); setNPath(''); setNTags([])
-              }}>
+              }}
+            >
               保存
             </button>
           </>
@@ -210,13 +222,20 @@ export default function Docs() {
               <a className="h-9 px-3 rounded-xl border grid place-items-center mr-auto"
                  href={edit.path} target="_blank" rel="noreferrer">打开</a>
             )}
-            <button className="h-9 px-4 rounded-xl border text-sm" onClick={() => setOpenEdit(false)}>取消</button>
-            <button className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700 active:scale-[0.98]"
+            <button
+              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
+              onClick={() => setOpenEdit(false)}
+            >
+              取消
+            </button>
+            <button
+              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
               onClick={async () => {
                 if (!edit) return
                 await update(edit.id, { title: edit.title, path: edit.path, description: edit.description, tags: edit.tags })
                 setOpenEdit(false)
-              }}>
+              }}
+            >
               保存
             </button>
           </>

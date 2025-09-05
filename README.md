@@ -2,6 +2,8 @@
 
 基于 React + TypeScript + Vite + Tailwind + Zustand + Dexie (IndexedDB) 的个人管理系统最小可运行骨架。
 
+界面风格参考 Notion，基础配色与字体可在 `tailwind.config.js` 中自定义覆盖。
+
 ## 本地运行
 
 ```bash
