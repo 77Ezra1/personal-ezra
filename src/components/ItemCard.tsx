@@ -1,7 +1,7 @@
 import { Edit2, ExternalLink, Trash2 } from 'lucide-react'
 import IconButton from './ui/IconButton'
 import React from 'react'
-import type { SiteItem, AnyItem } from '../types'
+import type { SiteItem } from '../types'
 
 export function SiteCard({ it, onOpen, onDelete, onEdit }: { it: SiteItem; onOpen:()=>void; onDelete:()=>void; onEdit:()=>void }) {
   const domain = (()=>{ try { return new URL(it.url).hostname } catch { return '' } })()
@@ -14,9 +14,15 @@ export function SiteCard({ it, onOpen, onDelete, onEdit }: { it: SiteItem; onOpe
       </div>
       <a className="text-xs text-blue-600 truncate block mt-1" href={it.url} target="_blank">{it.url}</a>
       <div className="mt-2 flex gap-2">
-        <IconButton size="sm" onClick={onOpen} srLabel="打开"><ExternalLink className="w-4 h-4"/></IconButton>
-<IconButton size="sm" onClick={onEdit} srLabel="编辑"><Edit2 className="w-4 h-4"/></IconButton>
-<IconButton size="sm" onClick={onDelete} srLabel="删除"><Trash2 className="w-4 h-4"/></IconButton> srLabel="操作"><Trash2 className="w-4 h-4"//></IconButton>
+        <IconButton size="sm" onClick={onOpen} srLabel="打开">
+          <ExternalLink className="w-4 h-4" />
+        </IconButton>
+        <IconButton size="sm" onClick={onEdit} srLabel="编辑">
+          <Edit2 className="w-4 h-4" />
+        </IconButton>
+        <IconButton size="sm" onClick={onDelete} srLabel="删除">
+          <Trash2 className="w-4 h-4" />
+        </IconButton>
       </div>
     </div>
   )

@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { useMemo } from 'react'
 
-/** 固定字符宽度展示URL/路径（省略中间），保持布局稳定；完整值放在 title 里 */
+/** 固定字符宽度展示 URL/路径（省略中间），保持布局稳定；默认去掉 http/https 协议，完整值放在 title 里 */
 export default function FixedUrl({
   url,
   length = 36,       // 固定字符宽度（ch）
