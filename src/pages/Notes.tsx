@@ -5,17 +5,25 @@ import { chatWithLLM } from '../lib/llm'
 export default function Notes() {
   const [content, setContent] = useState('')
   const [prompt, setPrompt] = useState('')
-  const [reply, setReply] = useState('')
   const [loading, setLoading] = useState(false)
+  const [messages, setMessages] = useState<
+    { role: 'user' | 'assistant'; text: string }[]
+  >([])
 
   const send = async () => {
     if (!prompt.trim()) return
     setLoading(true)
+    const question = prompt
+    setMessages(prev => [...prev, { role: 'user', text: question }])
+    setPrompt('')
     try {
-      const res = await chatWithLLM(prompt)
-      setReply(res)
+      const res = await chatWithLLM(question)
+      setMessages(prev => [...prev, { role: 'assistant', text: res }])
     } catch (e: any) {
-      setReply(e.message)
+      setMessages(prev => [
+        ...prev,
+        { role: 'assistant', text: e.message },
+      ])
     } finally {
       setLoading(false)
     }
@@ -48,7 +56,26 @@ export default function Notes() {
         >
           {loading ? '等待中...' : '发送'}
         </button>
-        {reply && <div className="border rounded p-2 whitespace-pre-wrap bg-gray-50">{reply}</div>}
+        <div className="border rounded p-2 whitespace-pre-wrap bg-gray-50 space-y-2">
+          {messages.map((m, i) => (
+            <div
+              key={i}
+              className={
+                m.role === 'user' ? 'text-right' : 'text-left'
+              }
+            >
+              <span
+                className={
+                  m.role === 'user'
+                    ? 'inline-block px-2 py-1 rounded bg-blue-600 text-white'
+                    : 'inline-block px-2 py-1 rounded bg-white'
+                }
+              >
+                {m.text}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
