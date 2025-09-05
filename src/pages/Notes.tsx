@@ -1,14 +1,23 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { chatWithLLM } from '../lib/llm'
 
 export default function Notes() {
-  const [content, setContent] = useState('')
+  const [content, setContent] = useState(() => localStorage.getItem('notes') || '')
   const [prompt, setPrompt] = useState('')
   const [loading, setLoading] = useState(false)
   const [messages, setMessages] = useState<
     { role: 'user' | 'assistant'; text: string }[]
   >([])
+
+  useEffect(() => {
+    localStorage.setItem('notes', content)
+  }, [content])
+
+  const clearNotes = () => {
+    setContent('')
+    localStorage.removeItem('notes')
+  }
 
   const send = async () => {
     if (!prompt.trim()) return
@@ -41,6 +50,12 @@ export default function Notes() {
         <div className="border rounded p-2 min-h-[160px] bg-white">
           <ReactMarkdown>{content}</ReactMarkdown>
         </div>
+        <button
+          className="h-9 px-4 rounded-xl bg-gray-200 text-sm hover:bg-gray-300 active:scale-[0.98]"
+          onClick={clearNotes}
+        >
+          清空笔记
+        </button>
       </div>
       <div className="grid gap-2">
         <textarea
