@@ -20,6 +20,13 @@ yarn && yarn dev
 
 如需调用外部大模型 API，请复制 `.env.example` 为 `.env` 并配置 `VITE_LLM_API_URL` 与 `VITE_LLM_API_KEY`。
 
+```bash
+VITE_LLM_API_URL=https://api.example.com/chat
+VITE_LLM_API_KEY=sk-xxxxx
+```
+
+配置完成后启动服务，在侧栏点击“对话”即可与外部大模型交流。
+
 ## 功能点（MVP）
 - 网站管理：新增、打开、删除
 - 密码库：本地零知识加密（PBKDF2 + AES-GCM），复制时解密到剪贴板
