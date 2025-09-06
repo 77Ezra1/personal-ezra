@@ -237,17 +237,6 @@ export default function Topbar() {
           <Input type="password" placeholder="请输入主密码" value={mpw} onChange={e => setMpw(e.target.value)} />
           <div className="flex justify-end gap-2">
             <button
-              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
-              onClick={() => setOpenUnlock(false)}
-            >
-              取消
-            </button>
-            <button
-              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
-              onClick={() => { unlock(mpw); setMpw(''); setOpenUnlock(false) }}
-            >
-              解锁
-            </button>
           </div>
         </div>
       </Modal>

@@ -1,42 +1,12 @@
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
 
 interface AuthState {
   unlocked: boolean
   master?: string
-  unlock: (mpw: string) => void
+  masterHash?: string
+  load: () => Promise<void>
+  setMaster: (pw: string) => Promise<void>
+  unlock: (pw: string) => Promise<boolean>
   lock: () => void
   setMaster: (mpw: string) => void
 }
-
-const storage = {
-  getItem: (name: string) => {
-    if (typeof localStorage === 'undefined') return null
-    return localStorage.getItem(name)
-  },
-  setItem: (name: string, value: string) => {
-    if (typeof localStorage === 'undefined') return
-    localStorage.setItem(name, value)
-  },
-  removeItem: (name: string) => {
-    if (typeof localStorage === 'undefined') return
-    localStorage.removeItem(name)
-  }
-}
-
-export const useAuth = create<AuthState>()(
-  persist(
-    (set) => ({
-      unlocked: false,
-      master: undefined,
-      unlock: (mpw) => set({ unlocked: true, master: mpw }),
-      lock: () => set({ unlocked: false }),
-      setMaster: (mpw) => set({ master: mpw })
-    }),
-    {
-      name: 'auth',
-      storage: createJSONStorage(() => storage),
-      partialize: (state) => ({ master: state.master })
-    }
-  )
-)

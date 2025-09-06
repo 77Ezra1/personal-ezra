@@ -1,4 +1,3 @@
-import { Download } from 'lucide-react'
 import IconButton from '../components/ui/IconButton'
 import Input from '../components/ui/Input'
 import { useItems } from '../store/useItems'
@@ -6,13 +5,12 @@ import { useSettings } from '../store/useSettings'
 import { useAuth } from '../store/useAuth'
 import { useTranslation } from '../lib/i18n'
 import { useState } from 'react'
+import { useSettings, ViewMode } from '../store/useSettings'
+import { useAuth } from '../store/useAuth'
+import { copyWithTimeout } from '../lib/clipboard'
+import { estimateStrength } from '../lib/password'
 
 export default function Settings() {
-  const { exportSites, importSites, exportDocs, importDocs } = useItems()
-  const { view, setView, language, setLanguage } = useSettings()
-  const { master, setMaster } = useAuth()
-  const [mpw, setMpw] = useState(master || '')
-  const t = useTranslation()
 
   return (
     <div className="max-w-screen-lg mx-auto px-6 py-4 space-y-6 text-sm bg-white rounded-2xl shadow-sm">
@@ -53,7 +51,6 @@ export default function Settings() {
           <label className="inline-flex items-center gap-2">
             <input type="file" accept="application/json" onChange={e => {
               const f = e.target.files?.[0]; if (!f) return
-              importDocs(f)
             }} />
             {t('importExport')}
           </label>
@@ -61,32 +58,14 @@ export default function Settings() {
       </section>
 
       <section>
-        <h2 className="text-lg font-medium mb-2">{t('view')}</h2>
-        <select
-          className="border rounded px-2 py-1"
-          value={view}
-          onChange={e => setView(e.target.value as any)}
-        >
-          <option value="default">{t('default')}</option>
-          <option value="card">{t('card')}</option>
-          <option value="list">{t('list')}</option>
         </select>
       </section>
 
-      <section>
-        <h2 className="text-lg font-medium mb-2">{t('master')}</h2>
-        <div className="flex items-center gap-2">
-          <Input type="password" className="w-80" value={mpw} onChange={e => setMpw(e.target.value)} />
-          <button
-            className="h-8 px-3 rounded-xl border border-gray-300 bg-gray-100 text-gray-800 shadow-sm"
-            onClick={() => setMaster(mpw)}
-          >
-            {t('save')}
-          </button>
         </div>
       </section>
 
       <section>
+
         <h2 className="text-lg font-medium mb-2">{t('language')}</h2>
         <select
           className="border rounded px-2 py-1"
@@ -94,7 +73,7 @@ export default function Settings() {
           onChange={e => setLanguage(e.target.value as any)}
         >
           <option value="zh">{t('chinese')}</option>
-          <option value="en">{t('english')}</option>
+
         </select>
       </section>
     </div>

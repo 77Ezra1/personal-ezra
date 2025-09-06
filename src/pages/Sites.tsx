@@ -11,8 +11,6 @@ import { useSearchParams } from 'react-router-dom'
 import { ExternalLink, Trash2, XCircle } from 'lucide-react'
 import FixedUrl from '../components/FixedUrl'
 import { useSettings } from '../store/useSettings'
-import { useTranslation } from '../lib/i18n'
-
 function Field({ label, children }: { label: string; children: any }) {
   return (
     <div className="grid gap-1">
@@ -22,12 +20,7 @@ function Field({ label, children }: { label: string; children: any }) {
   )
 }
 
-export default function Sites() {
-  const { items, load, addSite, update, removeMany, selection, toggleSelect, clearSelection } = useItems()
-  const { view: prefView } = useSettings()
-  const t = useTranslation()
-  const [q, setQ] = useState('')
-  const [view, setView] = useState<'table' | 'card'>(() => (prefView === 'card' ? 'card' : prefView === 'list' ? 'table' : 'table'))
+
   const [params] = useSearchParams()
   const activeTag = params.get('tag')
 
@@ -43,6 +36,8 @@ export default function Sites() {
   const [edit, setEdit] = useState<SiteItem | null>(null)
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => { if (viewMode !== 'default') setView(viewMode) }, [viewMode])
 
   useEffect(() => {
     if (prefView === 'card') setView('card')
@@ -132,10 +127,10 @@ export default function Sites() {
                 </button>
               </td>
               <td className="px-3 py-2">
-                <FixedUrl url={it.url} length={36} className="text-gray-600" />
+                <FixedUrl url={it.url} length={32} className="text-gray-600" />
               </td>
-              <td className="px-3 py-2 text-gray-600">{it.description}</td>
-              <td className="px-3 py-2 text-center text-gray-600">{it.tags?.join(', ')}</td>
+              <td className="px-3 py-2 text-center text-gray-600">
+                {it.tags?.map(tid => tags.find(t=>t.id===tid)?.name).filter(Boolean).join(', ') || '-'}
               <td className="px-3 py-2 pr-4 md:pr-6">
                 <div className="flex items-center gap-2 justify-end">
                   <a className="h-8 px-3 rounded-xl border grid place-items-center" href={it.url} target="_blank" rel="noreferrer" title="在新标签打开">
@@ -175,15 +170,6 @@ export default function Sites() {
   const ui = (
     <div className="h-[calc(100dvh-48px)] overflow-auto">
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b">
-        <div className="max-w-screen-lg mx-auto px-6 py-3 flex items-center gap-3 rounded-2xl shadow-sm bg-white">
-          <Input placeholder={t('search')} value={q} onChange={e => setQ(e.target.value)} className="flex-1" />
-          <Segmented value={view} onChange={setView} options={[{ label: t('table'), value: 'table' }, { label: t('card'), value: 'card' }]} />
-          <button
-            className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-gray-800 text-sm shadow-sm hover:bg-gray-200"
-            onClick={() => setOpenNew(true)}
-          >
-            {t('new')}
-          </button>
         </div>
         <div className="max-w-screen-lg mx-auto px-6 pb-2">
           <TagRow />
