@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Button from '../components/ui/Button'
 
 export default function Chat() {
   const [message, setMessage] = useState('')
@@ -16,19 +17,15 @@ export default function Chat() {
   const disabled = sending || message.trim() === ''
 
   return (
-    <div className="p-4 max-w-xl mx-auto">
+    <div className="max-w-xl mx-auto p-4 space-y-2">
       <textarea
         value={message}
         onChange={e => setMessage(e.target.value)}
-        className="w-full border rounded mb-2 p-2"
+        className="w-full h-32 rounded-lg border border-border bg-surface text-text p-2 placeholder:text-muted"
       />
-      <button
-        onClick={handleSend}
-        disabled={disabled}
-        className="px-4 py-2 rounded bg-blue-500 text-white disabled:opacity-50"
-      >
+      <Button onClick={handleSend} disabled={disabled} className="px-4">
         Send
-      </button>
+      </Button>
     </div>
   )
 }

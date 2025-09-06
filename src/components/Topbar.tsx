@@ -4,8 +4,6 @@ import CommandK from './CommandK'
 import { useItems } from '../store/useItems'
 import Input from './ui/Input'
 import Modal from './ui/Modal'
-import { Plus, Upload, Download, Lock, Unlock, Star } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/useAuth'
 import { parseTokens } from './TokenFilter'
 import clsx from 'clsx'
@@ -27,9 +25,13 @@ export default function Topbar() {
   const [mpw, setMpw] = useState('')
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(0)
+  const [openImport, setOpenImport] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  const userRef = useRef<HTMLDivElement>(null)
 
-  const { unlocked, unlock, lock } = useAuth()
+  const [openUser, setOpenUser] = useState(false)
+
+  const { unlocked, unlock, lock, username, avatar } = useAuth()
   const items = useItems(s => s.items)
 
   const tok = useMemo(() => {
@@ -110,6 +112,15 @@ export default function Topbar() {
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [])
 
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (!userRef.current) return
+      if (!userRef.current.contains(e.target as any)) setOpenUser(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [])
+
   // 允许业务页打开解锁框
   useEffect(() => {
     const handler = () => setOpenUnlock(true)
@@ -168,8 +179,6 @@ export default function Topbar() {
               ? <IconButton onClick={lock} srLabel="锁定"><Lock className="w-4 h-4" /></IconButton>
               : <IconButton onClick={() => setOpenUnlock(true)} srLabel="解锁"><Unlock className="w-4 h-4" /></IconButton>
             }
-            <Link to="/settings"><IconButton srLabel="导入"><Upload className="w-4 h-4" /></IconButton></Link>
-            <IconButton srLabel="导出"><Download className="w-4 h-4" /></IconButton>
           </div>
         </div>
 
@@ -259,6 +268,8 @@ export default function Topbar() {
           </div>
         </div>
       </Modal>
+
+      <ImportExportModal open={openImport} onClose={() => setOpenImport(false)} />
 
       <CommandK />
     </>
