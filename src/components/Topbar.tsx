@@ -8,6 +8,7 @@ import { Plus, Upload, Download, Lock, Unlock, Star } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/useAuth'
 import { parseTokens } from './TokenFilter'
+import clsx from 'clsx'
 
 type RowType = 'site'|'password'|'doc'
 type Row = {
@@ -204,7 +205,10 @@ export default function Topbar() {
                       return (
                         <button
                           key={r.id}
-                          className={'w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 grid grid-cols-[1fr,auto] items-center ' + (active ? 'bg-blue-50' : '')}
+                          className={clsx(
+                            'w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 grid grid-cols-[1fr,auto] items-center',
+                            active && 'bg-blue-50'
+                          )}
                           onMouseEnter={() => setActiveIdx(i)}
                           onClick={() => openRow(r)}
                         >
