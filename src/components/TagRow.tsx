@@ -34,7 +34,7 @@ export default function TagRow() {
   )
 }
 
-function TagChip({
+export function TagChip({
   id, name, color = 'gray', active, count, onClick, onDelete,
 }: { id: string; name: string; color?: string; active?: boolean; count?: number; onClick?: () => void; onDelete?: () => void }) {
   const palette: any = {
