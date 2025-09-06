@@ -1,7 +1,7 @@
 export async function parseNetscapeHTML(file: File) {
   const html = await file.text()
-  // 朴素解析：找出 <A HREF="...">title</A>
-  const linkRegex = /<a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi
+  // 朴素解析：找出 <A HREF="...">title</A> 或 <A HREF='...'>title</A>
+  const linkRegex = /<a[^>]*href=['"]([^'"]+)['"][^>]*>(.*?)<\/a>/gi
   const out: {title: string; url: string}[] = []
   let m
   while ((m = linkRegex.exec(html)) !== null) {
