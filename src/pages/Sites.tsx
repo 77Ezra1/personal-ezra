@@ -10,6 +10,8 @@ import TagPicker from '../components/TagPicker'
 import { useSearchParams } from 'react-router-dom'
 import { ExternalLink, Trash2, XCircle } from 'lucide-react'
 import FixedUrl from '../components/FixedUrl'
+import { useSettings } from '../store/useSettings'
+import { useTranslation } from '../lib/i18n'
 
 function Field({ label, children }: { label: string; children: any }) {
   return (
@@ -22,8 +24,10 @@ function Field({ label, children }: { label: string; children: any }) {
 
 export default function Sites() {
   const { items, load, addSite, update, removeMany, selection, toggleSelect, clearSelection } = useItems()
+  const { view: prefView } = useSettings()
+  const t = useTranslation()
   const [q, setQ] = useState('')
-  const [view, setView] = useState<'table' | 'card'>('table')
+  const [view, setView] = useState<'table' | 'card'>(() => (prefView === 'card' ? 'card' : prefView === 'list' ? 'table' : 'table'))
   const [params] = useSearchParams()
   const activeTag = params.get('tag')
 
@@ -39,6 +43,11 @@ export default function Sites() {
   const [edit, setEdit] = useState<SiteItem | null>(null)
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    if (prefView === 'card') setView('card')
+    else if (prefView === 'list') setView('table')
+  }, [prefView])
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -167,13 +176,13 @@ export default function Sites() {
     <div className="h-[calc(100dvh-48px)] overflow-auto">
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b">
         <div className="max-w-screen-lg mx-auto px-6 py-3 flex items-center gap-3 rounded-2xl shadow-sm bg-white">
-          <Input placeholder="搜索…" value={q} onChange={e => setQ(e.target.value)} className="flex-1" />
-          <Segmented value={view} onChange={setView} options={[{ label: '表格', value: 'table' }, { label: '卡片', value: 'card' }]} />
+          <Input placeholder={t('search')} value={q} onChange={e => setQ(e.target.value)} className="flex-1" />
+          <Segmented value={view} onChange={setView} options={[{ label: t('table'), value: 'table' }, { label: t('card'), value: 'card' }]} />
           <button
             className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-gray-800 text-sm shadow-sm hover:bg-gray-200"
             onClick={() => setOpenNew(true)}
           >
-            新建
+            {t('new')}
           </button>
         </div>
         <div className="max-w-screen-lg mx-auto px-6 pb-2">
@@ -209,7 +218,7 @@ export default function Sites() {
               className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
               onClick={() => setOpenNew(false)}
             >
-              取消
+              {t('cancel')}
             </button>
             <button
               className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
@@ -219,7 +228,7 @@ export default function Sites() {
                 setOpenNew(false); setNTitle(''); setNUrl(''); setNDesc(''); setNTags([])
               }}
             >
-              保存
+              {t('save')}
             </button>
           </>
         }>
@@ -246,7 +255,7 @@ export default function Sites() {
               className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
               onClick={() => setOpenEdit(false)}
             >
-              取消
+              {t('cancel')}
             </button>
             <button
               className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
@@ -256,7 +265,7 @@ export default function Sites() {
                 setOpenEdit(false)
               }}
             >
-              保存
+              {t('save')}
             </button>
           </>
         }>
