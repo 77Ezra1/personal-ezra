@@ -34,25 +34,6 @@ export default function TagRow() {
     </div>
   )
 }
-
-function TagChip({
-  id,
-  name,
-  color = 'gray',
-  active,
-  count,
-  onClick,
-  onDelete,
-}: {
-  id: string
-  name: string
-  color?: TagColor
-  active?: boolean
-  count?: number
-  onClick?: () => void
-  onDelete?: () => void
-}) {
-  const palette: Record<TagColor, [string, string, string]> = {
     gray: ['bg-gray-100', 'text-gray-700', 'ring-gray-300'],
     blue: ['bg-blue-50', 'text-blue-700', 'ring-blue-300'],
     green: ['bg-green-50', 'text-green-700', 'ring-green-300'],
