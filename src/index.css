@@ -2,12 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light; }
+:root {
+  color-scheme: light;
+  --color-primary: 51 112 255;
+  --color-background: 245 246 248;
+  --color-surface: 255 255 255;
+  --color-surface-hover: 242 243 245;
+  --color-border: 222 225 230;
+  --color-text: 31 35 41;
+  --color-text-muted: 134 136 144;
+}
+.dark {
+  color-scheme: dark;
+  --color-primary: 83 140 255;
+  --color-background: 32 34 37;
+  --color-surface: 45 47 51;
+  --color-surface-hover: 56 59 63;
+  --color-border: 62 66 73;
+  --color-text: 238 239 241;
+  --color-text-muted: 166 168 173;
+}
 html, body, #root { height: 100%; }
-body { @apply font-sans bg-[#f7f6f3] text-[#2d2d2d]; }
+body { @apply font-sans bg-background text-text; }
 table { border-collapse: collapse; }
 th, td { border-color: #eee; }
-a { color: #2563eb }
+a { color: rgb(var(--color-primary)); }
 button { outline: none }
 
 
@@ -22,7 +41,7 @@ button { outline: none }
 
 /* 统一卡片样式 */
 .card {
-  @apply bg-white rounded-2xl shadow-sm border border-gray-200;
+  @apply bg-surface rounded-2xl shadow-sm border border-border;
 }
 .card-hover {
   @apply transition-all hover:shadow-md hover:-translate-y-[1px];
@@ -38,14 +57,18 @@ a { word-break: break-all; }
 /* Base form controls */
 input[type="text"], input[type="url"], input[type="password"], input[type="email"], textarea, select {
   border-radius: 0.75rem;
-  border: 1px solid #e5e7eb;
-  background: #fff;
+  border: 1px solid rgb(var(--color-border));
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-text));
   padding: 0.5rem 0.75rem;
   transition: box-shadow .2s, border-color .2s, background-color .2s;
   box-shadow: 0 1px 0 0 rgba(0,0,0,0.02);
 }
+input::placeholder, textarea::placeholder {
+  color: rgb(var(--color-text-muted));
+}
 input:focus, textarea:focus, select:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 6px rgba(59,130,246,.10);
+  border-color: rgb(var(--color-primary));
+  box-shadow: 0 0 0 6px rgb(var(--color-primary) / .1);
 }

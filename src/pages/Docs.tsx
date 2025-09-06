@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useItems } from '../store/useItems'
 import type { DocItem } from '../types'
 import Input from '../components/ui/Input'
+import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import Segmented from '../components/ui/Segmented'
 import TagRow, { TagChip } from '../components/TagRow'
@@ -15,7 +16,7 @@ import { useSettings } from '../store/useSettings'
 function Field({ label, children }: { label: string; children: any }) {
   return (
     <div className="grid gap-1">
-      <label className="text-xs text-gray-500">{label}</label>
+      <label className="text-xs text-muted">{label}</label>
       {children}
     </div>
   )
@@ -90,7 +91,7 @@ export default function Docs() {
 
   // ======= 列表视图（均分列宽 + 右侧留白） =======
   const tableView = (
-    <div className="overflow-auto border rounded-2xl">
+    <div className="overflow-auto border border-border rounded-2xl bg-surface">
       <table className="w-full table-fixed text-sm">
         <colgroup>
           <col style={{ width: '48px' }} />
@@ -99,8 +100,8 @@ export default function Docs() {
           <col style={{ width: '25%' }} />
           <col style={{ width: '25%' }} />
         </colgroup>
-        <thead className="bg-gray-50">
-          <tr className="text-left text-gray-500">
+        <thead className="bg-surface-hover">
+          <tr className="text-left text-muted">
             <th className="px-3 py-2"></th>
             <th className="px-3 py-2">标题</th>
             <th className="px-3 py-2">标签</th>
@@ -110,7 +111,7 @@ export default function Docs() {
         </thead>
         <tbody>
           {filtered.map(it => (
-            <tr key={it.id} data-id={it.id} className="border-t align-middle">
+            <tr key={it.id} data-id={it.id} className="border-t border-border align-middle">
               <td className="px-3 py-2"><input type="checkbox" checked={selection.has(it.id)} onChange={() => toggleSelect(it.id)} /></td>
               <td className="px-3 py-2">
                 <button className="hover:underline block truncate" title={it.title} onClick={() => { setEdit(it); setOpenEdit(true) }}>
@@ -118,23 +119,12 @@ export default function Docs() {
                 </button>
               </td>
               <td className="px-3 py-2">
-                <div className="flex flex-wrap gap-1">
-                  {it.tags.map(tid => {
-                    const t = tagMap[tid]
-                    return t ? (
-                      <TagChip key={t.id} id={t.id} name={t.name} color={t.color || 'gray'} />
-                    ) : null
-                  })}
-                </div>
-              </td>
-              <td className="px-3 py-2">
-                <FixedUrl url={it.path} length={36} className="text-gray-600" stripProtocol={false} />
               </td>
               <td className="px-3 py-2 pr-4 md:pr-6">
                 <div className="flex items-center gap-2 justify-end">
-                  <button className="h-8 px-3 rounded-xl border grid place-items-center" onClick={() => { setEdit(it); setOpenEdit(true) }}>
+                  <Button size="sm" variant="secondary" className="px-3" onClick={() => { setEdit(it); setOpenEdit(true) }}>
                     编辑
-                  </button>
+                  </Button>
                 </div>
               </td>
             </tr>
@@ -148,14 +138,14 @@ export default function Docs() {
   const cardView = (
     <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
       {filtered.map(it => (
-        <div key={it.id} data-id={it.id} className="group border rounded-2xl p-4 hover:shadow-md transition bg-white">
+        <div key={it.id} data-id={it.id} className="group border border-border rounded-2xl p-4 hover:shadow-md transition bg-surface">
           <div className="font-medium truncate" title={it.title}>{it.title}</div>
-          <div className="mt-1"><FixedUrl url={it.path} length={32} className="text-gray-600" stripProtocol={false} /></div>
-          {it.description && <div className="text-xs text-gray-500 mt-1 line-clamp-2">{it.description}</div>}
+          <div className="mt-1"><FixedUrl url={it.path} length={32} className="text-muted" stripProtocol={false} /></div>
+          {it.description && <div className="text-xs text-muted mt-1 line-clamp-2">{it.description}</div>}
           <div className="mt-2 flex items-center gap-2 justify-end">
-            <button className="h-8 px-3 rounded-xl border grid place-items-center" onClick={() => { setEdit(it); setOpenEdit(true) }}>
+            <Button size="sm" variant="secondary" className="px-3" onClick={() => { setEdit(it); setOpenEdit(true) }}>
               编辑
-            </button>
+            </Button>
           </div>
         </div>
       ))}
@@ -164,7 +154,7 @@ export default function Docs() {
 
   const ui = (
     <div className="h-[calc(100dvh-48px)] overflow-auto">
-      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b">
+      <div className="sticky top-0 z-10 bg-surface/80 backdrop-blur border-b border-border">
         <div className="max-w-screen-lg mx-auto px-6 pb-2">
           <TagRow />
           {selection.size > 0 && (
@@ -179,7 +169,7 @@ export default function Docs() {
           )}
         </div>
       </div>
-      <div className="max-w-screen-lg mx-auto px-6 py-3 bg-white rounded-2xl shadow-sm">{view === 'table' ? tableView : cardView}</div>
+      <div className="max-w-screen-lg mx-auto px-6 py-3 bg-surface text-text rounded-2xl shadow-sm">{view === 'table' ? tableView : cardView}</div>
     </div>
   )
 
@@ -194,14 +184,10 @@ export default function Docs() {
         title="新建文档"
         footer={
           <>
-            <button
-              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
-              onClick={() => setOpenNew(false)}
-            >
+            <Button variant="secondary" onClick={() => setOpenNew(false)}>
               {t('cancel')}
-            </button>
-            <button
-              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
+            </Button>
+            <Button
               onClick={async () => {
                 if (!nTitle || !nPath) { alert('请填写完整'); return }
                 await addDoc({ title: nTitle, path: nPath, source: 'local', tags: nTags })
@@ -209,7 +195,7 @@ export default function Docs() {
               }}
             >
               {t('save')}
-            </button>
+            </Button>
           </>
         }>
         <div className="grid gap-3">
@@ -227,17 +213,19 @@ export default function Docs() {
         footer={
           <>
             {edit?.path && /^https?:\/\//i.test(edit.path) && (
-              <a className="h-9 px-3 rounded-xl border grid place-items-center mr-auto"
-                 href={edit.path} target="_blank" rel="noreferrer">打开</a>
+              <a
+                className="h-9 px-3 rounded-lg border border-border grid place-items-center mr-auto bg-surface hover:bg-surface-hover"
+                href={edit.path}
+                target="_blank"
+                rel="noreferrer"
+              >
+                打开
+              </a>
             )}
-            <button
-              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
-              onClick={() => setOpenEdit(false)}
-            >
+            <Button variant="secondary" onClick={() => setOpenEdit(false)}>
               {t('cancel')}
-            </button>
-            <button
-              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
+            </Button>
+            <Button
               onClick={async () => {
                 if (!edit) return
                 await update(edit.id, { title: edit.title, path: edit.path, description: edit.description, tags: edit.tags })
@@ -245,7 +233,7 @@ export default function Docs() {
               }}
             >
               {t('save')}
-            </button>
+            </Button>
           </>
         }>
         <div className="grid gap-3">

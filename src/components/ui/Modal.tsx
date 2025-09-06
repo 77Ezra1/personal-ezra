@@ -23,15 +23,19 @@ export default function Modal({ open, onClose, title, footer, children }: ModalP
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div role="dialog" aria-modal="true" className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl shadow-xl w-[min(560px,calc(100vw-2rem))]">
-        <div className="p-4 border-b flex items-center justify-between">
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-surface text-text rounded-2xl shadow-xl w-[min(560px,calc(100vw-2rem))] border border-border"
+      >
+        <div className="p-4 border-b border-border flex items-center justify-between">
           <div className="font-semibold">{title}</div>
-          <button className="h-8 w-8 grid place-items-center rounded-lg hover:bg-gray-100" onClick={onClose} aria-label="关闭">
+          <button className="h-8 w-8 grid place-items-center rounded-lg hover:bg-surface-hover" onClick={onClose} aria-label="关闭">
             <X className="w-4 h-4" />
           </button>
         </div>
         <div className="p-4 space-y-3">{children}</div>
-        {footer && <div className="p-4 border-t flex justify-end gap-2">{footer}</div>}
+        {footer && <div className="p-4 border-t border-border flex justify-end gap-2">{footer}</div>}
       </div>
     </div>
   )
