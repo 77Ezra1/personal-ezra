@@ -5,6 +5,8 @@ import { db } from '../lib/db'
 
 beforeEach(async () => {
   await db.items.clear()
+  await useItems.getState().load()
+  useItems.setState({ filters: {}, selection: new Set() })
 })
 
 describe('items import/export', () => {
@@ -30,5 +32,64 @@ describe('items import/export', () => {
     await importDocs(file)
     expect(useItems.getState().items.length).toBe(1)
     expect(useItems.getState().items[0].title).toBe('Doc')
+  })
+})
+
+describe('toggleSelect', () => {
+  it('selects range of sites when filtered', async () => {
+    const { addSite, addDoc, setFilters, clearSelection, toggleSelect } = useItems.getState()
+    await addSite({ title: 'S1', url: '', description: '', tags: [] })
+    await new Promise(r => setTimeout(r, 1))
+    await addSite({ title: 'S2', url: '', description: '', tags: [] })
+    await new Promise(r => setTimeout(r, 1))
+    await addSite({ title: 'S3', url: '', description: '', tags: [] })
+    await addDoc({ title: 'D1', path: '/d', source: 'local', tags: [] })
+    setFilters({ type: 'site' })
+    clearSelection()
+    const sites = useItems.getState().items.filter(i => i.type === 'site')
+    const first = sites[0].id
+    const last = sites[2].id
+    toggleSelect(first)
+    toggleSelect(last, first)
+    const sel = useItems.getState().selection
+    expect([...sel].sort()).toEqual(sites.map(i => i.id).sort())
+  })
+
+  it('selects range of docs when filtered', async () => {
+    const { addDoc, addSite, setFilters, clearSelection, toggleSelect } = useItems.getState()
+    await addDoc({ title: 'D1', path: '/d1', source: 'local', tags: [] })
+    await new Promise(r => setTimeout(r, 1))
+    await addDoc({ title: 'D2', path: '/d2', source: 'local', tags: [] })
+    await new Promise(r => setTimeout(r, 1))
+    await addDoc({ title: 'D3', path: '/d3', source: 'local', tags: [] })
+    await addSite({ title: 'S', url: '', description: '', tags: [] })
+    setFilters({ type: 'doc' })
+    clearSelection()
+    const docs = useItems.getState().items.filter(i => i.type === 'doc')
+    const first = docs[0].id
+    const last = docs[2].id
+    toggleSelect(first)
+    toggleSelect(last, first)
+    const sel = useItems.getState().selection
+    expect([...sel].sort()).toEqual(docs.map(i => i.id).sort())
+  })
+
+  it('selects range of passwords when filtered', async () => {
+    const { addPassword, addSite, setFilters, clearSelection, toggleSelect } = useItems.getState()
+    await addPassword({ title: 'P1', username: '', password: '', url: '', description: '', tags: [] })
+    await new Promise(r => setTimeout(r, 1))
+    await addPassword({ title: 'P2', username: '', password: '', url: '', description: '', tags: [] })
+    await new Promise(r => setTimeout(r, 1))
+    await addPassword({ title: 'P3', username: '', password: '', url: '', description: '', tags: [] })
+    await addSite({ title: 'S', url: '', description: '', tags: [] })
+    setFilters({ type: 'password' })
+    clearSelection()
+    const pwds = useItems.getState().items.filter(i => i.type === 'password')
+    const first = pwds[0].id
+    const last = pwds[2].id
+    toggleSelect(first)
+    toggleSelect(last, first)
+    const sel = useItems.getState().selection
+    expect([...sel].sort()).toEqual(pwds.map(i => i.id).sort())
   })
 })
