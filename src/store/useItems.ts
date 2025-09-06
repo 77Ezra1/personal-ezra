@@ -1,10 +1,11 @@
 import { create } from 'zustand'
 import { db } from '../lib/db'
-import type { AnyItem, SiteItem, PasswordItem, DocItem } from '../types'
+import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor }
+  from '../types'
+import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
 
 type Filters = { type?: 'site'|'password'|'doc'; tags?: string[] }
-type Tag = { id: string; name: string; color?: string; parentId?: string }
 
 interface ItemState {
   items: AnyItem[]
@@ -22,7 +23,7 @@ interface ItemState {
   remove: (id: string) => Promise<void>
   removeMany: (ids: string[]) => Promise<void>
 
-  addTag: (p: {name: string; color?: string; parentId?: string}) => Promise<string>
+  addTag: (p: {name: string; color?: TagColor; parentId?: string}) => Promise<string>
   removeTag: (id: string) => Promise<void>
   setFilters: (f: Partial<Filters>) => void
   clearSelection: () => void
@@ -102,7 +103,9 @@ export const useItems = create<ItemState>((set, get) => ({
 
   async addTag(p) {
     const id = nanoid()
-    await db.tags.put({ id, ...p })
+    const { tags } = get()
+    const color = p.color ?? TAG_COLORS[tags.length % TAG_COLORS.length]
+    await db.tags.put({ id, ...p, color })
     await get().load()
     return id
   },
