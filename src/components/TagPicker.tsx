@@ -1,11 +1,11 @@
-import { Tag } from 'lucide-react'
+import { Tag, X } from 'lucide-react'
 import IconButton from './ui/IconButton'
 import React, { useState } from 'react'
 import { useItems } from '../store/useItems'
 import Input from './ui/Input'
 
 export default function TagPicker({ value, onChange }: { value: string[]; onChange: (tags: string[]) => void }) {
-  const { tags, addTag } = useItems()
+  const { tags, addTag, removeTag } = useItems()
   const [name, setName] = useState('')
   const [color, setColor] = useState('gray')
 
@@ -13,15 +13,36 @@ export default function TagPicker({ value, onChange }: { value: string[]; onChan
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         {tags.map(t => (
-          <label key={t.id} className="inline-flex items-center gap-1 text-sm cursor-pointer">
-            <input type="checkbox" className="accent-black" checked={value.includes(t.id)} onChange={(e)=>{
-              if (e.target.checked) onChange([...value, t.id])
-              else onChange(value.filter(x => x !== t.id))
-            }}/>
-            <span className="px-2 py-0.5 rounded bg-gray-100">{t.name}</span>
-          </label>
+          <div key={t.id} className="flex items-center gap-1">
+            <label className="inline-flex items-center gap-1 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                className="accent-black"
+                checked={value.includes(t.id)}
+                onChange={(e) => {
+                  if (e.target.checked) onChange([...value, t.id])
+                  else onChange(value.filter(x => x !== t.id))
+                }}
+              />
+              <span className="px-2 py-0.5 rounded bg-gray-100">{t.name}</span>
+            </label>
+            <button
+              type="button"
+              title="删除标签"
+              aria-label="删除标签"
+              className="text-gray-400 hover:text-red-600"
+              onClick={async () => {
+                if (confirm(`确认删除标签 "${t.name}"?`)) {
+                  await removeTag(t.id)
+                  if (value.includes(t.id)) onChange(value.filter(x => x !== t.id))
+                }
+              }}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
         ))}
-        {tags.length===0 && <div className="text-xs text-gray-400">暂无标签</div>}
+        {tags.length === 0 && <div className="text-xs text-gray-400">暂无标签</div>}
       </div>
 
       <div className="flex items-center gap-2">
