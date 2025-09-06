@@ -33,6 +33,26 @@ describe('items import/export', () => {
     expect(useItems.getState().items.length).toBe(1)
     expect(useItems.getState().items[0].title).toBe('Doc')
   })
+
+  it('imports sites from csv with field mapping', async () => {
+    const { importSites } = useItems.getState()
+    const csv = 'name,link,desc\nExample,https://example.com,hello'
+    const file: any = { text: async () => csv }
+    await importSites(file)
+    const items = useItems.getState().items
+    expect(items.length).toBe(1)
+    expect((items[0] as any).url).toBe('https://example.com')
+  })
+
+  it('imports docs from csv with field mapping', async () => {
+    const { importDocs } = useItems.getState()
+    const csv = 'name,path\nDoc,/a'
+    const file: any = { text: async () => csv }
+    await importDocs(file)
+    const items = useItems.getState().items
+    expect(items.length).toBe(1)
+    expect((items[0] as any).path).toBe('/a')
+  })
 })
 
 describe('toggleSelect', () => {
