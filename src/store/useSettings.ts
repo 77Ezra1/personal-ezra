@@ -1,12 +1,14 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 
-interface AuthState {
-  unlocked: boolean
-  master?: string
-  unlock: (mpw: string) => void
-  lock: () => void
-  setMaster: (mpw: string) => void
+export type ViewPref = 'default' | 'card' | 'list'
+export type Language = 'zh' | 'en'
+
+interface SettingsState {
+  view: ViewPref
+  language: Language
+  setView: (v: ViewPref) => void
+  setLanguage: (l: Language) => void
 }
 
 const storage = {
@@ -24,19 +26,14 @@ const storage = {
   }
 }
 
-export const useAuth = create<AuthState>()(
+export const useSettings = create<SettingsState>()(
   persist(
     (set) => ({
-      unlocked: false,
-      master: undefined,
-      unlock: (mpw) => set({ unlocked: true, master: mpw }),
-      lock: () => set({ unlocked: false }),
-      setMaster: (mpw) => set({ master: mpw })
+      view: 'default',
+      language: 'zh',
+      setView: (v) => set({ view: v }),
+      setLanguage: (l) => set({ language: l })
     }),
-    {
-      name: 'auth',
-      storage: createJSONStorage(() => storage),
-      partialize: (state) => ({ master: state.master })
-    }
+    { name: 'settings', storage: createJSONStorage(() => storage) }
   )
 )

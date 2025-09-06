@@ -1,65 +1,101 @@
-import { Upload, Download, Save, Wand2 } from 'lucide-react'
+import { Download } from 'lucide-react'
 import IconButton from '../components/ui/IconButton'
-import { toast } from '../utils/toast'
-import { useItems } from '../store/useItems'
-import { parseNetscapeHTML } from '../lib/bookmarks'
 import Input from '../components/ui/Input'
+import { useItems } from '../store/useItems'
+import { useSettings } from '../store/useSettings'
+import { useAuth } from '../store/useAuth'
+import { useTranslation } from '../lib/i18n'
 import { useState } from 'react'
 
 export default function Settings() {
-  const { exportJSON, importJSON, addSite } = useItems()
-  const [hint, setHint] = useState('')
+  const { exportSites, importSites, exportDocs, importDocs } = useItems()
+  const { view, setView, language, setLanguage } = useSettings()
+  const { master, setMaster } = useAuth()
+  const [mpw, setMpw] = useState(master || '')
+  const t = useTranslation()
 
   return (
     <div className="max-w-screen-lg mx-auto px-6 py-4 space-y-6 text-sm bg-white rounded-2xl shadow-sm">
       <section>
-        <h2 className="text-lg font-medium mb-2">导入 / 导出</h2>
+        <h2 className="text-lg font-medium mb-2">{t('importExport')} - {t('sites')}</h2>
         <div className="flex items-center gap-2">
-          <IconButton srLabel="导出 JSON" onClick={async () => {
-            const blob = await exportJSON()
+          <IconButton srLabel={t('importExport')} onClick={async () => {
+            const blob = await exportSites()
             const url = URL.createObjectURL(blob)
             const a = document.createElement('a')
-            a.href = url; a.download = 'pms-export.json'; a.click()
+            a.href = url; a.download = 'sites.json'; a.click()
             URL.revokeObjectURL(url)
           }}>
             <Download className="w-4 h-4" />
           </IconButton>
           <label className="inline-flex items-center gap-2">
-            <input type="file" accept="application/json" onChange={e=>{
+            <input type="file" accept="application/json" onChange={e => {
               const f = e.target.files?.[0]; if (!f) return
-              importJSON(f)
-            }}/>
-            导入 JSON
-          </label>
-        </div>
-      </section>
-
-      <section>
-        <h2 className="text-lg font-medium mb-2">浏览器书签导入</h2>
-        <div className="space-y-2">
-          <label className="inline-flex items-center gap-2">
-            <input type="file" accept=".html,.htm" onChange={async e=>{
-              const f = e.target.files?.[0]; if (!f) return
-              const links = await parseNetscapeHTML(f)
-              let count = 0
-              for (const l of links.slice(0, 1000)) { // 安全天花板
-                try { await addSite({ title: l.title || l.url, url: l.url, description: '', tags: [] }); count++ } catch {}
-              }
-              toast.info(`已导入 ${count} 条链接`)
+              importSites(f)
             }} />
-            选择从浏览器导出的 HTML 书签文件
+            {t('importExport')}
           </label>
-          <div className="text-xs text-gray-500">目前仅解析 &lt;A HREF="..."&gt;，后续迭代支持文件夹→标签映射、去重。</div>
         </div>
       </section>
 
       <section>
-        <h2 className="text-lg font-medium mb-2">安全</h2>
-        <div className="space-y-2">
-          <div>主密码提示（本地保存，不加密，仅为提示用途）</div>
-          <Input className="w-80" placeholder="例如：你常用的一句歌词" value={hint} onChange={e=>setHint(e.target.value)} />
-          <div className="text-xs text-gray-500">后续会与“自动锁定/剪贴板清除”策略一起配置。</div>
+        <h2 className="text-lg font-medium mb-2">{t('importExport')} - {t('docs')}</h2>
+        <div className="flex items-center gap-2">
+          <IconButton srLabel={t('importExport')} onClick={async () => {
+            const blob = await exportDocs()
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url; a.download = 'docs.json'; a.click()
+            URL.revokeObjectURL(url)
+          }}>
+            <Download className="w-4 h-4" />
+          </IconButton>
+          <label className="inline-flex items-center gap-2">
+            <input type="file" accept="application/json" onChange={e => {
+              const f = e.target.files?.[0]; if (!f) return
+              importDocs(f)
+            }} />
+            {t('importExport')}
+          </label>
         </div>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-medium mb-2">{t('view')}</h2>
+        <select
+          className="border rounded px-2 py-1"
+          value={view}
+          onChange={e => setView(e.target.value as any)}
+        >
+          <option value="default">{t('default')}</option>
+          <option value="card">{t('card')}</option>
+          <option value="list">{t('list')}</option>
+        </select>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-medium mb-2">{t('master')}</h2>
+        <div className="flex items-center gap-2">
+          <Input type="password" className="w-80" value={mpw} onChange={e => setMpw(e.target.value)} />
+          <button
+            className="h-8 px-3 rounded-xl border border-gray-300 bg-gray-100 text-gray-800 shadow-sm"
+            onClick={() => setMaster(mpw)}
+          >
+            {t('save')}
+          </button>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-medium mb-2">{t('language')}</h2>
+        <select
+          className="border rounded px-2 py-1"
+          value={language}
+          onChange={e => setLanguage(e.target.value as any)}
+        >
+          <option value="zh">{t('chinese')}</option>
+          <option value="en">{t('english')}</option>
+        </select>
       </section>
     </div>
   )
