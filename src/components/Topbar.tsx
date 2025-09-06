@@ -4,7 +4,7 @@ import CommandK from './CommandK'
 import { useItems } from '../store/useItems'
 import Input from './ui/Input'
 import Modal from './ui/Modal'
-import { Plus, Upload, Download, Lock, Unlock, Star } from 'lucide-react'
+import { Plus, Upload, Download, Lock, Unlock, Star, ChevronDown } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/useAuth'
 import { parseTokens } from './TokenFilter'
@@ -28,8 +28,11 @@ export default function Topbar() {
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
+  const userRef = useRef<HTMLDivElement>(null)
 
-  const { unlocked, unlock, lock } = useAuth()
+  const [openUser, setOpenUser] = useState(false)
+
+  const { unlocked, unlock, lock, username, avatar } = useAuth()
   const items = useItems(s => s.items)
 
   const tok = useMemo(() => {
@@ -110,6 +113,15 @@ export default function Topbar() {
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [])
 
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (!userRef.current) return
+      if (!userRef.current.contains(e.target as any)) setOpenUser(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [])
+
   // 允许业务页打开解锁框
   useEffect(() => {
     const handler = () => setOpenUnlock(true)
@@ -170,6 +182,30 @@ export default function Topbar() {
             }
             <Link to="/settings"><IconButton srLabel="导入"><Upload className="w-4 h-4" /></IconButton></Link>
             <IconButton srLabel="导出"><Download className="w-4 h-4" /></IconButton>
+            <div ref={userRef} className="relative">
+              <button
+                className="flex items-center gap-1 h-10 px-2 rounded-lg hover:bg-gray-50"
+                onClick={() => setOpenUser(o => !o)}
+              >
+                {avatar
+                  ? <img src={avatar} className="w-8 h-8 rounded-full" />
+                  : <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm text-gray-600">
+                      {(username || '?')[0]}
+                    </div>
+                }
+                <span className="text-sm text-gray-700 max-w-[120px] truncate">{username || '未登录'}</span>
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              </button>
+              {openUser && (
+                <div className="absolute right-0 mt-1 w-36 bg-white border rounded-lg shadow-lg py-1 z-40">
+                  <Link to="/settings" className="block px-3 py-2 text-sm hover:bg-gray-50">设置</Link>
+                  {unlocked
+                    ? <button className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50" onClick={lock}>锁定</button>
+                    : <button className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50" onClick={() => setOpenUnlock(true)}>解锁</button>
+                  }
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
