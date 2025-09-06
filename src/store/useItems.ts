@@ -123,9 +123,9 @@ export const useItems = create<ItemState>((set, get) => ({
     set(s => {
       const sel = new Set(s.selection)
       if (rangeWith && sel.size) {
-        const items = s.items.filter(i=>i.type==='password')
-        const a = items.findIndex(i=>i.id===rangeWith)
-        const b = items.findIndex(i=>i.id===id)
+        const items = s.items.filter(i => i.type === (s.filters.type ?? i.type))
+        const a = items.findIndex(i => i.id === rangeWith)
+        const b = items.findIndex(i => i.id === id)
         const [start, end] = a<b ? [a,b] : [b,a]
         for (let i=start;i<=end;i++) sel.add(items[i].id)
       } else {
