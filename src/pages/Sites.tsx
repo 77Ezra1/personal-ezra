@@ -10,6 +10,7 @@ import TagPicker from '../components/TagPicker'
 import { useSearchParams } from 'react-router-dom'
 import { ExternalLink, Trash2, XCircle } from 'lucide-react'
 import FixedUrl from '../components/FixedUrl'
+import { useSettings } from '../store/useSettings'
 
 function Field({ label, children }: { label: string; children: any }) {
   return (
@@ -21,9 +22,10 @@ function Field({ label, children }: { label: string; children: any }) {
 }
 
 export default function Sites() {
-  const { items, load, addSite, update, removeMany, selection, toggleSelect, clearSelection } = useItems()
+  const { items, load, addSite, update, removeMany, selection, toggleSelect, clearSelection, tags } = useItems()
+  const { viewMode } = useSettings()
   const [q, setQ] = useState('')
-  const [view, setView] = useState<'table' | 'card'>('table')
+  const [view, setView] = useState<'table' | 'card'>(viewMode === 'card' ? 'card' : 'table')
   const [params] = useSearchParams()
   const activeTag = params.get('tag')
 
@@ -39,6 +41,8 @@ export default function Sites() {
   const [edit, setEdit] = useState<SiteItem | null>(null)
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => { if (viewMode !== 'default') setView(viewMode) }, [viewMode])
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -121,9 +125,11 @@ export default function Sites() {
                 </button>
               </td>
               <td className="px-3 py-2">
-                <FixedUrl url={it.url} length={36} className="text-gray-600" />
+                <FixedUrl url={it.url} length={32} className="text-gray-600" />
               </td>
-              <td className="px-3 py-2 text-center text-gray-600">{it.tags?.length || 0}</td>
+              <td className="px-3 py-2 text-center text-gray-600">
+                {it.tags?.map(tid => tags.find(t=>t.id===tid)?.name).filter(Boolean).join(', ') || '-'}
+              </td>
               <td className="px-3 py-2 pr-4 md:pr-6">
                 <div className="flex items-center gap-2 justify-end">
                   <a className="h-8 px-3 rounded-xl border grid place-items-center" href={it.url} target="_blank" rel="noreferrer" title="在新标签打开">
@@ -165,7 +171,9 @@ export default function Sites() {
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b">
         <div className="max-w-7xl mx-auto p-3 flex items-center gap-3">
           <Input placeholder="搜索…" value={q} onChange={e => setQ(e.target.value)} className="flex-1" />
-          <Segmented value={view} onChange={setView} options={[{ label: '表格', value: 'table' }, { label: '卡片', value: 'card' }]} />
+          {viewMode === 'default' && (
+            <Segmented value={view} onChange={setView} options={[{ label: '表格', value: 'table' }, { label: '卡片', value: 'card' }]} />
+          )}
           <button className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700 active:scale-[0.98]" onClick={() => setOpenNew(true)}>新建</button>
         </div>
         <div className="max-w-7xl mx-auto px-3 pb-2">

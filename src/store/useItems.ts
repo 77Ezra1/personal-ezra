@@ -23,6 +23,7 @@ interface ItemState {
   removeMany: (ids: string[]) => Promise<void>
 
   addTag: (p: {name: string; color?: string; parentId?: string}) => Promise<string>
+  removeTag: (id: string) => Promise<void>
   setFilters: (f: Partial<Filters>) => void
   clearSelection: () => void
   toggleSelect: (id: string, rangeWith?: string | null) => void
@@ -102,6 +103,16 @@ export const useItems = create<ItemState>((set, get) => ({
     await db.tags.put({ id, ...p })
     await get().load()
     return id
+  },
+
+  async removeTag(id) {
+    await db.tags.delete(id)
+    const { items } = get()
+    const updates = items.map(it => (
+      it.tags.includes(id) ? { ...it, tags: it.tags.filter(t => t !== id) } : it
+    )) as AnyItem[]
+    await db.items.bulkPut(updates)
+    await get().load()
   },
 
   setFilters(f) { set((s) => ({ filters: { ...s.filters, ...f } })) },

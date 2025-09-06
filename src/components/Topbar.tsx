@@ -239,7 +239,11 @@ export default function Topbar() {
             <button className="h-9 px-4 rounded-xl border text-sm" onClick={() => setOpenUnlock(false)}>取消</button>
             <button
               className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700 active:scale-[0.98]"
-              onClick={() => { unlock(mpw); setMpw(''); setOpenUnlock(false) }}
+              onClick={async () => {
+                const ok = await unlock(mpw)
+                if (ok) { setMpw(''); setOpenUnlock(false) }
+                else { alert('主密码不正确') }
+              }}
             >解锁</button>
           </div>
         </div>

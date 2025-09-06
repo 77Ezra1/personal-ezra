@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ExternalLink, Trash2, XCircle } from 'lucide-react'
 import { encryptString } from '../lib/crypto'
 import { useSearchParams } from 'react-router-dom'
+import { useSettings } from '../store/useSettings'
 
 function Field({ label, children }: { label: string; children: any }) {
   return (
@@ -25,9 +26,10 @@ function Field({ label, children }: { label: string; children: any }) {
 export default function Vault() {
   const { items, load, addPassword, update, removeMany, selection, toggleSelect, clearSelection } = useItems()
   const { unlocked, master } = useAuth()
+  const { viewMode } = useSettings()
 
   const [q, setQ] = useState('')
-  const [view, setView] = useState<'table' | 'card'>('table')
+  const [view, setView] = useState<'table' | 'card'>(viewMode === 'card' ? 'card' : 'table')
   const [params] = useSearchParams()
   const activeTag = params.get('tag')
 
@@ -45,6 +47,7 @@ export default function Vault() {
   const [newPass, setNewPass] = useState('')
 
   useEffect(() => { load() }, [])
+  useEffect(() => { if (viewMode !== 'default') setView(viewMode) }, [viewMode])
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -170,7 +173,9 @@ export default function Vault() {
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b">
         <div className="max-w-7xl mx-auto p-3 flex items-center gap-3">
           <Input placeholder="搜索…" value={q} onChange={e => setQ(e.target.value)} className="flex-1" />
-          <Segmented value={view} onChange={setView} options={[{ label: '表格', value: 'table' }, { label: '卡片', value: 'card' }]} />
+          {viewMode === 'default' && (
+            <Segmented value={view} onChange={setView} options={[{ label: '表格', value: 'table' }, { label: '卡片', value: 'card' }]} />
+          )}
           <button className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700 active:scale-[0.98]"
                   onClick={() => { if (ensureUnlocked()) setOpenNew(true) }}>
             新建
