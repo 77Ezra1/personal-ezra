@@ -3,6 +3,7 @@ import { useItems } from '../store/useItems'
 import clsx from 'clsx'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { X } from 'lucide-react'
+import type { TagColor } from '../types'
 
 export default function TagRow() {
   const { items, tags, removeTag } = useItems()
@@ -41,34 +42,6 @@ export default function TagRow() {
     </div>
   )
 }
-
-function TagChip({
-  id,
-  name,
-  color = 'gray',
-  active,
-  count,
-  onClick,
-  onDelete,
-}: {
-  id: string
-  name: string
-  color?: string
-  active?: boolean
-  count?: number
-  onClick?: () => void
-  onDelete?: () => void
-}) {
-  const palette: Record<string, string> = {
-    gray: '#A8ABB2',
-    blue: '#3370FF',
-    green: '#34C759',
-    red: '#F53F3F',
-    yellow: '#F7B500',
-    purple: '#A25BFF',
-    pink: '#F552B7',
-    orange: '#FF8A00',
-    cyan: '#17A9FA',
   }
   const dot = palette[color] || palette.gray
   return (

@@ -1,9 +1,9 @@
 import Dexie, { Table } from 'dexie'
-import type { AnyItem } from '../types'
+import type { AnyItem, Tag } from '../types'
 
 export class PMSDB extends Dexie {
   items!: Table<AnyItem, string>
-  tags!: Table<{ id: string; name: string; color?: string; parentId?: string }, string>
+  tags!: Table<Tag, string>
   settings!: Table<{ key: string; value: any }, string>
 
   constructor() {

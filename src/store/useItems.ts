@@ -1,10 +1,51 @@
 import { create } from 'zustand'
 import { db } from '../lib/db'
-import type { AnyItem, SiteItem, PasswordItem, DocItem } from '../types'
+import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor }
+  from '../types'
+import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
 
+function parseCsv(text: string): string[][] {
+  const lines = text.trim().split(/\r?\n/).filter(Boolean)
+  return lines.map(line => {
+    const res: string[] = []
+    let cur = ''
+    let inQuotes = false
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i]
+      if (c === '"') {
+        if (inQuotes && line[i + 1] === '"') { cur += '"'; i++ } else { inQuotes = !inQuotes }
+      } else if (c === ',' && !inQuotes) {
+        res.push(cur)
+        cur = ''
+      } else {
+        cur += c
+      }
+    }
+    res.push(cur)
+    return res.map(v => v.trim())
+  })
+}
+
+function mapFields(row: Record<string, string>, type: 'site' | 'doc') {
+  const lc = Object.fromEntries(Object.entries(row).map(([k, v]) => [k.toLowerCase(), v]))
+  if (type === 'site') {
+    return {
+      title: lc['title'] || lc['name'] || '',
+      url: lc['url'] || lc['link'] || lc['href'] || '',
+      description: lc['description'] || lc['desc'] || '',
+      tags: Array.isArray(lc['tags']) ? lc['tags'].join(',') : lc['tags'] || lc['tag'] || ''
+    }
+  }
+  return {
+    title: lc['title'] || lc['name'] || '',
+    path: lc['path'] || lc['url'] || lc['link'] || '',
+    source: lc['source'] || 'local',
+    tags: Array.isArray(lc['tags']) ? lc['tags'].join(',') : lc['tags'] || lc['tag'] || ''
+  }
+}
+
 type Filters = { type?: 'site'|'password'|'doc'; tags?: string[] }
-type Tag = { id: string; name: string; color?: string; parentId?: string }
 
 interface ItemState {
   items: AnyItem[]
@@ -22,16 +63,16 @@ interface ItemState {
   remove: (id: string) => Promise<void>
   removeMany: (ids: string[]) => Promise<void>
 
-  addTag: (p: {name: string; color?: string; parentId?: string}) => Promise<string>
+  addTag: (p: {name: string; color?: TagColor; parentId?: string}) => Promise<string>
   removeTag: (id: string) => Promise<void>
   setFilters: (f: Partial<Filters>) => void
   clearSelection: () => void
   toggleSelect: (id: string, rangeWith?: string | null) => void
 
   exportSites: () => Promise<Blob>
-  importSites: (file: File) => Promise<void>
+  importSites: (file: File, dryRun?: boolean) => Promise<{ items: SiteItem[]; errors: string[] }>
   exportDocs: () => Promise<Blob>
-  importDocs: (file: File) => Promise<void>
+  importDocs: (file: File, dryRun?: boolean) => Promise<{ items: DocItem[]; errors: string[] }>
 }
 
 export const useItems = create<ItemState>((set, get) => ({
@@ -102,7 +143,9 @@ export const useItems = create<ItemState>((set, get) => ({
 
   async addTag(p) {
     const id = nanoid()
-    await db.tags.put({ id, ...p })
+    const { tags } = get()
+    const color = p.color ?? TAG_COLORS[tags.length % TAG_COLORS.length]
+    await db.tags.put({ id, ...p, color })
     await get().load()
     return id
   },
@@ -140,11 +183,42 @@ export const useItems = create<ItemState>((set, get) => ({
     return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
   },
 
-  async importSites(file) {
+  async importSites(file, dryRun = false) {
     const text = await file.text()
-    const data = JSON.parse(text) as SiteItem[]
-    if (Array.isArray(data)) await db.items.bulkPut(data.map(it => ({ ...it, type: 'site' })))
-    await get().load()
+    const { items } = get()
+    const sites: SiteItem[] = []
+    const errors: string[] = []
+    try {
+      if (/^\s*[\[{]/.test(text)) {
+        const data = JSON.parse(text)
+        if (Array.isArray(data)) {
+          data.forEach((d: any, idx) => {
+            const m = mapFields(d, 'site')
+            const now = Date.now()
+            sites.push({ id: nanoid(), type: 'site', title: m.title, url: m.url, description: m.description, tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='site').length) + idx + 1 })
+          })
+        }
+      } else {
+        const rows = parseCsv(text)
+        if (rows.length > 1) {
+          const header = rows[0].map(h => h.toLowerCase())
+          for (let i = 1; i < rows.length; i++) {
+            const row: Record<string,string> = {}
+            header.forEach((h, idx) => { row[h] = rows[i][idx] })
+            const m = mapFields(row, 'site')
+            const now = Date.now()
+            sites.push({ id: nanoid(), type: 'site', title: m.title, url: m.url, description: m.description, tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='site').length) + i })
+          }
+        }
+      }
+    } catch (e: any) {
+      errors.push(e.message)
+    }
+    if (!dryRun && sites.length) {
+      await db.items.bulkPut(sites)
+      await get().load()
+    }
+    return { items: sites, errors }
   },
 
   async exportDocs() {
@@ -152,10 +226,41 @@ export const useItems = create<ItemState>((set, get) => ({
     return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
   },
 
-  async importDocs(file) {
+  async importDocs(file, dryRun = false) {
     const text = await file.text()
-    const data = JSON.parse(text) as DocItem[]
-    if (Array.isArray(data)) await db.items.bulkPut(data.map(it => ({ ...it, type: 'doc' })))
-    await get().load()
+    const { items } = get()
+    const docs: DocItem[] = []
+    const errors: string[] = []
+    try {
+      if (/^\s*[\[{]/.test(text)) {
+        const data = JSON.parse(text)
+        if (Array.isArray(data)) {
+          data.forEach((d: any, idx) => {
+            const m = mapFields(d, 'doc')
+            const now = Date.now()
+            docs.push({ id: nanoid(), type: 'doc', title: m.title, path: m.path, source: (m.source as any) || 'local', description: '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='doc').length) + idx + 1 })
+          })
+        }
+      } else {
+        const rows = parseCsv(text)
+        if (rows.length > 1) {
+          const header = rows[0].map(h => h.toLowerCase())
+          for (let i = 1; i < rows.length; i++) {
+            const row: Record<string,string> = {}
+            header.forEach((h, idx) => { row[h] = rows[i][idx] })
+            const m = mapFields(row, 'doc')
+            const now = Date.now()
+            docs.push({ id: nanoid(), type: 'doc', title: m.title, path: m.path, source: (m.source as any) || 'local', description: '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='doc').length) + i })
+          }
+        }
+      }
+    } catch (e: any) {
+      errors.push(e.message)
+    }
+    if (!dryRun && docs.length) {
+      await db.items.bulkPut(docs)
+      await get().load()
+    }
+    return { items: docs, errors }
   }
 }))

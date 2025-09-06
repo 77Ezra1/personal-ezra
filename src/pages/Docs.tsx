@@ -6,7 +6,7 @@ import Input from '../components/ui/Input'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import Segmented from '../components/ui/Segmented'
-import TagRow from '../components/TagRow'
+import TagRow, { TagChip } from '../components/TagRow'
 import TagPicker from '../components/TagPicker'
 import { useSearchParams } from 'react-router-dom'
 import { Trash2, XCircle } from 'lucide-react'
@@ -23,7 +23,7 @@ function Field({ label, children }: { label: string; children: any }) {
 }
 
 export default function Docs() {
-  const { items, load, addDoc, update, removeMany, selection, toggleSelect, clearSelection } = useItems()
+  const { items, tags, load, addDoc, update, removeMany, selection, toggleSelect, clearSelection } = useItems()
   const [params] = useSearchParams()
   const activeTag = params.get('tag')
 
@@ -87,20 +87,24 @@ export default function Docs() {
     )
   }, [list, q, activeTag])
 
+  const tagMap = useMemo(() => Object.fromEntries(tags.map(t => [t.id, t])), [tags])
+
   // ======= 列表视图（均分列宽 + 右侧留白） =======
   const tableView = (
     <div className="overflow-auto border border-border rounded-2xl bg-surface">
       <table className="w-full table-fixed text-sm">
         <colgroup>
           <col style={{ width: '48px' }} />
-          <col style={{ width: '33.3333%' }} />
-          <col style={{ width: '33.3333%' }} />
-          <col style={{ width: '33.3333%' }} />
+          <col style={{ width: '25%' }} />
+          <col style={{ width: '25%' }} />
+          <col style={{ width: '25%' }} />
+          <col style={{ width: '25%' }} />
         </colgroup>
         <thead className="bg-surface-hover">
           <tr className="text-left text-muted">
             <th className="px-3 py-2"></th>
             <th className="px-3 py-2">标题</th>
+            <th className="px-3 py-2">标签</th>
             <th className="px-3 py-2">路径/来源</th>
             <th className="px-3 py-2 text-right pr-4 md:pr-6">操作</th>
           </tr>
@@ -115,7 +119,6 @@ export default function Docs() {
                 </button>
               </td>
               <td className="px-3 py-2">
-                <FixedUrl url={it.path} length={36} className="text-muted" stripProtocol={false} />
               </td>
               <td className="px-3 py-2 pr-4 md:pr-6">
                 <div className="flex items-center gap-2 justify-end">

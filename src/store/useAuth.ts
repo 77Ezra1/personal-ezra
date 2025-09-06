@@ -4,10 +4,13 @@ interface AuthState {
   unlocked: boolean
   master?: string
   masterHash?: string
+  username?: string
+  avatar?: string
   load: () => Promise<void>
   setMaster: (pw: string) => Promise<void>
   unlock: (pw: string) => Promise<boolean>
   lock: () => void
+  setUser: (username: string, avatar: string) => void
 }
 
 function hashString(str: string): Promise<string> {
@@ -22,10 +25,14 @@ export const useAuth = create<AuthState>((set, get) => ({
   unlocked: false,
   master: undefined,
   masterHash: undefined,
+  username: undefined,
+  avatar: undefined,
   async load() {
     try {
       const masterHash = localStorage.getItem('masterHash') || undefined
-      set({ masterHash, unlocked: false, master: undefined })
+      const username = localStorage.getItem('username') || undefined
+      const avatar = localStorage.getItem('avatar') || undefined
+      set({ masterHash, unlocked: false, master: undefined, username, avatar })
     } catch {
       /* noop */
     }
@@ -47,5 +54,14 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
   lock() {
     set({ unlocked: false, master: undefined })
+  },
+  setUser(username: string, avatar: string) {
+    try {
+      localStorage.setItem('username', username)
+      localStorage.setItem('avatar', avatar)
+    } catch {
+      /* noop */
+    }
+    set({ username, avatar })
   }
 }))
