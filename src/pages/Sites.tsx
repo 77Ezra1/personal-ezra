@@ -97,16 +97,18 @@ export default function Sites() {
       <table className="w-full table-fixed text-sm">
         <colgroup>
           <col style={{ width: '48px' }} />
-          <col style={{ width: '25%' }} />
-          <col style={{ width: '25%' }} />
-          <col style={{ width: '25%' }} />
-          <col style={{ width: '25%' }} />
+          <col style={{ width: '20%' }} />
+          <col style={{ width: '20%' }} />
+          <col style={{ width: '20%' }} />
+          <col style={{ width: '20%' }} />
+          <col style={{ width: '20%' }} />
         </colgroup>
         <thead className="bg-gray-50">
           <tr className="text-left text-gray-500">
             <th className="px-3 py-2"></th>
             <th className="px-3 py-2">标题</th>
             <th className="px-3 py-2">地址</th>
+            <th className="px-3 py-2">备注</th>
             <th className="px-3 py-2 text-center">标签</th>
             <th className="px-3 py-2 text-right pr-4 md:pr-6">操作</th>
           </tr>
@@ -123,7 +125,8 @@ export default function Sites() {
               <td className="px-3 py-2">
                 <FixedUrl url={it.url} length={36} className="text-gray-600" />
               </td>
-              <td className="px-3 py-2 text-center text-gray-600">{it.tags?.length || 0}</td>
+              <td className="px-3 py-2 text-gray-600">{it.description}</td>
+              <td className="px-3 py-2 text-center text-gray-600">{it.tags?.join(', ')}</td>
               <td className="px-3 py-2 pr-4 md:pr-6">
                 <div className="flex items-center gap-2 justify-end">
                   <a className="h-8 px-3 rounded-xl border grid place-items-center" href={it.url} target="_blank" rel="noreferrer" title="在新标签打开">
@@ -144,11 +147,11 @@ export default function Sites() {
   // ======= 卡片视图 =======
   const cardView = (
     <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
-      {filtered.map(it => (
+          {filtered.map(it => (
         <div key={it.id} data-id={it.id} className="group border rounded-2xl p-4 hover:shadow-md transition bg-white">
           <div className="font-medium truncate" title={it.title}>{it.title}</div>
           <div className="mt-1"><FixedUrl url={it.url} length={32} className="text-gray-600" /></div>
-          {it.description && <div className="text-xs text-gray-500 mt-1 line-clamp-2">{it.description}</div>}
+          {it.description && <div className="mt-1 text-xs text-gray-500 line-clamp-2">备注：{it.description}</div>}
           <div className="mt-2 flex items-center gap-2 justify-end">
             <a className="h-8 px-3 rounded-xl border grid place-items-center" href={it.url} target="_blank" rel="noreferrer">打开</a>
             <button className="h-8 px-3 rounded-xl border grid place-items-center" onClick={() => { setEdit(it); setOpenEdit(true) }}>
