@@ -6,3 +6,5 @@ export async function copyWithTimeout(text: string, timeoutMs=30_000) {
     }, timeoutMs)
   }
 }
+
+export default copyWithTimeout

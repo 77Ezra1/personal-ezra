@@ -9,8 +9,10 @@ import { useItems } from '../store/useItems'
 import { useAuth } from '../store/useAuth'
 import type { PasswordItem } from '../types'
 import { useEffect, useMemo, useState } from 'react'
-import { ExternalLink, Trash2, XCircle } from 'lucide-react'
-import { encryptString } from '../lib/crypto'
+import { ExternalLink, Trash2, XCircle, Copy } from 'lucide-react'
+import { encryptString, decryptString } from '../lib/crypto'
+import { copyWithTimeout } from '../lib/clipboard'
+import { toast } from '../utils/toast'
 import { useSearchParams } from 'react-router-dom'
 
 function Field({ label, children }: { label: string; children: any }) {
@@ -128,6 +130,20 @@ export default function Vault() {
               </td>
               <td className="px-3 py-2 pr-4 md:pr-6">
                 <div className="flex items-center gap-2 justify-end">
+                  <IconButton size="sm" srLabel="复制用户名" onClick={async () => {
+                    await copyWithTimeout(it.username)
+                    toast.info('已复制用户名')
+                  }}>
+                    <Copy className="w-4 h-4" />
+                  </IconButton>
+                  <IconButton size="sm" srLabel="复制密码" onClick={async () => {
+                    if (!ensureUnlocked() || !master) return
+                    const pwd = await decryptString(master, it.passwordCipher)
+                    await copyWithTimeout(pwd)
+                    toast.info('已复制密码')
+                  }}>
+                    <Copy className="w-4 h-4" />
+                  </IconButton>
                   {it.url && (
                     <a className="h-8 px-3 rounded-xl border grid place-items-center"
                        href={it.url} target="_blank" rel="noreferrer" title="在新标签打开">
@@ -156,6 +172,20 @@ export default function Vault() {
           <div className="mt-1"><FixedUrl url={it.url ?? ''} length={32} className="text-gray-600" /></div>
           <div className="text-xs text-gray-600 mt-1" title={it.username}>👤 {it.username}</div>
           <div className="mt-2 flex items-center gap-2 justify-end">
+            <IconButton size="sm" srLabel="复制用户名" onClick={async () => {
+              await copyWithTimeout(it.username)
+              toast.info('已复制用户名')
+            }}>
+              <Copy className="w-4 h-4" />
+            </IconButton>
+            <IconButton size="sm" srLabel="复制密码" onClick={async () => {
+              if (!ensureUnlocked() || !master) return
+              const pwd = await decryptString(master, it.passwordCipher)
+              await copyWithTimeout(pwd)
+              toast.info('已复制密码')
+            }}>
+              <Copy className="w-4 h-4" />
+            </IconButton>
             {it.url && <a className="h-8 px-3 rounded-xl border grid place-items-center" href={it.url} target="_blank" rel="noreferrer">打开</a>}
             <button className="h-8 px-3 rounded-xl border grid place-items-center"
                     onClick={() => { setEdit(it); setOpenEdit(true); setNewPass('') }}>编辑</button>
