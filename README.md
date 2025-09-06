@@ -28,4 +28,4 @@ yarn && yarn dev
 - PWA 配置（vite-plugin-pwa）
 - 笔记：Markdown 编写与大模型对话
 
-> 仅本地离线可用；未接入任何云端服务。
+> 默认离线运行；如配置 `VITE_LLM_API_URL`/`VITE_LLM_API_KEY` 将访问外部服务，请自行评估隐私与安全风险。
