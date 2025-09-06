@@ -9,8 +9,10 @@ import { useItems } from '../store/useItems'
 import { useAuth } from '../store/useAuth'
 import type { PasswordItem } from '../types'
 import { useEffect, useMemo, useState } from 'react'
-import { ExternalLink, Trash2, XCircle } from 'lucide-react'
-import { encryptString } from '../lib/crypto'
+import { ExternalLink, Trash2, XCircle, Copy } from 'lucide-react'
+import { encryptString, decryptString } from '../lib/crypto'
+import { copyWithTimeout } from '../lib/clipboard'
+import { toast } from '../utils/toast'
 import { useSearchParams } from 'react-router-dom'
 import { useSettings } from '../store/useSettings'
 
@@ -26,10 +28,6 @@ function Field({ label, children }: { label: string; children: any }) {
 export default function Vault() {
   const { items, load, addPassword, update, removeMany, selection, toggleSelect, clearSelection } = useItems()
   const { unlocked, master } = useAuth()
-  const { viewMode } = useSettings()
-
-  const [q, setQ] = useState('')
-  const [view, setView] = useState<'table' | 'card'>(viewMode === 'card' ? 'card' : 'table')
   const [params] = useSearchParams()
   const activeTag = params.get('tag')
 
@@ -48,6 +46,11 @@ export default function Vault() {
 
   useEffect(() => { load() }, [])
   useEffect(() => { if (viewMode !== 'default') setView(viewMode) }, [viewMode])
+
+  useEffect(() => {
+    if (prefView === 'card') setView('card')
+    else if (prefView === 'list') setView('table')
+  }, [prefView])
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -131,6 +134,20 @@ export default function Vault() {
               </td>
               <td className="px-3 py-2 pr-4 md:pr-6">
                 <div className="flex items-center gap-2 justify-end">
+                  <IconButton size="sm" srLabel="复制用户名" onClick={async () => {
+                    await copyWithTimeout(it.username)
+                    toast.info('已复制用户名')
+                  }}>
+                    <Copy className="w-4 h-4" />
+                  </IconButton>
+                  <IconButton size="sm" srLabel="复制密码" onClick={async () => {
+                    if (!ensureUnlocked() || !master) return
+                    const pwd = await decryptString(master, it.passwordCipher)
+                    await copyWithTimeout(pwd)
+                    toast.info('已复制密码')
+                  }}>
+                    <Copy className="w-4 h-4" />
+                  </IconButton>
                   {it.url && (
                     <a className="h-8 px-3 rounded-xl border grid place-items-center"
                        href={it.url} target="_blank" rel="noreferrer" title="在新标签打开">
@@ -159,6 +176,20 @@ export default function Vault() {
           <div className="mt-1"><FixedUrl url={it.url ?? ''} length={32} className="text-gray-600" /></div>
           <div className="text-xs text-gray-600 mt-1" title={it.username}>👤 {it.username}</div>
           <div className="mt-2 flex items-center gap-2 justify-end">
+            <IconButton size="sm" srLabel="复制用户名" onClick={async () => {
+              await copyWithTimeout(it.username)
+              toast.info('已复制用户名')
+            }}>
+              <Copy className="w-4 h-4" />
+            </IconButton>
+            <IconButton size="sm" srLabel="复制密码" onClick={async () => {
+              if (!ensureUnlocked() || !master) return
+              const pwd = await decryptString(master, it.passwordCipher)
+              await copyWithTimeout(pwd)
+              toast.info('已复制密码')
+            }}>
+              <Copy className="w-4 h-4" />
+            </IconButton>
             {it.url && <a className="h-8 px-3 rounded-xl border grid place-items-center" href={it.url} target="_blank" rel="noreferrer">打开</a>}
             <button className="h-8 px-3 rounded-xl border grid place-items-center"
                     onClick={() => { setEdit(it); setOpenEdit(true); setNewPass('') }}>编辑</button>
@@ -171,17 +202,9 @@ export default function Vault() {
   const ui = (
     <div className="h-[calc(100dvh-48px)] overflow-auto">
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b">
-        <div className="max-w-7xl mx-auto p-3 flex items-center gap-3">
-          <Input placeholder="搜索…" value={q} onChange={e => setQ(e.target.value)} className="flex-1" />
-          {viewMode === 'default' && (
-            <Segmented value={view} onChange={setView} options={[{ label: '表格', value: 'table' }, { label: '卡片', value: 'card' }]} />
-          )}
-          <button className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700 active:scale-[0.98]"
-                  onClick={() => { if (ensureUnlocked()) setOpenNew(true) }}>
-            新建
           </button>
         </div>
-        <div className="max-w-7xl mx-auto px-3 pb-2">
+        <div className="max-w-screen-lg mx-auto px-6 pb-2">
           <TagRow />
           {selection.size > 0 && (
             <div className="mt-2 flex items-center gap-2">
@@ -195,7 +218,7 @@ export default function Vault() {
           )}
         </div>
       </div>
-      <div className="max-w-7xl mx-auto p-3">{view === 'table' ? tableView : cardView}</div>
+      <div className="max-w-screen-lg mx-auto px-6 py-3 bg-white rounded-2xl shadow-sm">{view === 'table' ? tableView : cardView}</div>
     </div>
   )
 
@@ -210,16 +233,23 @@ export default function Vault() {
         title="新建密码"
         footer={
           <>
-            <button className="h-9 px-4 rounded-xl border text-sm" onClick={() => setOpenNew(false)}>取消</button>
-            <button className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700 active:scale-[0.98]"
-              onClick={async () => {
+              <button
+                className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
+                onClick={() => setOpenNew(false)}
+              >
+                {t('cancel')}
+              </button>
+              <button
+                className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
+                onClick={async () => {
                 if (!unlocked || !master) { window.dispatchEvent(new CustomEvent('open-unlock')); return }
                 if (!nTitle || !nUser || !nPass) { alert('请填写完整'); return }
                 const cipher = await encryptString(master, nPass)
                 await addPassword({ title: nTitle, url: nUrl || undefined, username: nUser, passwordCipher: cipher, tags: nTags })
                 setOpenNew(false); setNTitle(''); setNUrl(''); setNUser(''); setNPass(''); setNTags([])
-              }}>
-              保存
+              }}
+            >
+              {t('save')}
             </button>
           </>
         }>
@@ -243,9 +273,15 @@ export default function Vault() {
               <a className="h-9 px-3 rounded-xl border grid place-items-center mr-auto"
                  href={edit.url} target="_blank" rel="noreferrer">打开</a>
             )}
-            <button className="h-9 px-4 rounded-xl border text-sm" onClick={() => setOpenEdit(false)}>取消</button>
-            <button className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700 active:scale-[0.98]"
-              onClick={async () => {
+              <button
+                className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
+                onClick={() => setOpenEdit(false)}
+              >
+                {t('cancel')}
+              </button>
+              <button
+                className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
+                onClick={async () => {
                 if (!edit) return
                 const patch: Partial<PasswordItem> = {
                   title: edit.title, url: edit.url, username: edit.username, tags: edit.tags
@@ -256,8 +292,9 @@ export default function Vault() {
                 }
                 await update(edit.id, patch)
                 setOpenEdit(false); setNewPass('')
-              }}>
-              保存
+              }}
+            >
+              {t('save')}
             </button>
           </>
         }>

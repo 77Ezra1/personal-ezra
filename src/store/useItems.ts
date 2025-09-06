@@ -28,8 +28,10 @@ interface ItemState {
   clearSelection: () => void
   toggleSelect: (id: string, rangeWith?: string | null) => void
 
-  exportJSON: () => Promise<Blob>
-  importJSON: (file: File) => Promise<void>
+  exportSites: () => Promise<Blob>
+  importSites: (file: File) => Promise<void>
+  exportDocs: () => Promise<Blob>
+  importDocs: (file: File) => Promise<void>
 }
 
 export const useItems = create<ItemState>((set, get) => ({
@@ -133,18 +135,27 @@ export const useItems = create<ItemState>((set, get) => ({
     })
   },
 
-  async exportJSON() {
-    const [items, tags, settings] = await Promise.all([db.items.toArray(), db.tags.toArray(), db.settings.toArray()])
-    const blob = new Blob([JSON.stringify({ items, tags, settings }, null, 2)], { type: 'application/json' })
-    return blob
+  async exportSites() {
+    const items = await db.items.where('type').equals('site').toArray()
+    return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
   },
 
-  async importJSON(file) {
+  async importSites(file) {
     const text = await file.text()
-    const data = JSON.parse(text)
-    if (data.items) await db.items.bulkPut(data.items)
-    if (data.tags) await db.tags.bulkPut(data.tags)
-    if (data.settings) await db.settings.bulkPut(data.settings)
+    const data = JSON.parse(text) as SiteItem[]
+    if (Array.isArray(data)) await db.items.bulkPut(data.map(it => ({ ...it, type: 'site' })))
+    await get().load()
+  },
+
+  async exportDocs() {
+    const items = await db.items.where('type').equals('doc').toArray()
+    return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
+  },
+
+  async importDocs(file) {
+    const text = await file.text()
+    const data = JSON.parse(text) as DocItem[]
+    if (Array.isArray(data)) await db.items.bulkPut(data.map(it => ({ ...it, type: 'doc' })))
     await get().load()
   }
 }))

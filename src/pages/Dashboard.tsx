@@ -11,7 +11,7 @@ export default function Dashboard() {
   const docs = items.filter(i => i.type === 'doc') as DocItem[]
 
   return (
-    <div className="p-4 space-y-6">
+    <div className="max-w-screen-lg mx-auto px-6 py-4 space-y-6 bg-white rounded-2xl shadow-sm">
       <section>
         <h1 className="text-xl font-semibold mb-3">常用与最近</h1>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

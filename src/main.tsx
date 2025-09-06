@@ -3,7 +3,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
 import { router } from './routes'
-import './styles/global.css'
+import './index.css'
 
 import { toast } from './utils/toast'
 import { useSettings } from './store/useSettings'

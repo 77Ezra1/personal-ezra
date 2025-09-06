@@ -11,7 +11,6 @@ import { useSearchParams } from 'react-router-dom'
 import { ExternalLink, Trash2, XCircle } from 'lucide-react'
 import FixedUrl from '../components/FixedUrl'
 import { useSettings } from '../store/useSettings'
-
 function Field({ label, children }: { label: string; children: any }) {
   return (
     <div className="grid gap-1">
@@ -21,11 +20,7 @@ function Field({ label, children }: { label: string; children: any }) {
   )
 }
 
-export default function Sites() {
-  const { items, load, addSite, update, removeMany, selection, toggleSelect, clearSelection, tags } = useItems()
-  const { viewMode } = useSettings()
-  const [q, setQ] = useState('')
-  const [view, setView] = useState<'table' | 'card'>(viewMode === 'card' ? 'card' : 'table')
+
   const [params] = useSearchParams()
   const activeTag = params.get('tag')
 
@@ -43,6 +38,11 @@ export default function Sites() {
   useEffect(() => { load() }, [])
 
   useEffect(() => { if (viewMode !== 'default') setView(viewMode) }, [viewMode])
+
+  useEffect(() => {
+    if (prefView === 'card') setView('card')
+    else if (prefView === 'list') setView('table')
+  }, [prefView])
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -101,16 +101,18 @@ export default function Sites() {
       <table className="w-full table-fixed text-sm">
         <colgroup>
           <col style={{ width: '48px' }} />
-          <col style={{ width: '25%' }} />
-          <col style={{ width: '25%' }} />
-          <col style={{ width: '25%' }} />
-          <col style={{ width: '25%' }} />
+          <col style={{ width: '20%' }} />
+          <col style={{ width: '20%' }} />
+          <col style={{ width: '20%' }} />
+          <col style={{ width: '20%' }} />
+          <col style={{ width: '20%' }} />
         </colgroup>
         <thead className="bg-gray-50">
           <tr className="text-left text-gray-500">
             <th className="px-3 py-2"></th>
             <th className="px-3 py-2">标题</th>
             <th className="px-3 py-2">地址</th>
+            <th className="px-3 py-2">备注</th>
             <th className="px-3 py-2 text-center">标签</th>
             <th className="px-3 py-2 text-right pr-4 md:pr-6">操作</th>
           </tr>
@@ -129,7 +131,6 @@ export default function Sites() {
               </td>
               <td className="px-3 py-2 text-center text-gray-600">
                 {it.tags?.map(tid => tags.find(t=>t.id===tid)?.name).filter(Boolean).join(', ') || '-'}
-              </td>
               <td className="px-3 py-2 pr-4 md:pr-6">
                 <div className="flex items-center gap-2 justify-end">
                   <a className="h-8 px-3 rounded-xl border grid place-items-center" href={it.url} target="_blank" rel="noreferrer" title="在新标签打开">
@@ -150,11 +151,11 @@ export default function Sites() {
   // ======= 卡片视图 =======
   const cardView = (
     <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
-      {filtered.map(it => (
+          {filtered.map(it => (
         <div key={it.id} data-id={it.id} className="group border rounded-2xl p-4 hover:shadow-md transition bg-white">
           <div className="font-medium truncate" title={it.title}>{it.title}</div>
           <div className="mt-1"><FixedUrl url={it.url} length={32} className="text-gray-600" /></div>
-          {it.description && <div className="text-xs text-gray-500 mt-1 line-clamp-2">{it.description}</div>}
+          {it.description && <div className="mt-1 text-xs text-gray-500 line-clamp-2">备注：{it.description}</div>}
           <div className="mt-2 flex items-center gap-2 justify-end">
             <a className="h-8 px-3 rounded-xl border grid place-items-center" href={it.url} target="_blank" rel="noreferrer">打开</a>
             <button className="h-8 px-3 rounded-xl border grid place-items-center" onClick={() => { setEdit(it); setOpenEdit(true) }}>
@@ -169,14 +170,8 @@ export default function Sites() {
   const ui = (
     <div className="h-[calc(100dvh-48px)] overflow-auto">
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b">
-        <div className="max-w-7xl mx-auto p-3 flex items-center gap-3">
-          <Input placeholder="搜索…" value={q} onChange={e => setQ(e.target.value)} className="flex-1" />
-          {viewMode === 'default' && (
-            <Segmented value={view} onChange={setView} options={[{ label: '表格', value: 'table' }, { label: '卡片', value: 'card' }]} />
-          )}
-          <button className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700 active:scale-[0.98]" onClick={() => setOpenNew(true)}>新建</button>
         </div>
-        <div className="max-w-7xl mx-auto px-3 pb-2">
+        <div className="max-w-screen-lg mx-auto px-6 pb-2">
           <TagRow />
           {selection.size > 0 && (
             <div className="mt-2 flex items-center gap-2">
@@ -190,7 +185,7 @@ export default function Sites() {
           )}
         </div>
       </div>
-      <div className="max-w-7xl mx-auto p-3">{view === 'table' ? tableView : cardView}</div>
+      <div className="max-w-screen-lg mx-auto px-6 py-3 bg-white rounded-2xl shadow-sm">{view === 'table' ? tableView : cardView}</div>
     </div>
   )
 
@@ -205,14 +200,21 @@ export default function Sites() {
         title="新建站点"
         footer={
           <>
-            <button className="h-9 px-4 rounded-xl border text-sm" onClick={() => setOpenNew(false)}>取消</button>
-            <button className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700 active:scale-[0.98]"
+            <button
+              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
+              onClick={() => setOpenNew(false)}
+            >
+              {t('cancel')}
+            </button>
+            <button
+              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
               onClick={async () => {
                 if (!nTitle || !nUrl) { alert('请填写标题和地址'); return }
                 await addSite({ title: nTitle, url: nUrl, description: nDesc, tags: nTags })
                 setOpenNew(false); setNTitle(''); setNUrl(''); setNDesc(''); setNTags([])
-              }}>
-              保存
+              }}
+            >
+              {t('save')}
             </button>
           </>
         }>
@@ -235,14 +237,21 @@ export default function Sites() {
               <a className="h-9 px-3 rounded-xl border grid place-items-center mr-auto"
                  href={edit.url} target="_blank" rel="noreferrer">打开</a>
             )}
-            <button className="h-9 px-4 rounded-xl border text-sm" onClick={() => setOpenEdit(false)}>取消</button>
-            <button className="h-9 px-4 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700 active:scale-[0.98]"
+            <button
+              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
+              onClick={() => setOpenEdit(false)}
+            >
+              {t('cancel')}
+            </button>
+            <button
+              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
               onClick={async () => {
                 if (!edit) return
                 await update(edit.id, { title: edit.title, url: edit.url, description: edit.description, tags: edit.tags })
                 setOpenEdit(false)
-              }}>
-              保存
+              }}
+            >
+              {t('save')}
             </button>
           </>
         }>
