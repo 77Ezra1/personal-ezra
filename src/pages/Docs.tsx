@@ -151,7 +151,6 @@ export default function Docs() {
   const ui = (
     <div className="h-[calc(100dvh-48px)] overflow-auto">
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b">
-        </div>
         <div className="max-w-screen-lg mx-auto px-6 pb-2">
           <TagRow />
           {selection.size > 0 && (

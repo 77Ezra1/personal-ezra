@@ -5,8 +5,8 @@ import { useSettings } from '../store/useSettings'
 
 export default function Sidebar() {
   const tags = useItems(s => s.tags)
-  const lang = useSettings(s => s.lang)
-  const text = lang === 'en'
+  const language = useSettings(s => s.language)
+  const text = language === 'en'
     ? { dashboard: 'Dashboard', sites: 'Sites', vault: 'Vault', docs: 'Docs', chat: 'Chat', settings: 'Settings', tags: 'Tags', none: '(no tags)' }
     : { dashboard: '工作台', sites: '网站', vault: '密码库', docs: '文档', chat: '对话', settings: '设置', tags: '标签', none: '（暂无标签）' }
   const linkClass =
