@@ -1,7 +1,19 @@
 import { NavLink } from 'react-router-dom'
 import { useItems } from '../store/useItems'
-import Badge from './ui/Badge'
+import { TAG_COLORS, type TagColor } from '../types'
 import { useSettings } from '../store/useSettings'
+
+const palette: Record<TagColor, string> = {
+  gray: '#9ca3af',
+  blue: '#60a5fa',
+  green: '#34d399',
+  red: '#f87171',
+  yellow: '#facc15',
+  purple: '#a78bfa',
+  pink: '#f472b6',
+  orange: '#fb923c',
+  cyan: '#22d3ee',
+}
 
 export default function Sidebar() {
   const tags = useItems(s => s.tags)
@@ -22,7 +34,15 @@ export default function Sidebar() {
       <div>
         <div className="text-xs text-gray-500 px-2 mb-1">{text.tags}</div>
         <div className="flex flex-wrap gap-1 px-2">
-          {tags.map(t => <Badge key={t.id} color={t.color}>{t.name}</Badge>)}
+          {tags.map((t, idx) => {
+            const color = TAG_COLORS[idx % TAG_COLORS.length]
+            return (
+              <span key={t.id} className="flex items-center gap-1 px-2 py-0.5 rounded border text-xs">
+                <span className="w-2 h-2 rounded-full" style={{ background: palette[color] }} />
+                {t.name}
+              </span>
+            )
+          })}
           {tags.length === 0 && <div className="text-xs text-gray-400">{text.none}</div>}
         </div>
       </div>

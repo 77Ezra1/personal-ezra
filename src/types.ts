@@ -40,18 +40,7 @@ export interface DocItem extends BaseItem {
 
 export type AnyItem = SiteItem | PasswordItem | DocItem
 
-export type TagColor =
-  | 'gray'
-  | 'blue'
-  | 'green'
-  | 'red'
-  | 'yellow'
-  | 'purple'
-  | 'pink'
-  | 'orange'
-  | 'cyan'
-
-export const TAG_COLORS: TagColor[] = [
+export const TAG_COLORS = [
   'gray',
   'blue',
   'green',
@@ -61,11 +50,13 @@ export const TAG_COLORS: TagColor[] = [
   'pink',
   'orange',
   'cyan',
-]
+] as const
+
+export type TagColor = (typeof TAG_COLORS)[number]
 
 export interface Tag {
   id: string
   name: string
-  color: TagColor
+  color?: TagColor
   parentId?: string
 }
