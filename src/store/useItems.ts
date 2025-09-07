@@ -27,22 +27,42 @@ function parseCsv(text: string): string[][] {
   })
 }
 
-function mapFields(row: Record<string, string>, type: 'site' | 'doc') {
-  const lc = Object.fromEntries(Object.entries(row).map(([k, v]) => [k.toLowerCase(), v]))
+function mapFields(row: Record<string, unknown>, type: 'site' | 'doc') {
+  const entries = Object.entries(row).map(([k, v]) => [k.toLowerCase(), v] as [string, unknown])
+  const lc: Record<string, unknown> = Object.fromEntries(entries)
+  const tags = Array.isArray(lc['tags'])
+    ? lc['tags'].join(',')
+    : typeof lc['tags'] === 'string'
+    ? lc['tags']
+    : typeof lc['tag'] === 'string'
+    ? lc['tag']
+    : ''
   if (type === 'site') {
-    return {
-      title: lc['title'] || lc['name'] || '',
-      url: lc['url'] || lc['link'] || lc['href'] || '',
-      description: lc['description'] || lc['desc'] || '',
-      tags: Array.isArray(lc['tags']) ? lc['tags'].join(',') : lc['tags'] || lc['tag'] || ''
-    }
+    const title = typeof lc['title'] === 'string' ? lc['title'] : typeof lc['name'] === 'string' ? lc['name'] : ''
+    const url = typeof lc['url'] === 'string'
+      ? lc['url']
+      : typeof lc['link'] === 'string'
+      ? lc['link']
+      : typeof lc['href'] === 'string'
+      ? lc['href']
+      : ''
+    const description = typeof lc['description'] === 'string'
+      ? lc['description']
+      : typeof lc['desc'] === 'string'
+      ? lc['desc']
+      : ''
+    return { title, url, description, tags }
   }
-  return {
-    title: lc['title'] || lc['name'] || '',
-    path: lc['path'] || lc['url'] || lc['link'] || '',
-    source: lc['source'] || 'local',
-    tags: Array.isArray(lc['tags']) ? lc['tags'].join(',') : lc['tags'] || lc['tag'] || ''
-  }
+  const title = typeof lc['title'] === 'string' ? lc['title'] : typeof lc['name'] === 'string' ? lc['name'] : ''
+  const path = typeof lc['path'] === 'string'
+    ? lc['path']
+    : typeof lc['url'] === 'string'
+    ? lc['url']
+    : typeof lc['link'] === 'string'
+    ? lc['link']
+    : ''
+  const source = (typeof lc['source'] === 'string' ? lc['source'] : 'local') as DocItem['source']
+  return { title, path, source, tags }
 }
 
 type Filters = { type?: 'site'|'password'|'doc'; tags?: string[] }

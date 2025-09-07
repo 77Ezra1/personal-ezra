@@ -35,13 +35,11 @@ const dict = {
     sites: 'Sites',
     docs: 'Docs',
     vault: 'Vault',
-    codex/traverse-code-and-fix-issues
     dashboard: 'Dashboard',
     chat: 'Chat',
     settings: 'Settings',
     tags: 'Tags',
     noTags: '(no tags)',
-    main
     view: 'Default View',
     default: 'Default',
     list: 'List',
