@@ -15,7 +15,6 @@ const dict = {
     settings: '设置',
     tags: '标签',
     noTags: '（暂无标签）',
-    main
     view: '自定义视图',
     default: '默认',
     list: '列表',
