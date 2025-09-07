@@ -50,6 +50,18 @@ export default function TagRow() {
   )
 }
 
+const palette: Record<TagColor, string> = {
+  gray: '#9ca3af',
+  blue: '#60a5fa',
+  green: '#34d399',
+  red: '#f87171',
+  yellow: '#facc15',
+  purple: '#a78bfa',
+  pink: '#f472b6',
+  orange: '#fb923c',
+  cyan: '#22d3ee',
+}
+
 export function TagChip({
   id,
   name,
@@ -67,17 +79,6 @@ export function TagChip({
   onClick: () => void
   onDelete?: () => void
 }) {
-  const palette: Record<TagColor, string> = {
-    gray: '#9ca3af',
-    blue: '#60a5fa',
-    green: '#34d399',
-    red: '#f87171',
-    yellow: '#facc15',
-    purple: '#a78bfa',
-    pink: '#f472b6',
-    orange: '#fb923c',
-    cyan: '#22d3ee',
-  }
   const dot = palette[color]
 
   return (
@@ -101,7 +102,10 @@ export function TagChip({
             e.stopPropagation()
             onDelete()
           }}
-          className="absolute -top-1 -right-1 w-4 h-4 flex items-center justify-center rounded-full border border-border bg-surface text-muted opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-600"
+          className={clsx(
+            'absolute -top-1 -right-1 w-4 h-4 flex items-center justify-center rounded-full border border-border',
+            'bg-surface text-muted opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-600',
+          )}
         >
           <X className="w-3 h-3" />
         </button>
