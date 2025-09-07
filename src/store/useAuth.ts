@@ -11,6 +11,7 @@ interface AuthState {
   unlock: (pw: string) => Promise<boolean>
   lock: () => void
   setUser: (username: string, avatar: string) => void
+  logout: () => void
 }
 
 function hashString(str: string): Promise<string> {
@@ -63,5 +64,14 @@ export const useAuth = create<AuthState>((set, get) => ({
       /* noop */
     }
     set({ username, avatar })
+  },
+  logout() {
+    try {
+      localStorage.removeItem('username')
+      localStorage.removeItem('avatar')
+    } catch {
+      /* noop */
+    }
+    set({ username: undefined, avatar: undefined })
   }
 }))
