@@ -10,11 +10,13 @@ const dict = {
     sites: '站点',
     docs: '文档',
     vault: '保险库',
+    codex/traverse-code-and-fix-issues
     dashboard: '工作台',
     chat: '对话',
     settings: '设置',
     tags: '标签',
     noTags: '（暂无标签）',
+    main
     view: '自定义视图',
     default: '默认',
     list: '列表',
@@ -35,11 +37,13 @@ const dict = {
     sites: 'Sites',
     docs: 'Docs',
     vault: 'Vault',
+    codex/traverse-code-and-fix-issues
     dashboard: 'Dashboard',
     chat: 'Chat',
     settings: 'Settings',
     tags: 'Tags',
     noTags: '(no tags)',
+    main
     view: 'Default View',
     default: 'Default',
     list: 'List',
