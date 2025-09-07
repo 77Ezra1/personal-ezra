@@ -4,7 +4,12 @@ export default function Vault() {
   const t = useTranslation()
   return (
     <div className="max-w-screen-lg mx-auto p-6 bg-surface text-text rounded-2xl shadow-sm">
-      <h1 className="text-lg font-medium mb-2">{t('vault')}</h1>
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-lg font-medium">{t('vault')}</h1>
+        <button className="h-8 px-3 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm">
+          {t('newPassword')}
+        </button>
+      </div>
       <p className="text-sm text-muted">{t('comingSoon')}</p>
     </div>
   )
