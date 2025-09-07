@@ -38,7 +38,6 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'passwor
     ? lc['tag']
     : ''
   if (type === 'site') {
-    const title = typeof lc['title'] === 'string' ? lc['title'] : typeof lc['name'] === 'string' ? lc['name'] : ''
     const url = typeof lc['url'] === 'string'
       ? lc['url']
       : typeof lc['link'] === 'string'
@@ -48,13 +47,6 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'passwor
       : typeof lc['path'] === 'string'
       ? lc['path']
       : ''
-    const description = typeof lc['description'] === 'string'
-      ? lc['description']
-      : typeof lc['desc'] === 'string'
-      ? lc['desc']
-      : ''
-    return { title, url, description, tags }
-  } else if (type === 'doc') {
     const title = typeof lc['title'] === 'string'
       ? lc['title']
       : typeof lc['name'] === 'string'
@@ -69,34 +61,6 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'passwor
       : typeof lc['href'] === 'string'
       ? lc['href']
       : ''
-    const source = typeof lc['source'] === 'string' ? lc['source'] : typeof lc['origin'] === 'string' ? lc['origin'] : ''
-    return { title, path, source, tags }
-  } else {
-    const title = typeof lc['title'] === 'string' ? lc['title'] : typeof lc['name'] === 'string' ? lc['name'] : ''
-    const username = typeof lc['username'] === 'string'
-      ? lc['username']
-      : typeof lc['user'] === 'string'
-      ? lc['user']
-      : typeof lc['login'] === 'string'
-      ? lc['login']
-      : ''
-    const passwordCipher = typeof lc['passwordcipher'] === 'string'
-      ? lc['passwordcipher']
-      : typeof lc['password'] === 'string'
-      ? lc['password']
-      : typeof lc['pass'] === 'string'
-      ? lc['pass']
-      : ''
-    const url = typeof lc['url'] === 'string'
-      ? lc['url']
-      : typeof lc['link'] === 'string'
-      ? lc['link']
-      : typeof lc['path'] === 'string'
-      ? lc['path']
-      : typeof lc['href'] === 'string'
-      ? lc['href']
-      : ''
-    return { title, username, passwordCipher, url, tags }
   }
 }
 
