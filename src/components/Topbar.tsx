@@ -40,6 +40,7 @@ export default function Topbar() {
   const { unlocked, unlock, lock, username, avatar, logout } = useAuth()
   const items = useItems(s => s.items)
   const initial = username?.[0]?.toUpperCase()
+  const t = useTranslation()
 
   const tok = useMemo(() => {
     const parsed = parseTokens(q)
@@ -163,10 +164,6 @@ export default function Topbar() {
               onKeyDown={onKeyDown}
               className="w-[420px]"
             />
-            {q && <div className="text-xs text-gray-500">{t('total')} {pool.length} {t('items')}</div>}
-          </div>
-          <div className="flex items-center gap-2">
-            <IconButton onClick={onCreate} srLabel={t('quickCreate')}><Plus className="w-4 h-4" /></IconButton>
             {unlocked
               ? <IconButton onClick={lock} srLabel={t('lock')}><Lock className="w-4 h-4" /></IconButton>
               : <IconButton onClick={() => setOpenUnlock(true)} srLabel={t('unlock')}><Unlock className="w-4 h-4" /></IconButton>
@@ -212,8 +209,6 @@ export default function Topbar() {
                     setOpen(false)
                   }}
                 >
-                  <span>{t('createSite')}<span className="text-blue-600 break-all">{q.trim()}</span></span>
-                  <span className="text-xs text-gray-500">{t('enter')}</span>
                 </button>
               )}
 
@@ -253,7 +248,6 @@ export default function Topbar() {
               })}
 
               {!looksLikeUrl && groups.flat.length === 0 && (
-                <div className="px-3 py-6 text-center text-sm text-gray-500">{t('noMatches')}</div>
               )}
             </div>
           </div>
@@ -263,7 +257,6 @@ export default function Topbar() {
       {/* 解锁弹窗 */}
       <Modal open={openUnlock} onClose={() => setOpenUnlock(false)} title={t('unlock')}>
         <div className="grid gap-3">
-          <Input type="password" placeholder={t('enterMasterPassword')} value={mpw} onChange={e => setMpw(e.target.value)} />
           <div className="flex justify-end gap-2">
             <button
               className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
@@ -276,7 +269,6 @@ export default function Topbar() {
               onClick={async () => {
                 const ok = await unlock(mpw)
                 if (ok) { setOpenUnlock(false); setMpw('') }
-                else { alert(t('wrongMasterPassword')) }
               }}
             >
               {t('unlock')}
