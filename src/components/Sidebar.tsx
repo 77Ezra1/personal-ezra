@@ -19,6 +19,7 @@ const palette: Record<TagColor, string> = {
 export default function Sidebar() {
   const tags = useItems(s => s.tags)
   const t = useTranslation()
+  const linkClass = useCallback(
     ({ isActive }: { isActive: boolean }) =>
       'block px-2 py-1 rounded hover:bg-gray-50 border-l-4 ' +
       (isActive ? 'bg-blue-50 text-blue-700 border-blue-600' : 'border-transparent'),
