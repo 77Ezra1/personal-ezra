@@ -3,7 +3,7 @@ import { useItems } from '../store/useItems'
 import clsx from 'clsx'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { X } from 'lucide-react'
-import type { TagColor } from '../types'
+import { TAG_COLORS, type TagColor } from '../types'
 
 export default function TagRow() {
   const { items, tags, removeTag } = useItems()
@@ -26,13 +26,20 @@ export default function TagRow() {
 
   return (
     <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2">
-      <TagChip id="all" name="全部" color="gray" active={active === 'all'} count={counts.all || 0} onClick={() => goto('all')} />
-      {tags.map(t => (
+      <TagChip
+        id="all"
+        name="全部"
+        color="gray"
+        active={active === 'all'}
+        count={counts.all || 0}
+        onClick={() => goto('all')}
+      />
+      {tags.map((t, idx) => (
         <TagChip
           key={t.id}
           id={t.id}
           name={t.name}
-          color={t.color || 'gray'}
+          color={TAG_COLORS[idx % TAG_COLORS.length]}
           active={active === t.id}
           count={counts[t.id] || 0}
           onClick={() => goto(t.id)}
@@ -42,8 +49,37 @@ export default function TagRow() {
     </div>
   )
 }
+
+export function TagChip({
+  id,
+  name,
+  color,
+  active,
+  count,
+  onClick,
+  onDelete,
+}: {
+  id: string
+  name: string
+  color: TagColor
+  active: boolean
+  count: number
+  onClick: () => void
+  onDelete?: () => void
+}) {
+  const palette: Record<TagColor, string> = {
+    gray: '#9ca3af',
+    blue: '#60a5fa',
+    green: '#34d399',
+    red: '#f87171',
+    yellow: '#facc15',
+    purple: '#a78bfa',
+    pink: '#f472b6',
+    orange: '#fb923c',
+    cyan: '#22d3ee',
   }
-  const dot = palette[color] || palette.gray
+  const dot = palette[color]
+
   return (
     <div className="relative group">
       <button
