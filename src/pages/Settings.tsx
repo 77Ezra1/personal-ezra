@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import ImportExportModal from '../components/ImportExportModal'
+import ImportExportModal from '../components/ImportExportModal';
 import { useItems } from '../store/useItems'
 import { useSettings } from '../store/useSettings'
 import { useTranslation } from '../lib/i18n'
