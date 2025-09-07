@@ -1,13 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Modal from './ui/Modal'
 import { useItems } from '../store/useItems'
 
-export default function ImportExportModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export default function ImportExportModal({ open, onClose, initialType = 'site' }: { open: boolean; onClose: () => void; initialType?: 'site' | 'doc' }) {
   const { exportSites, exportDocs, importSites, importDocs } = useItems()
-  const [type, setType] = useState<'site' | 'doc'>('site')
+  const [type, setType] = useState<'site' | 'doc'>(initialType)
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<any[]>([])
   const [errors, setErrors] = useState<string[]>([])
+
+  useEffect(() => {
+    if (open) setType(initialType)
+  }, [initialType, open])
 
   async function handleExport(kind: 'site' | 'doc') {
     const blob = kind === 'site' ? await exportSites() : await exportDocs()
