@@ -107,10 +107,10 @@ export default function Docs() {
         <thead className="bg-surface-hover">
           <tr className="text-left text-muted">
             <th className="px-3 py-2"></th>
-            <th className="px-3 py-2">标题</th>
-            <th className="px-3 py-2">标签</th>
-            <th className="px-3 py-2">路径/来源</th>
-            <th className="px-3 py-2 text-right pr-4 md:pr-6">操作</th>
+            <th className="px-3 py-2">{t('title')}</th>
+            <th className="px-3 py-2">{t('tags')}</th>
+            <th className="px-3 py-2">{t('pathOrSource')}</th>
+            <th className="px-3 py-2 text-right pr-4 md:pr-6">{t('actions')}</th>
           </tr>
         </thead>
         <tbody>
@@ -127,7 +127,7 @@ export default function Docs() {
               <td className="px-3 py-2 pr-4 md:pr-6">
                 <div className="flex items-center gap-2 justify-end">
                   <Button size="sm" variant="secondary" className="px-3" onClick={() => { setEdit(it); setOpenEdit(true) }}>
-                    编辑
+                    {t('edit')}
                   </Button>
                 </div>
               </td>
@@ -148,7 +148,7 @@ export default function Docs() {
           {it.description && <div className="text-xs text-muted mt-1 line-clamp-2">{it.description}</div>}
           <div className="mt-2 flex items-center gap-2 justify-end">
             <Button size="sm" variant="secondary" className="px-3" onClick={() => { setEdit(it); setOpenEdit(true) }}>
-              编辑
+              {t('edit')}
             </Button>
           </div>
         </div>
@@ -163,10 +163,10 @@ export default function Docs() {
           <TagRow />
           {selection.size > 0 && (
             <div className="mt-2 flex items-center gap-2">
-              <IconButton size="sm" srLabel="删除所选" onClick={() => { removeMany(Array.from(selection)); clearSelection() }}>
+              <IconButton size="sm" srLabel={t('deleteSelected')} onClick={() => { removeMany(Array.from(selection)); clearSelection() }}>
                 <Trash2 className="w-4 h-4" />
               </IconButton>
-              <IconButton size="sm" srLabel="清除选择" onClick={clearSelection}>
+              <IconButton size="sm" srLabel={t('clearSelection')} onClick={clearSelection}>
                 <XCircle className="w-4 h-4" />
               </IconButton>
             </div>
@@ -185,7 +185,7 @@ export default function Docs() {
       <Modal
         open={openNew}
         onClose={() => setOpenNew(false)}
-        title="新建文档"
+        title={t('newDoc')}
         footer={
           <>
             <Button variant="secondary" onClick={() => setOpenNew(false)}>
@@ -213,7 +213,7 @@ export default function Docs() {
       <Modal
         open={openEdit}
         onClose={() => setOpenEdit(false)}
-        title="编辑文档"
+        title={t('editDoc')}
         footer={
           <>
             {edit?.path && /^https?:\/\//i.test(edit.path) && (
@@ -223,7 +223,7 @@ export default function Docs() {
                 target="_blank"
                 rel="noreferrer"
               >
-                打开
+                {t('open')}
               </a>
             )}
             <Button variant="secondary" onClick={() => setOpenEdit(false)}>
