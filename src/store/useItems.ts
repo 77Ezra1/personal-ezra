@@ -31,13 +31,58 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'passwor
   const entries = Object.entries(row).map(([k, v]) => [k.toLowerCase(), v] as [string, unknown])
   const lc: Record<string, unknown> = Object.fromEntries(entries)
   const tags = Array.isArray(lc['tags'])
-    ? lc['tags'].join(',')
+    ? (lc['tags'] as unknown[]).join(',')
     : typeof lc['tags'] === 'string'
     ? lc['tags']
     : typeof lc['tag'] === 'string'
     ? lc['tag']
     : ''
   if (type === 'site') {
+    const title =
+      typeof lc['title'] === 'string'
+        ? lc['title']
+        : typeof lc['name'] === 'string'
+        ? lc['name']
+        : ''
+    const url =
+      typeof lc['url'] === 'string'
+        ? lc['url']
+        : typeof lc['link'] === 'string'
+        ? lc['link']
+        : typeof lc['href'] === 'string'
+        ? lc['href']
+        : ''
+    const description =
+      typeof lc['description'] === 'string'
+        ? lc['description']
+        : typeof lc['desc'] === 'string'
+        ? lc['desc']
+        : ''
+    return { title, url, description, tags }
+  } else {
+    const title =
+      typeof lc['title'] === 'string'
+        ? lc['title']
+        : typeof lc['name'] === 'string'
+        ? lc['name']
+        : ''
+    const path =
+      typeof lc['path'] === 'string'
+        ? lc['path']
+        : typeof lc['url'] === 'string'
+        ? lc['url']
+        : typeof lc['link'] === 'string'
+        ? lc['link']
+        : typeof lc['href'] === 'string'
+        ? lc['href']
+        : ''
+    const source =
+      typeof lc['source'] === 'string'
+        ? lc['source']
+        : typeof lc['origin'] === 'string'
+        ? lc['origin']
+        : ''
+    return { title, path, source, tags }
     const url = typeof lc['url'] === 'string'
       ? lc['url']
       : typeof lc['link'] === 'string'
