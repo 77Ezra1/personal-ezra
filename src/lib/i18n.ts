@@ -24,7 +24,16 @@ const dict = {
     cancel: '取消',
     chinese: '中文',
     english: 'English',
-    comingSoon: '敬请期待'
+    comingSoon: '敬请期待',
+    title: '标题',
+    pathOrSource: '路径/来源',
+    actions: '操作',
+    edit: '编辑',
+    deleteSelected: '删除所选',
+    clearSelection: '清除选择',
+    open: '打开',
+    newDoc: '新建文档',
+    editDoc: '编辑文档'
   },
   en: {
     search: 'Search…',
@@ -49,7 +58,16 @@ const dict = {
     cancel: 'Cancel',
     chinese: 'Chinese',
     english: 'English',
-    comingSoon: 'Coming soon'
+    comingSoon: 'Coming soon',
+    title: 'Title',
+    pathOrSource: 'Path/Source',
+    actions: 'Actions',
+    edit: 'Edit',
+    deleteSelected: 'Delete Selected',
+    clearSelection: 'Clear Selection',
+    open: 'Open',
+    newDoc: 'New Document',
+    editDoc: 'Edit Document'
   }
 }
 
