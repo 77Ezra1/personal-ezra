@@ -12,7 +12,6 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, Lock, Unlock, Star, User, LogOut } from 'lucide-react'
 import ImportExportModal from './ImportExportModal'
 import { useTranslation } from '../lib/i18n'
-
 type RowType = 'site'|'password'|'doc'
 type Row = {
   id: string
