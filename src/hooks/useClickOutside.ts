@@ -1,5 +1,4 @@
 import { useEffect } from 'react'
-
 export function useClickOutside(ref: React.RefObject<HTMLElement>, onClose: () => void) {
   useEffect(() => {
     function handle(e: MouseEvent) {

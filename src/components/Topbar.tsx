@@ -1,5 +1,6 @@
 import IconButton from './ui/IconButton'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useClickOutside } from '../hooks/useClickOutside'
 import CommandK from './CommandK'
 import { useItems } from '../store/useItems'
 import Input from './ui/Input'
@@ -11,8 +12,6 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, Lock, Unlock, Star, User, LogOut } from 'lucide-react'
 import ImportExportModal from './ImportExportModal'
 import { useTranslation } from '../lib/i18n'
-import { useClickOutside } from '../hooks/useClickOutside'
-
 type RowType = 'site'|'password'|'doc'
 type Row = {
   id: string
@@ -25,6 +24,7 @@ type Row = {
 
 export default function Topbar() {
   const navigate = useNavigate()
+  const t = useTranslation()
   const [q, setQ] = useState('')
   const [openUnlock, setOpenUnlock] = useState(false)
   const [mpw, setMpw] = useState('')
@@ -42,9 +42,9 @@ export default function Topbar() {
   const t = useTranslation()
 
   const tok = useMemo(() => {
-    const t = parseTokens(q)
+    const parsed = parseTokens(q)
     const m = q.match(/\b(?:type|in):(site|password|doc)s?\b/i)
-    return { ...t, type: (m?.[1]?.toLowerCase() as RowType | undefined) }
+    return { ...parsed, type: (m?.[1]?.toLowerCase() as RowType | undefined) }
   }, [q])
 
   const pool: Row[] = useMemo(() => {
@@ -163,10 +163,6 @@ export default function Topbar() {
               onKeyDown={onKeyDown}
               className="w-[420px]"
             />
-            {q && <div className="text-xs text-gray-500">{t('results')}: {pool.length}</div>}
-          </div>
-          <div className="flex items-center gap-2">
-            <IconButton onClick={onCreate} srLabel={t('new')}><Plus className="w-4 h-4" /></IconButton>
             {unlocked
               ? <IconButton onClick={lock} srLabel={t('lock')}><Lock className="w-4 h-4" /></IconButton>
               : <IconButton onClick={() => setOpenUnlock(true)} srLabel={t('unlock')}><Unlock className="w-4 h-4" /></IconButton>
@@ -212,8 +208,6 @@ export default function Topbar() {
                     setOpen(false)
                   }}
                 >
-                  <span>{t('createSitePrefix')}<span className="text-blue-600 break-all">{q.trim()}</span></span>
-                  <span className="text-xs text-gray-500">{t('pressEnter')}</span>
                 </button>
               )}
 
@@ -253,7 +247,6 @@ export default function Topbar() {
               })}
 
               {!looksLikeUrl && groups.flat.length === 0 && (
-                <div className="px-3 py-6 text-center text-sm text-gray-500">{t('noResults')}</div>
               )}
             </div>
           </div>
@@ -263,7 +256,6 @@ export default function Topbar() {
       {/* 解锁弹窗 */}
       <Modal open={openUnlock} onClose={() => setOpenUnlock(false)} title={t('unlock')}>
         <div className="grid gap-3">
-          <Input type="password" placeholder={t('enterMaster')} value={mpw} onChange={e => setMpw(e.target.value)} />
           <div className="flex justify-end gap-2">
             <button
               className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
@@ -276,7 +268,6 @@ export default function Topbar() {
               onClick={async () => {
                 const ok = await unlock(mpw)
                 if (ok) { setOpenUnlock(false); setMpw('') }
-                else { alert(t('wrongMaster')) }
               }}
             >
               {t('unlock')}
