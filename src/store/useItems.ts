@@ -93,21 +93,21 @@ export const useItems = create<ItemState>((set, get) => ({
     const id = nanoid()
     const now = Date.now()
     const order = (get().items.filter(i=>i.type==='site') as SiteItem[]).length + 1
-    const item: SiteItem = { id, type: 'site', createdAt: now, updatedAt: now, tags: [], order, ...p }
+    const item: SiteItem = { id, type: 'site', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
     await db.items.put(item); await get().load(); return id
   },
   async addPassword(p) {
     const id = nanoid()
     const now = Date.now()
     const order = (get().items.filter(i=>i.type==='password') as PasswordItem[]).length + 1
-    const item: PasswordItem = { id, type: 'password', createdAt: now, updatedAt: now, tags: [], order, ...p }
+    const item: PasswordItem = { id, type: 'password', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
     await db.items.put(item); await get().load(); return id
   },
   async addDoc(p) {
     const id = nanoid()
     const now = Date.now()
     const order = (get().items.filter(i=>i.type==='doc') as DocItem[]).length + 1
-    const item: DocItem = { id, type: 'doc', createdAt: now, updatedAt: now, tags: [], order, ...p }
+    const item: DocItem = { id, type: 'doc', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
     await db.items.put(item); await get().load(); return id
   },
   async update(id, patch) {
@@ -195,7 +195,7 @@ export const useItems = create<ItemState>((set, get) => ({
           data.forEach((d: any, idx) => {
             const m = mapFields(d, 'site')
             const now = Date.now()
-            sites.push({ id: nanoid(), type: 'site', title: m.title, url: m.url, description: m.description, tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='site').length) + idx + 1 })
+            sites.push({ id: nanoid(), type: 'site', title: m.title || '', url: m.url || '', description: m.description || '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='site').length) + idx + 1 })
           })
         }
       } else {
@@ -207,7 +207,7 @@ export const useItems = create<ItemState>((set, get) => ({
             header.forEach((h, idx) => { row[h] = rows[i][idx] })
             const m = mapFields(row, 'site')
             const now = Date.now()
-            sites.push({ id: nanoid(), type: 'site', title: m.title, url: m.url, description: m.description, tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='site').length) + i })
+            sites.push({ id: nanoid(), type: 'site', title: m.title || '', url: m.url || '', description: m.description || '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='site').length) + i })
           }
         }
       }
@@ -238,7 +238,7 @@ export const useItems = create<ItemState>((set, get) => ({
           data.forEach((d: any, idx) => {
             const m = mapFields(d, 'doc')
             const now = Date.now()
-            docs.push({ id: nanoid(), type: 'doc', title: m.title, path: m.path, source: (m.source as any) || 'local', description: '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='doc').length) + idx + 1 })
+            docs.push({ id: nanoid(), type: 'doc', title: m.title || '', path: m.path || '', source: (m.source as any) || 'local', description: '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='doc').length) + idx + 1 })
           })
         }
       } else {
@@ -250,7 +250,7 @@ export const useItems = create<ItemState>((set, get) => ({
             header.forEach((h, idx) => { row[h] = rows[i][idx] })
             const m = mapFields(row, 'doc')
             const now = Date.now()
-            docs.push({ id: nanoid(), type: 'doc', title: m.title, path: m.path, source: (m.source as any) || 'local', description: '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='doc').length) + i })
+            docs.push({ id: nanoid(), type: 'doc', title: m.title || '', path: m.path || '', source: (m.source as any) || 'local', description: '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='doc').length) + i })
           }
         }
       }
