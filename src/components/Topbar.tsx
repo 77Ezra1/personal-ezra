@@ -1,5 +1,6 @@
 import IconButton from './ui/IconButton'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useClickOutside } from '../hooks/useClickOutside'
 import CommandK from './CommandK'
 import { useItems } from '../store/useItems'
 import Input from './ui/Input'
@@ -10,6 +11,7 @@ import clsx from 'clsx'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Lock, Unlock, Star, User, LogOut } from 'lucide-react'
 import ImportExportModal from './ImportExportModal'
+import { useTranslation } from '../lib/i18n'
 
 type RowType = 'site'|'password'|'doc'
 type Row = {
@@ -23,6 +25,7 @@ type Row = {
 
 export default function Topbar() {
   const navigate = useNavigate()
+  const t = useTranslation()
   const [q, setQ] = useState('')
   const [openUnlock, setOpenUnlock] = useState(false)
   const [mpw, setMpw] = useState('')
@@ -39,9 +42,9 @@ export default function Topbar() {
   const initial = username?.[0]?.toUpperCase()
 
   const tok = useMemo(() => {
-    const t = parseTokens(q)
+    const parsed = parseTokens(q)
     const m = q.match(/\b(?:type|in):(site|password|doc)s?\b/i)
-    return { ...t, type: (m?.[1]?.toLowerCase() as RowType | undefined) }
+    return { ...parsed, type: (m?.[1]?.toLowerCase() as RowType | undefined) }
   }, [q])
 
   const pool: Row[] = useMemo(() => {
@@ -107,23 +110,8 @@ export default function Topbar() {
   useEffect(() => { setActiveIdx(0) }, [q])
   useEffect(() => { setOpen(q.trim().length > 0) }, [q])
 
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (!listRef.current) return
-      if (!listRef.current.contains(e.target as any)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [])
-
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (!userRef.current) return
-      if (!userRef.current.contains(e.target as any)) setOpenUser(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [])
+  useClickOutside(listRef, () => setOpen(false))
+  useClickOutside(userRef, () => setOpenUser(false))
 
   // 允许业务页打开解锁框
   useEffect(() => {
@@ -169,19 +157,19 @@ export default function Topbar() {
         <div className="h-12 bg-white grid grid-cols-[1fr,auto] items-center px-3 gap-3">
           <div className="flex items-center gap-2">
             <Input
-              placeholder="搜索（text、#标签、type:site|password|doc、url:、is:star）"
+              placeholder={t('searchPlaceholder')}
               value={q}
               onChange={e => setQ(e.target.value)}
               onKeyDown={onKeyDown}
               className="w-[420px]"
             />
-            {q && <div className="text-xs text-gray-500">共 {pool.length} 条</div>}
+            {q && <div className="text-xs text-gray-500">{t('total')} {pool.length} {t('items')}</div>}
           </div>
           <div className="flex items-center gap-2">
-            <IconButton onClick={onCreate} srLabel="快速新建"><Plus className="w-4 h-4" /></IconButton>
+            <IconButton onClick={onCreate} srLabel={t('quickCreate')}><Plus className="w-4 h-4" /></IconButton>
             {unlocked
-              ? <IconButton onClick={lock} srLabel="锁定"><Lock className="w-4 h-4" /></IconButton>
-              : <IconButton onClick={() => setOpenUnlock(true)} srLabel="解锁"><Unlock className="w-4 h-4" /></IconButton>
+              ? <IconButton onClick={lock} srLabel={t('lock')}><Lock className="w-4 h-4" /></IconButton>
+              : <IconButton onClick={() => setOpenUnlock(true)} srLabel={t('unlock')}><Unlock className="w-4 h-4" /></IconButton>
             }
             <div ref={userRef} className="relative">
               <button
@@ -202,7 +190,7 @@ export default function Topbar() {
                     className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100"
                     onClick={() => { logout(); setOpenUser(false) }}
                   >
-                    <LogOut className="w-4 h-4" /> 退出登录
+                    <LogOut className="w-4 h-4" /> {t('logout')}
                   </button>
                 </div>
               )}
@@ -224,17 +212,17 @@ export default function Topbar() {
                     setOpen(false)
                   }}
                 >
-                  <span>新建网站：<span className="text-blue-600 break-all">{q.trim()}</span></span>
-                  <span className="text-xs text-gray-500">回车</span>
+                  <span>{t('createSite')}<span className="text-blue-600 break-all">{q.trim()}</span></span>
+                  <span className="text-xs text-gray-500">{t('enter')}</span>
                 </button>
               )}
 
-              {(['site','password','doc'] as const).map(t => {
-                const data = (groups.g as any)[t] as Row[]
+              {(['site','password','doc'] as const).map(type => {
+                const data = (groups.g as any)[type] as Row[]
                 if (!data.length) return null
-                const label = t === 'site' ? '网站' : t === 'password' ? '密码' : '文档'
+                const label = type === 'site' ? t('sites') : type === 'password' ? t('passwords') : t('docs')
                 return (
-                  <div key={t} className="py-1">
+                  <div key={type} className="py-1">
                     <div className="px-3 py-1 text-xs text-gray-500">{label}</div>
                     {data.map((r, idx) => {
                       const i = groups.flat.findIndex(x => x.id === r.id)
@@ -256,7 +244,7 @@ export default function Topbar() {
                             </div>
                             <div className="text-xs text-gray-500 truncate">{r.sub}</div>
                           </div>
-                          <div className="text-xs text-gray-400">{r.urlOpen ? '打开' : '定位'}</div>
+                          <div className="text-xs text-gray-400">{r.urlOpen ? t('open') : t('locate')}</div>
                         </button>
                       )
                     })}
@@ -265,7 +253,7 @@ export default function Topbar() {
               })}
 
               {!looksLikeUrl && groups.flat.length === 0 && (
-                <div className="px-3 py-6 text-center text-sm text-gray-500">没有匹配结果</div>
+                <div className="px-3 py-6 text-center text-sm text-gray-500">{t('noMatches')}</div>
               )}
             </div>
           </div>
@@ -273,25 +261,25 @@ export default function Topbar() {
       </div>
 
       {/* 解锁弹窗 */}
-      <Modal open={openUnlock} onClose={() => setOpenUnlock(false)} title="解锁">
+      <Modal open={openUnlock} onClose={() => setOpenUnlock(false)} title={t('unlock')}>
         <div className="grid gap-3">
-          <Input type="password" placeholder="请输入主密码" value={mpw} onChange={e => setMpw(e.target.value)} />
+          <Input type="password" placeholder={t('enterMasterPassword')} value={mpw} onChange={e => setMpw(e.target.value)} />
           <div className="flex justify-end gap-2">
             <button
               className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
               onClick={() => { setOpenUnlock(false); setMpw('') }}
             >
-              取消
+              {t('cancel')}
             </button>
             <button
               className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
               onClick={async () => {
                 const ok = await unlock(mpw)
                 if (ok) { setOpenUnlock(false); setMpw('') }
-                else { alert('主密码错误') }
+                else { alert(t('wrongMasterPassword')) }
               }}
             >
-              解锁
+              {t('unlock')}
             </button>
           </div>
         </div>
