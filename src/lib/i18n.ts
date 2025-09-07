@@ -38,6 +38,30 @@ const dict = {
     noResults: '没有匹配结果',
     enterMaster: '请输入主密码',
     wrongMaster: '主密码错误'
+    title: '标题',
+    pathOrSource: '路径/来源',
+    actions: '操作',
+    edit: '编辑',
+    deleteSelected: '删除所选',
+    clearSelection: '清除选择',
+    open: '打开',
+    newDoc: '新建文档',
+    editDoc: '编辑文档'
+    searchPlaceholder: '搜索（text、#标签、type:site|password|doc、url:、is:star）',
+    total: '共',
+    items: '条',
+    quickCreate: '快速新建',
+    lock: '锁定',
+    unlock: '解锁',
+    logout: '退出登录',
+    createSite: '新建网站：',
+    enter: '回车',
+    passwords: '密码',
+    open: '打开',
+    locate: '定位',
+    noMatches: '没有匹配结果',
+    enterMasterPassword: '请输入主密码',
+    wrongMasterPassword: '主密码错误'
   },
   en: {
     search: 'Search…',
@@ -76,6 +100,30 @@ const dict = {
     noResults: 'No matching results',
     enterMaster: 'Enter master password',
     wrongMaster: 'Incorrect master password'
+    title: 'Title',
+    pathOrSource: 'Path/Source',
+    actions: 'Actions',
+    edit: 'Edit',
+    deleteSelected: 'Delete Selected',
+    clearSelection: 'Clear Selection',
+    open: 'Open',
+    newDoc: 'New Document',
+    editDoc: 'Edit Document'
+    searchPlaceholder: 'Search (text, #tag, type:site|password|doc, url:, is:star)',
+    total: 'Total',
+    items: 'items',
+    quickCreate: 'Quick Create',
+    lock: 'Lock',
+    unlock: 'Unlock',
+    logout: 'Log out',
+    createSite: 'Create site:',
+    enter: 'Enter',
+    passwords: 'Passwords',
+    open: 'Open',
+    locate: 'Locate',
+    noMatches: 'No results',
+    enterMasterPassword: 'Enter master password',
+    wrongMasterPassword: 'Wrong master password'
   }
 }
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { db } from '../lib/db'
-import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor }
+import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType }
   from '../types'
 import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
@@ -63,6 +63,62 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc') {
     : ''
   const source = (typeof lc['source'] === 'string' ? lc['source'] : 'local') as DocItem['source']
   return { title, path, source, tags }
+  }
+  const title = typeof lc['title'] === 'string' ? lc['title'] : typeof lc['name'] === 'string' ? lc['name'] : ''
+  const path = typeof lc['path'] === 'string'
+    ? lc['path']
+    : typeof lc['url'] === 'string'
+    ? lc['url']
+    : typeof lc['link'] === 'string'
+    ? lc['link']
+    : ''
+  const source = (typeof lc['source'] === 'string' ? lc['source'] : 'local') as DocItem['source']
+  return { title, path, source, tags }
+}
+
+async function importItems<T extends AnyItem>(
+  file: File,
+  type: T['type'],
+  map: (data: any) => Record<string, any>,
+  get: () => ItemState,
+  dryRun = false
+): Promise<{ items: T[]; errors: string[] }> {
+  const text = await file.text()
+  const { items } = get()
+  const base = items.filter(i => i.type === type).length
+  const res: T[] = []
+  const errors: string[] = []
+  try {
+    if (/^\s*[\[{]/.test(text)) {
+      const data = JSON.parse(text)
+      if (Array.isArray(data)) {
+        data.forEach((d: any, idx) => {
+          const m = map(d)
+          const now = Date.now()
+          res.push({ id: nanoid(), type, ...m, tags: (m.tags ? m.tags.split(/[;,]/).map((t: string) => t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: base + idx + 1 } as T)
+        })
+      }
+    } else {
+      const rows = parseCsv(text)
+      if (rows.length > 1) {
+        const header = rows[0].map(h => h.toLowerCase())
+        for (let i = 1; i < rows.length; i++) {
+          const row: Record<string,string> = {}
+          header.forEach((h, idx) => { row[h] = rows[i][idx] })
+          const m = map(row)
+          const now = Date.now()
+          res.push({ id: nanoid(), type, ...m, tags: (m.tags ? m.tags.split(/[;,]/).map((t: string) => t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: base + i } as T)
+        }
+      }
+    }
+  } catch (e: any) {
+    errors.push(e.message)
+  }
+  if (!dryRun && res.length) {
+    await db.items.bulkPut(res as AnyItem[])
+    await get().load()
+  }
+  return { items: res, errors }
 }
 
 type Filters = { type?: 'site'|'password'|'doc'; tags?: string[] }
@@ -72,6 +128,7 @@ interface ItemState {
   tags: Tag[]
   filters: Filters
   selection: Set<string>
+  nextOrder: Record<ItemType, number>
 
   load: () => Promise<void>
   addSite: (p: Omit<SiteItem,'id'|'createdAt'|'updatedAt'|'type'>) => Promise<string>
@@ -100,13 +157,21 @@ export const useItems = create<ItemState>((set, get) => ({
   tags: [],
   filters: {},
   selection: new Set<string>(),
+  nextOrder: { site: 1, password: 1, doc: 1 },
 
   async load() {
     const [items, tags] = await Promise.all([
       db.items.orderBy('updatedAt').reverse().toArray(),
       db.tags.toArray()
     ])
-    set({ items, tags })
+    const nextOrder: Record<ItemType, number> = { site: 1, password: 1, doc: 1 }
+    items.forEach(it => {
+      const ord = it.order ?? 0
+      if (ord >= nextOrder[it.type]) {
+        nextOrder[it.type] = ord + 1
+      }
+    })
+    set({ items, tags, nextOrder })
   },
 
   async addSite(p) {
@@ -115,6 +180,12 @@ export const useItems = create<ItemState>((set, get) => ({
     const order = (get().items.filter(i=>i.type==='site') as SiteItem[]).length + 1
     const item: SiteItem = { id, type: 'site', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
     await db.items.put(item); await get().load(); return id
+    const order = get().nextOrder.site
+    const item: SiteItem = { id, type: 'site', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
+    await db.items.put(item)
+    set(s => ({ nextOrder: { ...s.nextOrder, site: order + 1 } }))
+    await get().load()
+    return id
   },
   async addPassword(p) {
     const id = nanoid()
@@ -122,6 +193,12 @@ export const useItems = create<ItemState>((set, get) => ({
     const order = (get().items.filter(i=>i.type==='password') as PasswordItem[]).length + 1
     const item: PasswordItem = { id, type: 'password', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
     await db.items.put(item); await get().load(); return id
+    const order = get().nextOrder.password
+    const item: PasswordItem = { id, type: 'password', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
+    await db.items.put(item)
+    set(s => ({ nextOrder: { ...s.nextOrder, password: order + 1 } }))
+    await get().load()
+    return id
   },
   async addDoc(p) {
     const id = nanoid()
@@ -129,6 +206,12 @@ export const useItems = create<ItemState>((set, get) => ({
     const order = (get().items.filter(i=>i.type==='doc') as DocItem[]).length + 1
     const item: DocItem = { id, type: 'doc', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
     await db.items.put(item); await get().load(); return id
+    const order = get().nextOrder.doc
+    const item: DocItem = { id, type: 'doc', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
+    await db.items.put(item)
+    set(s => ({ nextOrder: { ...s.nextOrder, doc: order + 1 } }))
+    await get().load()
+    return id
   },
   async update(id, patch) {
     const item = await db.items.get(id)
