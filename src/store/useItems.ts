@@ -27,7 +27,7 @@ function parseCsv(text: string): string[][] {
   })
 }
 
-function mapFields(row: Record<string, unknown>, type: 'site' | 'doc') {
+function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'password') {
   const entries = Object.entries(row).map(([k, v]) => [k.toLowerCase(), v] as [string, unknown])
   const lc: Record<string, unknown> = Object.fromEntries(entries)
   const tags = Array.isArray(lc['tags'])
@@ -83,6 +83,29 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc') {
         ? lc['origin']
         : ''
     return { title, path, source, tags }
+    const url = typeof lc['url'] === 'string'
+      ? lc['url']
+      : typeof lc['link'] === 'string'
+      ? lc['link']
+      : typeof lc['href'] === 'string'
+      ? lc['href']
+      : typeof lc['path'] === 'string'
+      ? lc['path']
+      : ''
+    const title = typeof lc['title'] === 'string'
+      ? lc['title']
+      : typeof lc['name'] === 'string'
+      ? lc['name']
+      : ''
+    const path = typeof lc['path'] === 'string'
+      ? lc['path']
+      : typeof lc['url'] === 'string'
+      ? lc['url']
+      : typeof lc['link'] === 'string'
+      ? lc['link']
+      : typeof lc['href'] === 'string'
+      ? lc['href']
+      : ''
   }
 }
 
@@ -113,6 +136,8 @@ interface ItemState {
 
   exportSites: () => Promise<Blob>
   importSites: (file: File, dryRun?: boolean) => Promise<{ items: SiteItem[]; errors: string[] }>
+  exportPasswords: () => Promise<Blob>
+  importPasswords: (file: File, dryRun?: boolean) => Promise<{ items: PasswordItem[]; errors: string[] }>
   exportDocs: () => Promise<Blob>
   importDocs: (file: File, dryRun?: boolean) => Promise<{ items: DocItem[]; errors: string[] }>
 }
@@ -278,6 +303,49 @@ export const useItems = create<ItemState>((set, get) => ({
       await get().load()
     }
     return { items: sites, errors }
+  },
+
+  async exportPasswords() {
+    const items = await db.items.where('type').equals('password').toArray()
+    return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
+  },
+
+  async importPasswords(file, dryRun = false) {
+    const text = await file.text()
+    const { items } = get()
+    const pwds: PasswordItem[] = []
+    const errors: string[] = []
+    try {
+      if (/^\s*[\[{]/.test(text)) {
+        const data = JSON.parse(text)
+        if (Array.isArray(data)) {
+          data.forEach((d: any, idx) => {
+            const m = mapFields(d, 'password')
+            const now = Date.now()
+            pwds.push({ id: nanoid(), type: 'password', title: m.title || '', username: m.username || '', passwordCipher: m.passwordCipher || '', url: m.url || '', description: '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='password').length) + idx + 1 })
+          })
+        }
+      } else {
+        const rows = parseCsv(text)
+        if (rows.length > 1) {
+          const header = rows[0].map(h => h.toLowerCase())
+          for (let i = 1; i < rows.length; i++) {
+            const row: Record<string,string> = {}
+            header.forEach((h, idx) => { row[h] = rows[i][idx] })
+            const m = mapFields(row, 'password')
+            const now = Date.now()
+            pwds.push({ id: nanoid(), type: 'password', title: m.title || '', username: m.username || '', passwordCipher: m.passwordCipher || '', url: m.url || '', description: '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='password').length) + i })
+          }
+        }
+      }
+    } catch (e: any) {
+      errors.push(e.message)
+    }
+    if (!dryRun && pwds.length) {
+      await db.items.bulkPut(pwds)
+      await get().load()
+    }
+    return { items: pwds, errors }
   },
 
   async exportDocs() {
