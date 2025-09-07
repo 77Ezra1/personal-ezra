@@ -24,7 +24,6 @@ type Row = {
 
 export default function Topbar() {
   const navigate = useNavigate()
-  const t = useTranslation()
   const [q, setQ] = useState('')
   const [openUnlock, setOpenUnlock] = useState(false)
   const [mpw, setMpw] = useState('')
@@ -245,9 +244,6 @@ export default function Topbar() {
                   </div>
                 )
               })}
-
-              {!looksLikeUrl && groups.flat.length === 0 && (
-              )}
             </div>
           </div>
         )}

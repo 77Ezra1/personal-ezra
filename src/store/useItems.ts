@@ -52,6 +52,11 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc') {
       ? lc['desc']
       : ''
     return { title, url, description, tags }
+  }
+  const title = typeof lc['title'] === 'string' ? lc['title'] : typeof lc['name'] === 'string' ? lc['name'] : ''
+  const path = typeof lc['path'] === 'string' ? lc['path'] : ''
+  const source = typeof lc['source'] === 'string' ? lc['source'] : typeof lc['origin'] === 'string' ? lc['origin'] : ''
+  return { title, path, source, tags }
 }
 
 type Filters = { type?: 'site'|'password'|'doc'; tags?: string[] }
@@ -110,9 +115,6 @@ export const useItems = create<ItemState>((set, get) => ({
   async addSite(p) {
     const id = nanoid()
     const now = Date.now()
-    const order = (get().items.filter(i=>i.type==='site') as SiteItem[]).length + 1
-    const item: SiteItem = { id, type: 'site', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-    await db.items.put(item); await get().load(); return id
     const order = get().nextOrder.site
     const item: SiteItem = { id, type: 'site', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
     await db.items.put(item)
@@ -123,9 +125,6 @@ export const useItems = create<ItemState>((set, get) => ({
   async addPassword(p) {
     const id = nanoid()
     const now = Date.now()
-    const order = (get().items.filter(i=>i.type==='password') as PasswordItem[]).length + 1
-    const item: PasswordItem = { id, type: 'password', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-    await db.items.put(item); await get().load(); return id
     const order = get().nextOrder.password
     const item: PasswordItem = { id, type: 'password', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
     await db.items.put(item)
@@ -136,9 +135,6 @@ export const useItems = create<ItemState>((set, get) => ({
   async addDoc(p) {
     const id = nanoid()
     const now = Date.now()
-    const order = (get().items.filter(i=>i.type==='doc') as DocItem[]).length + 1
-    const item: DocItem = { id, type: 'doc', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-    await db.items.put(item); await get().load(); return id
     const order = get().nextOrder.doc
     const item: DocItem = { id, type: 'doc', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
     await db.items.put(item)
