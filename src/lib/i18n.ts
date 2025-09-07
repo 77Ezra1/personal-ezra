@@ -10,7 +10,6 @@ const dict = {
     sites: '站点',
     docs: '文档',
     vault: '保险库',
-    codex/traverse-code-and-fix-issues
     dashboard: '工作台',
     chat: '对话',
     settings: '设置',
