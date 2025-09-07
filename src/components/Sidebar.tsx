@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useItems } from '../store/useItems'
 import { TAG_COLORS, type TagColor } from '../types'
@@ -18,10 +19,12 @@ const palette: Record<TagColor, string> = {
 export default function Sidebar() {
   const tags = useItems(s => s.tags)
   const t = useTranslation()
-  const linkClass =
+  const linkClass = useCallback(
     ({ isActive }: { isActive: boolean }) =>
       'block px-2 py-1 rounded hover:bg-gray-50 border-l-4 ' +
-      (isActive ? 'bg-blue-50 text-blue-700 border-blue-600' : 'border-transparent')
+      (isActive ? 'bg-blue-50 text-blue-700 border-blue-600' : 'border-transparent'),
+    [],
+  )
 
   return (
     <aside className="max-w-screen-lg mx-auto px-6 py-4 text-sm space-y-3 rounded-2xl shadow-sm border-r bg-white">
