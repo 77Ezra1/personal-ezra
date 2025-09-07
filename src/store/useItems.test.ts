@@ -94,18 +94,18 @@ describe('toggleSelect', () => {
     expect([...sel].sort()).toEqual(docs.map(i => i.id).sort())
   })
 
-  it('selects range of passwords when filtered', async () => {
-    const { addPassword, addSite, setFilters, clearSelection, toggleSelect } = useItems.getState()
-    await addPassword({ title: 'P1', username: '', password: '', url: '', description: '', tags: [] })
-    await new Promise(r => setTimeout(r, 1))
-    await addPassword({ title: 'P2', username: '', password: '', url: '', description: '', tags: [] })
-    await new Promise(r => setTimeout(r, 1))
-    await addPassword({ title: 'P3', username: '', password: '', url: '', description: '', tags: [] })
-    await addSite({ title: 'S', url: '', description: '', tags: [] })
-    setFilters({ type: 'password' })
-    clearSelection()
-    const pwds = useItems.getState().items.filter(i => i.type === 'password')
-    const first = pwds[0].id
+    it('selects range of passwords when filtered', async () => {
+      const { addPassword, addSite, setFilters, clearSelection, toggleSelect } = useItems.getState()
+      await addPassword({ title: 'P1', username: '', passwordCipher: '', url: '', description: '', tags: [] })
+      await new Promise(r => setTimeout(r, 1))
+      await addPassword({ title: 'P2', username: '', passwordCipher: '', url: '', description: '', tags: [] })
+      await new Promise(r => setTimeout(r, 1))
+      await addPassword({ title: 'P3', username: '', passwordCipher: '', url: '', description: '', tags: [] })
+      await addSite({ title: 'S', url: '', description: '', tags: [] })
+      setFilters({ type: 'password' })
+      clearSelection()
+      const pwds = useItems.getState().items.filter(i => i.type === 'password')
+      const first = pwds[0].id
     const last = pwds[2].id
     toggleSelect(first)
     toggleSelect(last, first)

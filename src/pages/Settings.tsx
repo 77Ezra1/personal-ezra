@@ -7,7 +7,7 @@ import { X } from 'lucide-react'
 
 export default function Settings() {
   const { language, setLanguage } = useSettings()
-  const { t } = useTranslation()
+  const t = useTranslation()
   const { exportSites, exportDocs, tags, removeTag } = useItems()
   const [importType, setImportType] = useState<'site' | 'doc' | null>(null)
 
