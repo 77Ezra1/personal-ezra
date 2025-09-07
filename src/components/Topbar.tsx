@@ -9,6 +9,7 @@ import { parseTokens } from './TokenFilter'
 import clsx from 'clsx'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Lock, Unlock, Star, User, LogOut } from 'lucide-react'
+import ImportExportModal from './ImportExportModal'
 
 type RowType = 'site'|'password'|'doc'
 type Row = {
