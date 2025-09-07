@@ -29,7 +29,7 @@ export default function TagPicker({ value, onChange }: { value: string[]; onChan
               type="button"
               title="删除标签"
               aria-label="删除标签"
-              className="text-gray-400 hover:text-red-600"
+              className="w-4 h-4 flex items-center justify-center text-gray-400 hover:text-red-600"
               onClick={async () => {
                 if (confirm(`确认删除标签 "${t.name}"?`)) {
                   await removeTag(t.id)

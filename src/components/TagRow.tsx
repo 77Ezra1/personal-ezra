@@ -101,7 +101,7 @@ export function TagChip({
             e.stopPropagation()
             onDelete()
           }}
-          className="absolute -top-1 -right-1 hidden group-hover:block bg-surface rounded-full text-muted hover:text-red-600"
+          className="absolute -top-1 -right-1 w-4 h-4 flex items-center justify-center rounded-full border border-border bg-surface text-muted opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-600"
         >
           <X className="w-3 h-3" />
         </button>
