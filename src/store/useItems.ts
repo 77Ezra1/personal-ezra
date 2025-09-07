@@ -65,6 +65,51 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc') {
   return { title, path, source, tags }
 }
 
+async function importItems<T extends AnyItem>(
+  file: File,
+  type: T['type'],
+  map: (data: any) => Record<string, any>,
+  get: () => ItemState,
+  dryRun = false
+): Promise<{ items: T[]; errors: string[] }> {
+  const text = await file.text()
+  const { items } = get()
+  const base = items.filter(i => i.type === type).length
+  const res: T[] = []
+  const errors: string[] = []
+  try {
+    if (/^\s*[\[{]/.test(text)) {
+      const data = JSON.parse(text)
+      if (Array.isArray(data)) {
+        data.forEach((d: any, idx) => {
+          const m = map(d)
+          const now = Date.now()
+          res.push({ id: nanoid(), type, ...m, tags: (m.tags ? m.tags.split(/[;,]/).map((t: string) => t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: base + idx + 1 } as T)
+        })
+      }
+    } else {
+      const rows = parseCsv(text)
+      if (rows.length > 1) {
+        const header = rows[0].map(h => h.toLowerCase())
+        for (let i = 1; i < rows.length; i++) {
+          const row: Record<string,string> = {}
+          header.forEach((h, idx) => { row[h] = rows[i][idx] })
+          const m = map(row)
+          const now = Date.now()
+          res.push({ id: nanoid(), type, ...m, tags: (m.tags ? m.tags.split(/[;,]/).map((t: string) => t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: base + i } as T)
+        }
+      }
+    }
+  } catch (e: any) {
+    errors.push(e.message)
+  }
+  if (!dryRun && res.length) {
+    await db.items.bulkPut(res as AnyItem[])
+    await get().load()
+  }
+  return { items: res, errors }
+}
+
 type Filters = { type?: 'site'|'password'|'doc'; tags?: string[] }
 
 interface ItemState {
@@ -204,41 +249,7 @@ export const useItems = create<ItemState>((set, get) => ({
   },
 
   async importSites(file, dryRun = false) {
-    const text = await file.text()
-    const { items } = get()
-    const sites: SiteItem[] = []
-    const errors: string[] = []
-    try {
-      if (/^\s*[\[{]/.test(text)) {
-        const data = JSON.parse(text)
-        if (Array.isArray(data)) {
-          data.forEach((d: any, idx) => {
-            const m = mapFields(d, 'site')
-            const now = Date.now()
-            sites.push({ id: nanoid(), type: 'site', title: m.title || '', url: m.url || '', description: m.description || '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='site').length) + idx + 1 })
-          })
-        }
-      } else {
-        const rows = parseCsv(text)
-        if (rows.length > 1) {
-          const header = rows[0].map(h => h.toLowerCase())
-          for (let i = 1; i < rows.length; i++) {
-            const row: Record<string,string> = {}
-            header.forEach((h, idx) => { row[h] = rows[i][idx] })
-            const m = mapFields(row, 'site')
-            const now = Date.now()
-            sites.push({ id: nanoid(), type: 'site', title: m.title || '', url: m.url || '', description: m.description || '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='site').length) + i })
-          }
-        }
-      }
-    } catch (e: any) {
-      errors.push(e.message)
-    }
-    if (!dryRun && sites.length) {
-      await db.items.bulkPut(sites)
-      await get().load()
-    }
-    return { items: sites, errors }
+    return importItems(file, 'site', d => mapFields(d, 'site'), get, dryRun)
   },
 
   async exportDocs() {
@@ -247,40 +258,6 @@ export const useItems = create<ItemState>((set, get) => ({
   },
 
   async importDocs(file, dryRun = false) {
-    const text = await file.text()
-    const { items } = get()
-    const docs: DocItem[] = []
-    const errors: string[] = []
-    try {
-      if (/^\s*[\[{]/.test(text)) {
-        const data = JSON.parse(text)
-        if (Array.isArray(data)) {
-          data.forEach((d: any, idx) => {
-            const m = mapFields(d, 'doc')
-            const now = Date.now()
-            docs.push({ id: nanoid(), type: 'doc', title: m.title || '', path: m.path || '', source: (m.source as any) || 'local', description: '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='doc').length) + idx + 1 })
-          })
-        }
-      } else {
-        const rows = parseCsv(text)
-        if (rows.length > 1) {
-          const header = rows[0].map(h => h.toLowerCase())
-          for (let i = 1; i < rows.length; i++) {
-            const row: Record<string,string> = {}
-            header.forEach((h, idx) => { row[h] = rows[i][idx] })
-            const m = mapFields(row, 'doc')
-            const now = Date.now()
-            docs.push({ id: nanoid(), type: 'doc', title: m.title || '', path: m.path || '', source: (m.source as any) || 'local', description: '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='doc').length) + i })
-          }
-        }
-      }
-    } catch (e: any) {
-      errors.push(e.message)
-    }
-    if (!dryRun && docs.length) {
-      await db.items.bulkPut(docs)
-      await get().load()
-    }
-    return { items: docs, errors }
+    return importItems(file, 'doc', d => ({ ...mapFields(d, 'doc'), description: '' }), get, dryRun)
   }
 }))
