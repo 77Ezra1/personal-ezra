@@ -7,6 +7,8 @@ import Modal from './ui/Modal'
 import { useAuth } from '../store/useAuth'
 import { parseTokens } from './TokenFilter'
 import clsx from 'clsx'
+import { useNavigate } from 'react-router-dom'
+import { Plus, Lock, Unlock, Star, User, LogOut } from 'lucide-react'
 
 type RowType = 'site'|'password'|'doc'
 type Row = {
@@ -31,8 +33,9 @@ export default function Topbar() {
 
   const [openUser, setOpenUser] = useState(false)
 
-  const { unlocked, unlock, lock, username, avatar } = useAuth()
+  const { unlocked, unlock, lock, username, avatar, logout } = useAuth()
   const items = useItems(s => s.items)
+  const initial = username?.[0]?.toUpperCase()
 
   const tok = useMemo(() => {
     const t = parseTokens(q)
@@ -179,6 +182,30 @@ export default function Topbar() {
               ? <IconButton onClick={lock} srLabel="锁定"><Lock className="w-4 h-4" /></IconButton>
               : <IconButton onClick={() => setOpenUnlock(true)} srLabel="解锁"><Unlock className="w-4 h-4" /></IconButton>
             }
+            <div ref={userRef} className="relative">
+              <button
+                className="flex items-center gap-2 h-9 px-2 rounded-xl hover:bg-gray-100"
+                onClick={() => setOpenUser(o => !o)}
+              >
+                {avatar
+                  ? <img src={avatar} className="w-8 h-8 rounded-full" />
+                  : initial
+                    ? <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-600">{initial}</div>
+                    : <User className="w-8 h-8 p-1 text-gray-600 bg-gray-200 rounded-full" />
+                }
+                {username && <span className="text-sm">{username}</span>}
+              </button>
+              {openUser && (
+                <div className="absolute right-0 mt-2 w-32 bg-white border rounded-lg shadow-lg py-1 z-10">
+                  <button
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100"
+                    onClick={() => { logout(); setOpenUser(false) }}
+                  >
+                    <LogOut className="w-4 h-4" /> 退出登录
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
