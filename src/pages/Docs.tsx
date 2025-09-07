@@ -12,6 +12,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Trash2, XCircle } from 'lucide-react'
 import FixedUrl from '../components/FixedUrl'
 import { useSettings } from '../store/useSettings'
+import { useTranslation } from '../lib/i18n'
 
 function Field({ label, children }: { label: string; children: any }) {
   return (
@@ -26,6 +27,11 @@ export default function Docs() {
   const { items, tags, load, addDoc, update, removeMany, selection, toggleSelect, clearSelection } = useItems()
   const [params] = useSearchParams()
   const activeTag = params.get('tag')
+  const t = useTranslation()
+
+  const [q] = useState('')
+  const viewMode = useSettings(s => s.viewMode)
+  const [view, setView] = useState<'table' | 'card'>(viewMode === 'card' ? 'card' : 'table')
 
   // 新建
   const [openNew, setOpenNew] = useState(false)
@@ -38,12 +44,10 @@ export default function Docs() {
   const [edit, setEdit] = useState<DocItem | null>(null)
 
   useEffect(() => { load() }, [])
-  useEffect(() => { if (viewMode !== 'default') setView(viewMode) }, [viewMode])
-
   useEffect(() => {
-    if (prefView === 'card') setView('card')
-    else if (prefView === 'list') setView('table')
-  }, [prefView])
+    if (viewMode === 'card') setView('card')
+    else if (viewMode === 'list') setView('table')
+  }, [viewMode])
 
   // 顶部搜索：定位+高亮
   useEffect(() => {
