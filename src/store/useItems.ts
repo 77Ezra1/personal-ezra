@@ -52,6 +52,24 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc') {
       ? lc['desc']
       : ''
     return { title, url, description, tags }
+  } else {
+    const title = typeof lc['title'] === 'string'
+      ? lc['title']
+      : typeof lc['name'] === 'string'
+      ? lc['name']
+      : ''
+    const path = typeof lc['path'] === 'string'
+      ? lc['path']
+      : typeof lc['url'] === 'string'
+      ? lc['url']
+      : typeof lc['link'] === 'string'
+      ? lc['link']
+      : typeof lc['href'] === 'string'
+      ? lc['href']
+      : ''
+    const source = typeof lc['source'] === 'string' ? lc['source'] : ''
+    return { title, path, source, tags }
+  }
 }
 
 type Filters = { type?: 'site'|'password'|'doc'; tags?: string[] }
