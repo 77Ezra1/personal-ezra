@@ -27,8 +27,8 @@ export const useSettings = create<SettingsState>((set) => ({
       const storedLang = localStorage.getItem('language') as Language | null
       const storedView = localStorage.getItem('viewMode') as ViewMode | null
       set({
-        language: storedLang ?? 'zh',
-        viewMode: storedView ?? 'default'
+        language: storedLang === 'en' ? 'en' : 'zh',
+        viewMode: storedView === 'card' || storedView === 'list' ? storedView : 'default'
       })
     } catch {
       /* noop */
