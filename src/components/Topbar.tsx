@@ -1,5 +1,6 @@
 import IconButton from './ui/IconButton'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useClickOutside } from '../hooks/useClickOutside'
 import CommandK from './CommandK'
 import { useItems } from '../store/useItems'
 import Input from './ui/Input'
@@ -107,23 +108,8 @@ export default function Topbar() {
   useEffect(() => { setActiveIdx(0) }, [q])
   useEffect(() => { setOpen(q.trim().length > 0) }, [q])
 
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (!listRef.current) return
-      if (!listRef.current.contains(e.target as any)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [])
-
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (!userRef.current) return
-      if (!userRef.current.contains(e.target as any)) setOpenUser(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [])
+  useClickOutside(listRef, () => setOpen(false))
+  useClickOutside(userRef, () => setOpenUser(false))
 
   // 允许业务页打开解锁框
   useEffect(() => {
