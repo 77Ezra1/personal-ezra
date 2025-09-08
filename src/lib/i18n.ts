@@ -37,7 +37,25 @@ const dict = {
     locate: '定位',
     noResults: '没有匹配结果',
     enterMaster: '请输入主密码',
-    wrongMaster: '主密码错误'
+    wrongMaster: '主密码错误',
+    site: '站点',
+    doc: '文档',
+    title: '标题',
+    pathOrSource: '路径/来源',
+    actions: '操作',
+    edit: '编辑',
+    delete: '删除',
+    deleteSelected: '删除已选',
+    clearSelection: '清除选择',
+    newDoc: '新建文档',
+    editDoc: '编辑文档',
+    newSite: '新建网站',
+    editSite: '编辑网站',
+    newPassword: '新建密码',
+    url: '地址',
+    description: '备注',
+    optional: '可选',
+    enterTitleAndUrl: '请填写标题和地址'
   },
   en: {
     search: 'Search…',
@@ -75,7 +93,25 @@ const dict = {
     locate: 'Locate',
     noResults: 'No matching results',
     enterMaster: 'Enter master password',
-    wrongMaster: 'Incorrect master password'
+    wrongMaster: 'Incorrect master password',
+    site: 'Site',
+    doc: 'Doc',
+    title: 'Title',
+    pathOrSource: 'Path/Source',
+    actions: 'Actions',
+    edit: 'Edit',
+    delete: 'Delete',
+    deleteSelected: 'Delete selected',
+    clearSelection: 'Clear selection',
+    newDoc: 'New Document',
+    editDoc: 'Edit Document',
+    newSite: 'New Site',
+    editSite: 'Edit Site',
+    newPassword: 'New Password',
+    url: 'URL',
+    description: 'Description',
+    optional: 'Optional',
+    enterTitleAndUrl: 'Please fill title and URL'
   }
 }
 
