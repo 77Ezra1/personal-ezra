@@ -207,6 +207,7 @@ export default function Vault() {
         </div>
       </Modal>
     </div>
+  </div>
   )
 }
 
