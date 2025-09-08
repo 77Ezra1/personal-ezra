@@ -1,11 +1,10 @@
-import IconButton from '../components/ui/IconButton'
 import { useEffect, useMemo, useState } from 'react'
 import { useItems } from '../store/useItems'
 import type { SiteItem } from '../types'
 import Input from '../components/ui/Input'
 import Button from '../components/ui/Button'
+import IconButton from '../components/ui/IconButton'
 import Modal from '../components/ui/Modal'
-import Segmented from '../components/ui/Segmented'
 import TagRow from '../components/TagRow'
 import TagPicker from '../components/TagPicker'
 import { useSearchParams } from 'react-router-dom'
@@ -28,16 +27,6 @@ export default function Sites() {
   const [params] = useSearchParams()
   const activeTag = params.get('tag')
   const t = useTranslation()
-  return (
-    <div className="max-w-screen-lg mx-auto p-6 bg-surface text-text rounded-2xl shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <h1 className="text-lg font-medium">{t('sites')}</h1>
-        <button className="h-8 px-3 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm">
-          {t('newSite')}
-        </button>
-      </div>
-      <p className="text-sm text-muted">{t('comingSoon')}</p>
-
   const [q] = useState('')
   const viewMode = useSettings(s => s.viewMode)
   const [view, setView] = useState<'table' | 'card'>(viewMode === 'card' ? 'card' : 'table')

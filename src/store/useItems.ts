@@ -59,7 +59,7 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'passwor
         ? lc['desc']
         : ''
     return { title, url, description, tags }
-  } else {
+  } else if (type === 'doc') {
     const title =
       typeof lc['title'] === 'string'
         ? lc['title']
@@ -83,29 +83,34 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'passwor
         ? lc['origin']
         : ''
     return { title, path, source, tags }
-    const url = typeof lc['url'] === 'string'
-      ? lc['url']
-      : typeof lc['link'] === 'string'
-      ? lc['link']
-      : typeof lc['href'] === 'string'
-      ? lc['href']
-      : typeof lc['path'] === 'string'
-      ? lc['path']
-      : ''
-    const title = typeof lc['title'] === 'string'
-      ? lc['title']
-      : typeof lc['name'] === 'string'
-      ? lc['name']
-      : ''
-    const path = typeof lc['path'] === 'string'
-      ? lc['path']
-      : typeof lc['url'] === 'string'
-      ? lc['url']
-      : typeof lc['link'] === 'string'
-      ? lc['link']
-      : typeof lc['href'] === 'string'
-      ? lc['href']
-      : ''
+  } else {
+    const title =
+      typeof lc['title'] === 'string'
+        ? lc['title']
+        : typeof lc['name'] === 'string'
+        ? lc['name']
+        : ''
+    const username =
+      typeof lc['username'] === 'string'
+        ? lc['username']
+        : typeof lc['user'] === 'string'
+        ? lc['user']
+        : ''
+    const passwordCipher =
+      typeof lc['passwordcipher'] === 'string'
+        ? lc['passwordcipher']
+        : typeof lc['password'] === 'string'
+        ? lc['password']
+        : ''
+    const url =
+      typeof lc['url'] === 'string'
+        ? lc['url']
+        : typeof lc['link'] === 'string'
+        ? lc['link']
+        : typeof lc['href'] === 'string'
+        ? lc['href']
+        : ''
+    return { title, username, passwordCipher, url, tags }
   }
 }
 
