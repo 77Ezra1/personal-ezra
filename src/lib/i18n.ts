@@ -53,13 +53,16 @@ const dict = {
     editSite: '编辑网站',
     newPassword: '新建密码',
     editPassword: '编辑密码',
+    copyPassword: '复制密码',
     username: '账号',
     password: '密码',
     url: '地址',
     description: '备注',
     optional: '可选',
     enterTitleAndUrl: '请填写标题和地址',
-    copySuffix: ' 副本'
+    copySuffix: ' 副本',
+    masterWarning: '主密码仅展示一次，如若丢失无法恢复，请妥善保管',
+    ok: '好的'
   },
   en: {
     search: 'Search…',
@@ -113,13 +116,16 @@ const dict = {
     editSite: 'Edit Site',
     newPassword: 'New Password',
     editPassword: 'Edit Password',
+    copyPassword: 'Copy password',
     username: 'Username',
     password: 'Password',
     url: 'URL',
     description: 'Description',
     optional: 'Optional',
     enterTitleAndUrl: 'Please fill title and URL',
-    copySuffix: ' copy'
+    copySuffix: ' copy',
+    masterWarning: 'The master password is shown only once. If lost, it cannot be recovered. Please keep it safe',
+    ok: 'OK'
   }
 }
 

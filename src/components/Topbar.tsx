@@ -35,7 +35,7 @@ export default function Topbar() {
 
   const [openUser, setOpenUser] = useState(false)
 
-  const { unlocked, unlock, lock, username, avatar, logout } = useAuth()
+  const { unlocked, unlock, lock, username, avatar, logout, masterHash } = useAuth()
   const items = useItems(s => s.items)
   const initial = username?.[0]?.toUpperCase()
   const t = useTranslation()
@@ -162,10 +162,17 @@ export default function Topbar() {
               onKeyDown={onKeyDown}
               className="w-[420px]"
             />
-            {unlocked
-              ? <IconButton onClick={lock} srLabel={t('lock')}><Lock className="w-4 h-4" /></IconButton>
-              : <IconButton onClick={() => setOpenUnlock(true)} srLabel={t('unlock')}><Unlock className="w-4 h-4" /></IconButton>
-            }
+              {unlocked
+                ? <IconButton onClick={lock} srLabel={t('lock')}><Lock className="w-4 h-4" /></IconButton>
+                : (
+                  <IconButton
+                    onClick={() => (masterHash ? setOpenUnlock(true) : navigate('/settings'))}
+                    srLabel={t('unlock')}
+                  >
+                    <Unlock className="w-4 h-4" />
+                  </IconButton>
+                )
+              }
             <div ref={userRef} className="relative">
               <button
                 className="flex items-center gap-2 h-9 px-2 rounded-xl hover:bg-gray-100"
@@ -250,27 +257,33 @@ export default function Topbar() {
       </div>
 
       {/* 解锁弹窗 */}
-      <Modal open={openUnlock} onClose={() => setOpenUnlock(false)} title={t('unlock')}>
-        <div className="grid gap-3">
-          <div className="flex justify-end gap-2">
-            <button
-              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
-              onClick={() => { setOpenUnlock(false); setMpw('') }}
-            >
-              {t('cancel')}
-            </button>
-            <button
-              className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
-              onClick={async () => {
-                const ok = await unlock(mpw)
-                if (ok) { setOpenUnlock(false); setMpw('') }
-              }}
-            >
-              {t('unlock')}
-            </button>
+        <Modal open={openUnlock} onClose={() => setOpenUnlock(false)} title={t('unlock')}>
+          <div className="grid gap-3">
+            <Input
+              type="password"
+              value={mpw}
+              onChange={e => setMpw(e.target.value)}
+              placeholder={t('enterMaster')}
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
+                onClick={() => { setOpenUnlock(false); setMpw('') }}
+              >
+                {t('cancel')}
+              </button>
+              <button
+                className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
+                onClick={async () => {
+                  const ok = await unlock(mpw)
+                  if (ok) { setOpenUnlock(false); setMpw('') }
+                }}
+              >
+                {t('unlock')}
+              </button>
+            </div>
           </div>
-        </div>
-      </Modal>
+        </Modal>
 
       <ImportExportModal open={openImport} onClose={() => setOpenImport(false)} />
 
