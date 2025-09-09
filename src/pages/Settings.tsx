@@ -3,9 +3,12 @@ import ImportExportModal from '../components/ImportExportModal'
 import { useItems } from '../store/useItems'
 import { useSettings } from '../store/useSettings'
 import { useTranslation } from '../lib/i18n'
-import { X } from 'lucide-react'
+import { X, Copy } from 'lucide-react'
 import Input from '../components/ui/Input'
 import { useAuth } from '../store/useAuth'
+import Modal from '../components/ui/Modal'
+import IconButton from '../components/ui/IconButton'
+import copyWithTimeout from '../lib/clipboard'
 
 export default function Settings() {
   const { language, setLanguage } = useSettings()
@@ -14,6 +17,8 @@ export default function Settings() {
   const [importType, setImportType] = useState<'site' | 'doc' | null>(null)
   const { unlocked, masterHash, setMaster, unlock, lock } = useAuth()
   const [masterPw, setMasterPw] = useState('')
+  const [showMasterModal, setShowMasterModal] = useState(false)
+  const [lastMaster, setLastMaster] = useState('')
 
   async function handleExport(kind: 'site' | 'doc') {
     const blob = kind === 'site' ? await exportSites() : await exportDocs()
@@ -54,6 +59,8 @@ export default function Settings() {
               onClick={async () => {
                 if (!masterPw) return
                 await setMaster(masterPw)
+                setLastMaster(masterPw)
+                setShowMasterModal(true)
                 setMasterPw('')
               }}
             >
@@ -86,6 +93,8 @@ export default function Settings() {
                   }
                 } else {
                   await setMaster(masterPw)
+                  setLastMaster(masterPw)
+                  setShowMasterModal(true)
                 }
                 setMasterPw('')
               }}
@@ -129,6 +138,39 @@ export default function Settings() {
         </div>
       </section>
       <ImportExportModal open={importType !== null} initialType={importType ?? 'site'} onClose={() => setImportType(null)} />
+      <Modal
+        open={showMasterModal}
+        onClose={() => {
+          setShowMasterModal(false)
+          setLastMaster('')
+        }}
+        title={t('master')}
+        footer={
+          <button
+            className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+            onClick={() => {
+              setShowMasterModal(false)
+              setLastMaster('')
+            }}
+          >
+            {t('ok')}
+          </button>
+        }
+      >
+        <div className="space-y-3">
+          <div>{t('masterWarning')}</div>
+          <div className="flex items-center gap-2">
+            <Input value={lastMaster} readOnly className="flex-1" />
+            <IconButton
+              size="sm"
+              srLabel={t('copyPassword')}
+              onClick={() => copyWithTimeout(lastMaster)}
+            >
+              <Copy className="w-4 h-4" />
+            </IconButton>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

@@ -60,7 +60,9 @@ const dict = {
     description: '备注',
     optional: '可选',
     enterTitleAndUrl: '请填写标题和地址',
-    copySuffix: ' 副本'
+    copySuffix: ' 副本',
+    masterWarning: '主密码仅展示一次，如若丢失无法恢复，请妥善保管',
+    ok: '好的'
   },
   en: {
     search: 'Search…',
@@ -121,7 +123,9 @@ const dict = {
     description: 'Description',
     optional: 'Optional',
     enterTitleAndUrl: 'Please fill title and URL',
-    copySuffix: ' copy'
+    copySuffix: ' copy',
+    masterWarning: 'The master password is shown only once. If lost, it cannot be recovered. Please keep it safe',
+    ok: 'OK'
   }
 }
 
