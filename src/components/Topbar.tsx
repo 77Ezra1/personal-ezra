@@ -123,7 +123,7 @@ export default function Topbar() {
 
   // 打开或定位
   const locate = (type: RowType, id: string) => {
-    const path = type === 'password' ? '/vault' : type === 'doc' ? '/docs' : '/sites'
+    const path = type === 'password' ? '/passwords' : type === 'doc' ? '/docs' : '/sites'
     navigate(path)
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent('locate-item', { detail: { id, type } }))

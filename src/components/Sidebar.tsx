@@ -31,7 +31,7 @@ export default function Sidebar() {
       <nav className="space-y-1">
         <NavLink to="/" end className={linkClass}>{t('dashboard')}</NavLink>
         <NavLink to="/sites" className={linkClass}>{t('sites')}</NavLink>
-        <NavLink to="/vault" className={linkClass}>{t('vault')}</NavLink>
+        <NavLink to="/passwords" className={linkClass}>{t('vault')}</NavLink>
         <NavLink to="/docs" className={linkClass}>{t('docs')}</NavLink>
         <NavLink to="/chat" className={linkClass}>{t('chat')}</NavLink>
         <NavLink to="/settings" className={linkClass}>{t('settings')}</NavLink>
