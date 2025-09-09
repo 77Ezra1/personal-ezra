@@ -41,12 +41,31 @@ export default function Settings() {
       <section>
         <h2 className="text-lg font-medium mb-2">{t('master')}</h2>
         {unlocked ? (
-          <button
-            className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-            onClick={lock}
-          >
-            {t('lock')}
-          </button>
+          <div className="flex gap-2 items-center">
+            <Input
+              type="password"
+              value={masterPw}
+              onChange={e => setMasterPw(e.target.value)}
+              placeholder={t('enterMaster')}
+              className="max-w-xs"
+            />
+            <button
+              className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+              onClick={async () => {
+                if (!masterPw) return
+                await setMaster(masterPw)
+                setMasterPw('')
+              }}
+            >
+              {t('save')}
+            </button>
+            <button
+              className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+              onClick={lock}
+            >
+              {t('lock')}
+            </button>
+          </div>
         ) : (
           <div className="flex gap-2 items-center">
             <Input
