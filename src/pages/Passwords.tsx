@@ -6,10 +6,13 @@ import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import Modal from '../components/ui/Modal'
 import IconButton from '../components/ui/IconButton'
-import { Trash2, XCircle } from 'lucide-react'
+import { Trash2, XCircle, Copy } from 'lucide-react'
 import { useItems } from '../store/useItems'
 import type { PasswordItem } from '../types'
 import { useTranslation } from '../lib/i18n'
+import { encryptString, decryptString } from '../lib/crypto'
+import { copyWithTimeout } from '../lib/clipboard'
+import { useAuth } from '../store/useAuth'
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -54,37 +57,64 @@ export default function Passwords() {
   const [editing, setEditing] = React.useState<PasswordItem | null>(null)
   const [title, setTitle] = React.useState('')
   const [username, setUsername] = React.useState('')
-  const [passwordCipher, setPasswordCipher] = React.useState('')
+  const [password, setPassword] = React.useState('')
   const [url, setUrl] = React.useState('')
   const [tags, setTags] = React.useState<string[]>([])
 
+  const { master, unlocked } = useAuth()
+
+  function ensureUnlock() {
+    if (!unlocked || !master) {
+      window.dispatchEvent(new Event('open-unlock'))
+      return false
+    }
+    return true
+  }
+
   function openAdd() {
+    if (!ensureUnlock()) return
     setEditing(null)
     setTitle('')
     setUsername('')
-    setPasswordCipher('')
+    setPassword('')
     setUrl('')
     setTags([])
     setModalOpen(true)
   }
 
-  function openEdit(it: PasswordItem) {
+  async function openEdit(it: PasswordItem) {
+    if (!ensureUnlock()) return
     setEditing(it)
     setTitle(it.title)
     setUsername(it.username)
-    setPasswordCipher(it.passwordCipher)
     setUrl(it.url || '')
     setTags(it.tags)
+    try {
+      const plain = await decryptString(master!, it.passwordCipher)
+      setPassword(plain)
+    } catch {
+      setPassword('')
+    }
     setModalOpen(true)
   }
 
   async function save() {
+    if (!ensureUnlock()) return
+    const passwordCipher = await encryptString(master!, password)
     if (editing) {
       await update(editing.id, { title, username, passwordCipher, url, tags })
     } else {
       await addPassword({ title, username, passwordCipher, url, tags })
     }
     setModalOpen(false)
+  }
+
+  async function copyPwd(it: PasswordItem) {
+    if (!ensureUnlock()) return
+    try {
+      const plain = await decryptString(master!, it.passwordCipher)
+      await copyWithTimeout(plain)
+    } catch {}
   }
 
   return (
@@ -137,6 +167,9 @@ export default function Passwords() {
                 />
               </div>
               <div className="mt-2 flex items-center gap-2 justify-end">
+                <IconButton size="sm" srLabel={t('copyPassword')} onClick={() => copyPwd(it)}>
+                  <Copy className="w-4 h-4" />
+                </IconButton>
                 <Button size="sm" variant="secondary" className="px-3" onClick={() => openEdit(it)}>
                   {t('edit')}
                 </Button>
@@ -170,8 +203,8 @@ export default function Passwords() {
           <Field label={t('password')}>
             <Input
               type="password"
-              value={passwordCipher}
-              onChange={e => setPasswordCipher(e.target.value)}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
             />
           </Field>
           <Field label={t('url')}>
