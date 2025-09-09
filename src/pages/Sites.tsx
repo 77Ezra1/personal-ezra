@@ -192,7 +192,7 @@ export default function Sites() {
   return (
     <>
       {ui}
-      
+
       {/* New site */}
       <Modal
         open={openNew}
