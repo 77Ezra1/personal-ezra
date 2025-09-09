@@ -39,6 +39,7 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'passwor
     : typeof lc['tag'] === 'string'
     ? lc['tag']
     : ''
+
   if (type === 'site') {
     const title =
       typeof lc['title'] === 'string'
@@ -61,31 +62,61 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'passwor
         ? lc['desc']
         : ''
     return { title, url, description, tags }
-  } else {
+  }
+
+  if (type === 'password') {
     const title =
       typeof lc['title'] === 'string'
         ? lc['title']
         : typeof lc['name'] === 'string'
         ? lc['name']
         : ''
-    const path =
-      typeof lc['path'] === 'string'
-        ? lc['path']
-        : typeof lc['url'] === 'string'
+    const username =
+      typeof lc['username'] === 'string'
+        ? lc['username']
+        : typeof lc['user'] === 'string'
+        ? lc['user']
+        : ''
+    const passwordCipher =
+      typeof lc['passwordcipher'] === 'string'
+        ? lc['passwordcipher']
+        : typeof lc['password'] === 'string'
+        ? lc['password']
+        : ''
+    const url =
+      typeof lc['url'] === 'string'
         ? lc['url']
         : typeof lc['link'] === 'string'
         ? lc['link']
         : typeof lc['href'] === 'string'
         ? lc['href']
         : ''
-    const source =
-      typeof lc['source'] === 'string'
-        ? lc['source']
-        : typeof lc['origin'] === 'string'
-        ? lc['origin']
-        : ''
-    return { title, path, source, tags }
+    return { title, username, passwordCipher, url, tags }
   }
+
+  const title =
+    typeof lc['title'] === 'string'
+      ? lc['title']
+      : typeof lc['name'] === 'string'
+      ? lc['name']
+      : ''
+  const path =
+    typeof lc['path'] === 'string'
+      ? lc['path']
+      : typeof lc['url'] === 'string'
+      ? lc['url']
+      : typeof lc['link'] === 'string'
+      ? lc['link']
+      : typeof lc['href'] === 'string'
+      ? lc['href']
+      : ''
+  const source =
+    typeof lc['source'] === 'string'
+      ? lc['source']
+      : typeof lc['origin'] === 'string'
+      ? lc['origin']
+      : ''
+  return { title, path, source, tags }
 }
 
 type Filters = { type?: 'site'|'password'|'doc'; tags?: string[] }
