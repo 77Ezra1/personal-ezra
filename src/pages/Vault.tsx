@@ -1,11 +1,17 @@
 import { useTranslation } from '../lib/i18n'
+import UIButton from '../components/ui/Button'
 
 export default function Vault() {
   const t = useTranslation()
   return (
-    <div className="max-w-screen-lg mx-auto p-6 bg-surface text-text rounded-2xl shadow-sm">
-      <h1 className="text-lg font-medium mb-2">{t('vault')}</h1>
-      <p className="text-sm text-muted">{t('comingSoon')}</p>
+    <div className="h-[calc(100dvh-48px)] overflow-auto">
+      <div className="max-w-screen-lg mx-auto p-6 bg-surface text-text rounded-2xl shadow-sm">
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-lg font-medium">{t('vault')}</h1>
+          <UIButton size="sm">{t('newPassword')}</UIButton>
+        </div>
+        <p className="text-sm text-muted">{t('comingSoon')}</p>
+      </div>
     </div>
   )
 }

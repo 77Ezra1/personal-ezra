@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { useItems } from './useItems'
+import { useSettings } from './useSettings'
 import { db } from '../lib/db'
 
 beforeEach(async () => {
@@ -52,6 +53,21 @@ describe('items import/export', () => {
     const items = useItems.getState().items
     expect(items.length).toBe(1)
     expect((items[0] as any).path).toBe('/a')
+  })
+})
+
+describe('duplicate', () => {
+  it('appends localized suffix', async () => {
+    const { addSite, duplicate } = useItems.getState()
+    useSettings.setState({ language: 'en' })
+    const id = await addSite({ title: 'Example', url: '', description: '', tags: [] })
+    const copyId = await duplicate(id)
+    const itemsEn = useItems.getState().items
+    expect(itemsEn.find(i => i.id === copyId)?.title).toBe('Example copy')
+    useSettings.setState({ language: 'zh' })
+    const copyIdZh = await duplicate(id)
+    const itemsZh = useItems.getState().items
+    expect(itemsZh.find(i => i.id === copyIdZh)?.title).toBe('Example 副本')
   })
 })
 

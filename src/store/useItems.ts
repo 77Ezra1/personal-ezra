@@ -4,6 +4,8 @@ import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType 
   from '../types'
 import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
+import { translate } from '../lib/i18n'
+import { useSettings } from './useSettings'
 
 function parseCsv(text: string): string[][] {
   const lines = text.trim().split(/\r?\n/).filter(Boolean)
@@ -31,24 +33,43 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc') {
   const entries = Object.entries(row).map(([k, v]) => [k.toLowerCase(), v] as [string, unknown])
   const lc: Record<string, unknown> = Object.fromEntries(entries)
   const tags = Array.isArray(lc['tags'])
-    ? lc['tags'].join(',')
+    ? (lc['tags'] as unknown[]).join(',')
     : typeof lc['tags'] === 'string'
     ? lc['tags']
     : typeof lc['tag'] === 'string'
     ? lc['tag']
     : ''
   if (type === 'site') {
-    const title = typeof lc['title'] === 'string' ? lc['title'] : typeof lc['name'] === 'string' ? lc['name'] : ''
-    const path = typeof lc['path'] === 'string' ? lc['path'] : ''
-    const source = typeof lc['source'] === 'string' ? lc['source'] : typeof lc['origin'] === 'string' ? lc['origin'] : ''
-    return { title, path, source, tags }
-    } else {
-      const title = typeof lc['title'] === 'string'
+    const title =
+      typeof lc['title'] === 'string'
         ? lc['title']
         : typeof lc['name'] === 'string'
         ? lc['name']
         : ''
-      const path = typeof lc['path'] === 'string'
+    const url =
+      typeof lc['url'] === 'string'
+        ? lc['url']
+        : typeof lc['link'] === 'string'
+        ? lc['link']
+        : typeof lc['href'] === 'string'
+        ? lc['href']
+        : ''
+    const description =
+      typeof lc['description'] === 'string'
+        ? lc['description']
+        : typeof lc['desc'] === 'string'
+        ? lc['desc']
+        : ''
+    return { title, url, description, tags }
+  } else {
+    const title =
+      typeof lc['title'] === 'string'
+        ? lc['title']
+        : typeof lc['name'] === 'string'
+        ? lc['name']
+        : ''
+    const path =
+      typeof lc['path'] === 'string'
         ? lc['path']
         : typeof lc['url'] === 'string'
         ? lc['url']
@@ -57,10 +78,15 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc') {
         : typeof lc['href'] === 'string'
         ? lc['href']
         : ''
-      const source = typeof lc['source'] === 'string' ? lc['source'] : ''
-      return { title, path, source, tags }
-    }
+    const source =
+      typeof lc['source'] === 'string'
+        ? lc['source']
+        : typeof lc['origin'] === 'string'
+        ? lc['origin']
+        : ''
+    return { title, path, source, tags }
   }
+}
 
 type Filters = { type?: 'site'|'password'|'doc'; tags?: string[] }
 
@@ -164,7 +190,9 @@ export const useItems = create<ItemState>((set, get) => ({
   async duplicate(id) {
     const it = await db.items.get(id)
     if (!it) return
-    const copy = { ...it, id: nanoid(), title: it.title + ' 副本', createdAt: Date.now(), updatedAt: Date.now() }
+    const lang = useSettings.getState().language
+    const suffix = translate(lang, 'copySuffix')
+    const copy = { ...it, id: nanoid(), title: it.title + suffix, createdAt: Date.now(), updatedAt: Date.now() }
     await db.items.put(copy as AnyItem)
     await get().load()
     return copy.id
