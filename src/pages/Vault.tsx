@@ -90,7 +90,6 @@ export default function Vault() {
         <p className="text-sm text-muted">{t('comingSoon')}</p>
       </div>
     </div>
-  </div>
   )
 }
 
