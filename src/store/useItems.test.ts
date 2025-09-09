@@ -35,6 +35,18 @@ describe('items import/export', () => {
     expect(useItems.getState().items[0].title).toBe('Doc')
   })
 
+  it('exports and imports passwords', async () => {
+    const { addPassword, exportPasswords, importPasswords, load } = useItems.getState()
+    await addPassword({ title: 'Pw', username: 'u', passwordCipher: 'c', url: 'https://example.com', description: '', tags: [] })
+    const blob = await exportPasswords()
+    const text = await blob.text()
+    await db.items.clear(); await load()
+    const file: any = { text: async () => text }
+    await importPasswords(file)
+    expect(useItems.getState().items.length).toBe(1)
+    expect(useItems.getState().items[0].title).toBe('Pw')
+  })
+
   it('imports sites from csv with field mapping', async () => {
     const { importSites } = useItems.getState()
     const csv = 'name,link,desc\nExample,https://example.com,hello'
@@ -53,6 +65,18 @@ describe('items import/export', () => {
     const items = useItems.getState().items
     expect(items.length).toBe(1)
     expect((items[0] as any).path).toBe('/a')
+  })
+
+  it('imports passwords from csv with field mapping', async () => {
+    const { importPasswords } = useItems.getState()
+    const csv = 'name,username,password,url\nPw,user,cipher,https://example.com'
+    const file: any = { text: async () => csv }
+    await importPasswords(file)
+    const items = useItems.getState().items
+    expect(items.length).toBe(1)
+    const pwd = items[0] as any
+    expect(pwd.username).toBe('user')
+    expect(pwd.passwordCipher).toBe('cipher')
   })
 })
 
