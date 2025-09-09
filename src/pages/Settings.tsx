@@ -1,15 +1,19 @@
 import { useState } from 'react'
-import ImportExportModal from '../components/ImportExportModal';
+import ImportExportModal from '../components/ImportExportModal'
 import { useItems } from '../store/useItems'
 import { useSettings } from '../store/useSettings'
 import { useTranslation } from '../lib/i18n'
 import { X } from 'lucide-react'
+import Input from '../components/ui/Input'
+import { useAuth } from '../store/useAuth'
 
 export default function Settings() {
   const { language, setLanguage } = useSettings()
   const t = useTranslation()
   const { exportSites, exportDocs, tags, removeTag } = useItems()
   const [importType, setImportType] = useState<'site' | 'doc' | null>(null)
+  const { unlocked, masterHash, setMaster, unlock, lock } = useAuth()
+  const [masterPw, setMasterPw] = useState('')
 
   async function handleExport(kind: 'site' | 'doc') {
     const blob = kind === 'site' ? await exportSites() : await exportDocs()
@@ -33,6 +37,44 @@ export default function Settings() {
           <option value="zh">{t('chinese')}</option>
           <option value="en">{t('english')}</option>
         </select>
+      </section>
+      <section>
+        <h2 className="text-lg font-medium mb-2">{t('master')}</h2>
+        {unlocked ? (
+          <button
+            className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+            onClick={lock}
+          >
+            {t('lock')}
+          </button>
+        ) : (
+          <div className="flex gap-2 items-center">
+            <Input
+              type="password"
+              value={masterPw}
+              onChange={e => setMasterPw(e.target.value)}
+              placeholder={t('enterMaster')}
+              className="max-w-xs"
+            />
+            <button
+              className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+              onClick={async () => {
+                if (masterHash) {
+                  const ok = await unlock(masterPw)
+                  if (!ok) {
+                    alert(t('wrongMaster'))
+                    return
+                  }
+                } else {
+                  await setMaster(masterPw)
+                }
+                setMasterPw('')
+              }}
+            >
+              {masterHash ? t('unlock') : t('save')}
+            </button>
+          </div>
+        )}
       </section>
       <section>
         <h2 className="text-lg font-medium mb-2">导入/导出</h2>
