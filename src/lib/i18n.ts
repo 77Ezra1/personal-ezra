@@ -55,7 +55,8 @@ const dict = {
     url: '地址',
     description: '备注',
     optional: '可选',
-    enterTitleAndUrl: '请填写标题和地址'
+    enterTitleAndUrl: '请填写标题和地址',
+    copySuffix: ' 副本'
   },
   en: {
     search: 'Search…',
@@ -111,7 +112,8 @@ const dict = {
     url: 'URL',
     description: 'Description',
     optional: 'Optional',
-    enterTitleAndUrl: 'Please fill title and URL'
+    enterTitleAndUrl: 'Please fill title and URL',
+    copySuffix: ' copy'
   }
 }
 

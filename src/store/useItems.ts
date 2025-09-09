@@ -4,6 +4,8 @@ import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType 
   from '../types'
 import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
+import { translate } from '../lib/i18n'
+import { useSettings } from './useSettings'
 
 function parseCsv(text: string): string[][] {
   const lines = text.trim().split(/\r?\n/).filter(Boolean)
@@ -190,7 +192,9 @@ export const useItems = create<ItemState>((set, get) => ({
   async duplicate(id) {
     const it = await db.items.get(id)
     if (!it) return
-    const copy = { ...it, id: nanoid(), title: it.title + ' 副本', createdAt: Date.now(), updatedAt: Date.now() }
+    const lang = useSettings.getState().language
+    const suffix = translate(lang, 'copySuffix')
+    const copy = { ...it, id: nanoid(), title: it.title + suffix, createdAt: Date.now(), updatedAt: Date.now() }
     await db.items.put(copy as AnyItem)
     await get().load()
     return copy.id
