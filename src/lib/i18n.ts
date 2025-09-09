@@ -50,7 +50,12 @@ const dict = {
     newDoc: '新建文档',
     editDoc: '编辑文档',
     newSite: '新建网站',
-    newPassword: '新建密码'
+    editSite: '编辑网站',
+    newPassword: '新建密码',
+    url: '地址',
+    description: '备注',
+    optional: '可选',
+    enterTitleAndUrl: '请填写标题和地址'
   },
   en: {
     search: 'Search…',
@@ -101,7 +106,12 @@ const dict = {
     newDoc: 'New Document',
     editDoc: 'Edit Document',
     newSite: 'New Site',
-    newPassword: 'New Password'
+    editSite: 'Edit Site',
+    newPassword: 'New Password',
+    url: 'URL',
+    description: 'Description',
+    optional: 'Optional',
+    enterTitleAndUrl: 'Please fill title and URL'
   }
 }
 

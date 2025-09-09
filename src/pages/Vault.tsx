@@ -11,6 +11,7 @@ import { useItems } from '../store/useItems'
 import { useSettings } from '../store/useSettings'
 import type { PasswordItem } from '../types'
 import { useTranslation } from '../lib/i18n'
+import Button from '../components/ui/Button'
 
 export default function Vault() {
   const t = useTranslation()
@@ -80,132 +81,14 @@ export default function Vault() {
   }
 
   return (
-    <div className="max-w-screen-lg mx-auto p-6 bg-surface text-text rounded-2xl shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <h1 className="text-lg font-medium">{t('vault')}</h1>
-        <button className="h-8 px-3 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm">
-          {t('newPassword')}
-        </button>
+    <div className="h-[calc(100dvh-48px)] overflow-auto">
+      <div className="max-w-screen-lg mx-auto p-6 bg-surface text-text rounded-2xl shadow-sm">
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-lg font-medium">{t('vault')}</h1>
+          <Button size="sm">{t('newPassword')}</Button>
+        </div>
+        <p className="text-sm text-muted">{t('comingSoon')}</p>
       </div>
-      <p className="text-sm text-muted">{t('comingSoon')}</p>
-    <div className="max-w-screen-lg mx-auto p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-medium">{t('vault')}</h1>
-        <div className="flex items-center gap-2">
-          <Button size="sm" onClick={openAdd}>
-            {t('new')}
-          </Button>
-          <Segmented
-            value={viewMode === 'list' ? 'list' : 'card'}
-            onChange={v => setViewMode(v as any)}
-            options={[
-              { label: t('card'), value: 'card' },
-              { label: t('table'), value: 'list' },
-            ]}
-          />
-        </div>
-      </div>
-
-      <TagRow />
-
-      {selection.size > 0 && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm">{selection.size} selected</span>
-          <Button size="sm" variant="danger" onClick={() => removeMany(Array.from(selection))}>
-            删除
-          </Button>
-          <Button size="sm" variant="secondary" onClick={clearSelection}>
-            取消
-          </Button>
-        </div>
-      )}
-
-      {viewMode === 'list' ? (
-        <table className="w-full text-sm border-t border-border">
-          <thead>
-            <tr className="text-left">
-              <th className="w-8" />
-              <th>标题</th>
-              <th>用户名</th>
-              <th>URL</th>
-            </tr>
-          </thead>
-          <tbody>
-            {passwords.map(it => (
-              <tr key={it.id} className="border-t border-border hover:bg-surface-hover">
-                <td className="p-2">
-                  <input
-                    type="checkbox"
-                    checked={selection.has(it.id)}
-                    onChange={e => onSelect(it.id, e)}
-                  />
-                </td>
-                <td className="p-2">
-                  <button className="w-full text-left" onClick={() => openEdit(it)}>
-                    {it.title}
-                  </button>
-                </td>
-                <td className="p-2">{it.username}</td>
-                <td className="p-2">{it.url}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-          {passwords.map(it => (
-            <div key={it.id} className="relative">
-              <div className="absolute top-2 left-2 z-10">
-                <input
-                  type="checkbox"
-                  checked={selection.has(it.id)}
-                  onChange={e => onSelect(it.id, e)}
-                />
-              </div>
-              <div onClick={() => openEdit(it)}>
-                <PasswordCardLite it={it} />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <Modal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={editing ? '编辑密码' : '新建密码'}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>
-              {t('cancel')}
-            </Button>
-            <Button onClick={save}>{t('save')}</Button>
-          </>
-        }
-      >
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm mb-1">标题</label>
-            <Input value={title} onChange={e => setTitle(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">用户名</label>
-            <Input value={username} onChange={e => setUsername(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">密码</label>
-            <Input value={passwordCipher} onChange={e => setPasswordCipher(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">URL</label>
-            <Input value={url} onChange={e => setUrl(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">标签</label>
-            <TagPicker value={tags} onChange={setTags} />
-          </div>
-        </div>
-      </Modal>
     </div>
   </div>
   )
