@@ -11,7 +11,7 @@ export default function Dashboard() {
   const t = useTranslation()
   const navigate = useNavigate()
   useEffect(() => { load() }, [])
-  const recent = useMemo(() => items.slice(0, 9), [items])
+  const recent = useMemo(() => items.slice(0, 10), [items])
   const sites = items.filter(i => i.type === 'site') as SiteItem[]
   const passwords = items.filter(i => i.type === 'password') as PasswordItem[]
   const docs = items.filter(i => i.type === 'doc') as DocItem[]
@@ -43,9 +43,13 @@ export default function Dashboard() {
                   size="sm"
                   variant="secondary"
                   className="mt-2"
-                  onClick={() => navigate(`/${it.type}s`)}
+                  onClick={() => {
+                    const url = it.type === 'doc' ? it.path : it.url
+                    if (url) window.open(url, '_blank')
+                    else navigate(`/${it.type}s`)
+                  }}
                 >
-                  {t('open')}
+                  {t('visit')}
                 </Button>
               </div>
             ))}
@@ -79,9 +83,13 @@ export default function Dashboard() {
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => navigate(`/${it.type}s`)}
+                        onClick={() => {
+                          const url = it.type === 'doc' ? it.path : it.url
+                          if (url) window.open(url, '_blank')
+                          else navigate(`/${it.type}s`)
+                        }}
                       >
-                        {t('open')}
+                        {t('visit')}
                       </Button>
                     </td>
                   </tr>
