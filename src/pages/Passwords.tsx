@@ -101,7 +101,6 @@ export default function Passwords() {
       setUnlockOpen(true)
     }
   }
-
   async function openEdit(it: PasswordItem) {
     if (!ensureUnlock()) return
     setEditing(it)
@@ -148,6 +147,82 @@ export default function Passwords() {
       const plain = await decryptString(master!, it.passwordCipher)
       await copyWithTimeout(plain)
     } catch {}
+  }
+
+  function PasswordCard({ it }: { it: PasswordItem }) {
+    const { master, unlocked } = useAuth()
+    const t = useTranslation()
+    const [plain, setPlain] = React.useState('')
+
+    React.useEffect(() => {
+      let cancel = false
+      async function load() {
+        if (unlocked && master) {
+          try {
+            const p = await decryptString(master, it.passwordCipher)
+            if (!cancel) setPlain(p)
+          } catch {
+            if (!cancel) setPlain('')
+          }
+        } else {
+          setPlain('')
+        }
+      }
+      load()
+      return () => {
+        cancel = true
+      }
+    }, [it.passwordCipher, master, unlocked])
+
+    return (
+      <div
+        data-id={it.id}
+        className="group border border-border rounded-2xl p-4 hover:shadow-md transition bg-surface"
+      >
+        <div className="flex items-start justify-between">
+          <div className="flex-1 min-w-0">
+            <div className="font-medium truncate" title={it.title}>
+              {it.title}
+            </div>
+            <div className="mt-1 flex items-center gap-1 text-sm text-muted break-all">
+              <span className="flex-1">{it.username}</span>
+              <IconButton
+                size="sm"
+                srLabel={t('copyUsername')}
+                onClick={() => copyWithTimeout(it.username)}
+              >
+                <Copy className="w-4 h-4" />
+              </IconButton>
+            </div>
+            <div className="mt-1 flex items-center gap-1 text-sm text-muted break-all">
+              <span className="flex-1">{plain}</span>
+              <IconButton
+                size="sm"
+                srLabel={t('copyPassword')}
+                onClick={() => copyWithTimeout(plain)}
+              >
+                <Copy className="w-4 h-4" />
+              </IconButton>
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            checked={selection.has(it.id)}
+            onChange={e => onSelect(it.id, e)}
+          />
+        </div>
+        <div className="mt-2 flex items-center gap-2 justify-end">
+          <Button
+            size="sm"
+            variant="secondary"
+            className="px-3"
+            onClick={() => openEdit(it)}
+          >
+            {t('edit')}
+          </Button>
+        </div>
+      </div>
+    )
   }
   React.useEffect(() => {
     const handler = (e: any) => {
@@ -228,36 +303,11 @@ export default function Passwords() {
   const cardView = (
     <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
       {passwords.map(it => (
-        <div
-          key={it.id}
-          data-id={it.id}
-          className="group border border-border rounded-2xl p-4 hover:shadow-md transition bg-surface"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="font-medium truncate" title={it.title}>
-                {it.title}
-              </div>
-              <div className="text-sm text-muted break-all">{it.username}</div>
-            </div>
-            <input
-              type="checkbox"
-              checked={selection.has(it.id)}
-              onChange={e => onSelect(it.id, e)}
-            />
-          </div>
-          <div className="mt-2 flex items-center gap-2 justify-end">
-            <IconButton size="sm" srLabel={t('copyPassword')} onClick={() => copyPwd(it)}>
-              <Copy className="w-4 h-4" />
-            </IconButton>
-            <Button size="sm" variant="secondary" className="px-3" onClick={() => openEdit(it)}>
-              {t('edit')}
-            </Button>
-          </div>
-        </div>
+        <PasswordCard key={it.id} it={it} />
       ))}
     </div>
   )
+
   return (
     <div className="h-[calc(100dvh-48px)] overflow-auto">
       <div className="sticky top-0 z-10 bg-surface/80 backdrop-blur border-b border-border">
