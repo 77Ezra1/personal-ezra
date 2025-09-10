@@ -73,7 +73,8 @@ const dict = {
     backupMnemonic: '备份助记词',
     mnemonic: '助记词',
     forgotPassword: '忘记密码',
-    mnemonicError: '助记词错误'
+    mnemonicError: '助记词错误',
+    mnemonicTip: '请手抄助记词，禁止截图或复制'
   },
   en: {
     search: 'Search…',
@@ -147,7 +148,8 @@ const dict = {
     backupMnemonic: 'Backup Mnemonic',
     mnemonic: 'Mnemonic',
     forgotPassword: 'Forgot Password',
-    mnemonicError: 'Incorrect mnemonic'
+    mnemonicError: 'Incorrect mnemonic',
+    mnemonicTip: 'Write down the mnemonic. Do not screenshot or copy it.'
   }
 }
 

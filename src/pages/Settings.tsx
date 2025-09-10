@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import ImportExportModal from '../components/ImportExportModal'
 import { useItems } from '../store/useItems'
 import { useSettings } from '../store/useSettings'
@@ -25,6 +25,20 @@ export default function Settings() {
   const [resetIdx, setResetIdx] = useState<number[]>([])
   const [resetWords, setResetWords] = useState<string[]>(['', '', ''])
   const [newMaster, setNewMaster] = useState('')
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      const isCopy = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c'
+      if (e.key === 'PrintScreen' || isCopy) {
+        e.preventDefault()
+        alert(t('mnemonicTip'))
+      }
+    }
+    if (showMnemonicModal) {
+      window.addEventListener('keydown', handleKey)
+    }
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [showMnemonicModal, t])
 
   async function handleExport(kind: 'site' | 'doc') {
     const blob = kind === 'site' ? await exportSites() : await exportDocs()
@@ -144,10 +158,21 @@ export default function Settings() {
           </button>
         }
       >
-        <div className="flex flex-wrap gap-2">
-          {mnemonic?.map((w, i) => (
-            <span key={i} className="px-2 py-1 rounded bg-gray-100">{w}</span>
-          ))}
+        <div
+          className="space-y-2"
+          onCopy={e => {
+            e.preventDefault()
+            alert(t('mnemonicTip'))
+          }}
+          onCut={e => e.preventDefault()}
+          onContextMenu={e => e.preventDefault()}
+        >
+          <div className="text-red-500 text-xs">{t('mnemonicTip')}</div>
+          <div className="flex flex-wrap gap-2 select-none">
+            {mnemonic?.map((w, i) => (
+              <span key={i} className="px-2 py-1 rounded bg-gray-100">{w}</span>
+            ))}
+          </div>
         </div>
       </Modal>
       <Modal
