@@ -1,5 +1,5 @@
 import React from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import TagRow from '../components/TagRow'
 import TagPicker from '../components/TagPicker'
 import Button from '../components/ui/Button'
@@ -31,7 +31,6 @@ export default function Passwords() {
     toggleSelect,
     clearSelection,
     removeMany,
-    addPassword,
     update,
     setFilters,
   } = useItems()
@@ -60,8 +59,11 @@ export default function Passwords() {
   const [password, setPassword] = React.useState('')
   const [url, setUrl] = React.useState('')
   const [tags, setTags] = React.useState<string[]>([])
+  const [unlockOpen, setUnlockOpen] = React.useState(false)
+  const [mpw, setMpw] = React.useState('')
 
-  const { master, unlocked } = useAuth()
+  const navigate = useNavigate()
+  const { master, unlocked, unlock, masterHash } = useAuth()
 
   function ensureUnlock() {
     if (!unlocked || !master) {
@@ -71,15 +73,12 @@ export default function Passwords() {
     return true
   }
 
-  function openAdd() {
-    if (!ensureUnlock()) return
-    setEditing(null)
-    setTitle('')
-    setUsername('')
-    setPassword('')
-    setUrl('')
-    setTags([])
-    setModalOpen(true)
+  function openUnlock() {
+    if (!masterHash) {
+      navigate('/settings')
+    } else {
+      setUnlockOpen(true)
+    }
   }
 
   async function openEdit(it: PasswordItem) {
@@ -100,12 +99,9 @@ export default function Passwords() {
 
   async function save() {
     if (!ensureUnlock()) return
+    if (!editing) return
     const passwordCipher = await encryptString(master!, password)
-    if (editing) {
-      await update(editing.id, { title, username, passwordCipher, url, tags })
-    } else {
-      await addPassword({ title, username, passwordCipher, url, tags })
-    }
+    await update(editing.id, { title, username, passwordCipher, url, tags })
     setModalOpen(false)
   }
 
@@ -144,7 +140,7 @@ export default function Passwords() {
       <div className="max-w-screen-lg mx-auto px-6 py-3 bg-surface text-text rounded-2xl shadow-sm">
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-lg font-medium">{t('vault')}</h1>
-          <Button onClick={openAdd}>{t('newPassword')}</Button>
+          {!unlocked && <Button onClick={openUnlock}>{t('unlock')}</Button>}
         </div>
         <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
           {passwords.map(it => (
@@ -183,7 +179,7 @@ export default function Passwords() {
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editing ? t('editPassword') : t('newPassword')}
+        title={t('editPassword')}
         footer={
           <>
             <Button variant="secondary" onClick={() => setModalOpen(false)}>
@@ -213,6 +209,40 @@ export default function Passwords() {
           <Field label={t('tags')}>
             <TagPicker value={tags} onChange={setTags} />
           </Field>
+        </div>
+      </Modal>
+
+      <Modal
+        open={unlockOpen}
+        onClose={() => setUnlockOpen(false)}
+        title={t('unlock')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setUnlockOpen(false)}>
+              {t('cancel')}
+            </Button>
+            <Button
+              onClick={async () => {
+                const ok = await unlock(mpw)
+                if (ok) {
+                  setUnlockOpen(false)
+                  setMpw('')
+                }
+              }}
+            >
+              {t('unlock')}
+            </Button>
+          </>
+        }
+      >
+        <div className="grid gap-3">
+          <p className="text-sm">{t('unlockVaultPrompt')}</p>
+          <Input
+            type="password"
+            value={mpw}
+            onChange={e => setMpw(e.target.value)}
+            placeholder={t('enterMaster')}
+          />
         </div>
       </Modal>
     </div>
