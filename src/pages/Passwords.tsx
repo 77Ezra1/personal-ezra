@@ -101,7 +101,6 @@ export default function Passwords() {
       setUnlockOpen(true)
     }
   }
-
   async function openEdit(it: PasswordItem) {
     if (!ensureUnlock()) return
     setEditing(it)
@@ -259,7 +258,6 @@ export default function Passwords() {
       ))}
     </div>
   )
-
   return (
     <div className="h-[calc(100dvh-48px)] overflow-auto">
       <div className="sticky top-0 z-10 bg-surface/80 backdrop-blur border-b border-border">
@@ -316,7 +314,7 @@ export default function Passwords() {
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editing ? t('editPassword') : t('newPassword')}
+        title={t('editPassword')}
         footer={
           <>
             <Button variant="secondary" onClick={() => setModalOpen(false)}>
