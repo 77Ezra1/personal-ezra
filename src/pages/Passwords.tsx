@@ -150,29 +150,6 @@ export default function Passwords() {
   }
 
   function PasswordCard({ it }: { it: PasswordItem }) {
-    const { master, unlocked } = useAuth()
-    const t = useTranslation()
-    const [plain, setPlain] = React.useState('')
-
-    React.useEffect(() => {
-      let cancel = false
-      async function load() {
-        if (unlocked && master) {
-          try {
-            const p = await decryptString(master, it.passwordCipher)
-            if (!cancel) setPlain(p)
-          } catch {
-            if (!cancel) setPlain('')
-          }
-        } else {
-          setPlain('')
-        }
-      }
-      load()
-      return () => {
-        cancel = true
-      }
-    }, [it.passwordCipher, master, unlocked])
 
     return (
       <div
@@ -195,11 +172,11 @@ export default function Passwords() {
               </IconButton>
             </div>
             <div className="mt-1 flex items-center gap-1 text-sm text-muted break-all">
-              <span className="flex-1">{plain}</span>
+              <span className="flex-1">••••••••</span>
               <IconButton
                 size="sm"
                 srLabel={t('copyPassword')}
-                onClick={() => copyWithTimeout(plain)}
+                onClick={() => copyPwd(it)}
               >
                 <Copy className="w-4 h-4" />
               </IconButton>
@@ -224,6 +201,90 @@ export default function Passwords() {
       </div>
     )
   }
+  React.useEffect(() => {
+    const handler = (e: any) => {
+      const { id, type } = e.detail || {}
+      if (type !== 'password') return
+      const el = document.querySelector(`[data-id="${id}"]`) as HTMLElement | null
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.classList.add('bg-blue-50')
+        setTimeout(() => el.classList.remove('bg-blue-50'), 1600)
+      }
+    }
+    window.addEventListener('locate-item', handler)
+    return () => window.removeEventListener('locate-item', handler)
+  }, [])
+
+  React.useEffect(() => {
+    const handler = (e: any) => {
+      const { id, type } = e.detail || {}
+      if (type !== 'password') return
+      const it = (items as PasswordItem[]).find(x => x.id === id)
+      if (it) openEdit(it)
+    }
+    window.addEventListener('open-edit', handler)
+    return () => window.removeEventListener('open-edit', handler)
+  }, [items])
+
+  const tableView = (
+    <div className="overflow-auto border border-border rounded-2xl bg-surface">
+      <table className="w-full table-fixed text-sm">
+        <colgroup>
+          <col style={{ width: '48px' }} />
+          <col style={{ width: '33%' }} />
+          <col style={{ width: '33%' }} />
+          <col style={{ width: '34%' }} />
+        </colgroup>
+        <thead className="bg-surface-hover">
+          <tr className="text-left text-muted">
+            <th className="px-3 py-2"></th>
+            <th className="px-3 py-2">{t('account')}</th>
+            <th className="px-3 py-2">{t('username')}</th>
+            <th className="px-3 py-2 text-right pr-4 md:pr-6">{t('actions')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {passwords.map(it => (
+            <tr key={it.id} data-id={it.id} className="border-t border-border align-middle">
+              <td className="px-3 py-2">
+                <input type="checkbox" checked={selection.has(it.id)} onChange={e => onSelect(it.id, e)} />
+              </td>
+              <td className="px-3 py-2">
+                <button
+                  className="hover:underline block truncate"
+                  title={it.title}
+                  onClick={() => openEdit(it)}
+                >
+                  {it.title}
+                </button>
+              </td>
+              <td className="px-3 py-2 truncate">{it.username}</td>
+              <td className="px-3 py-2 pr-4 md:pr-6">
+                <div className="flex items-center gap-2 justify-end">
+                  <IconButton size="sm" srLabel={t('copyPassword')} onClick={() => copyPwd(it)}>
+                    <Copy className="w-4 h-4" />
+                  </IconButton>
+                  <Button size="sm" variant="secondary" className="px-3" onClick={() => openEdit(it)}>
+                    {t('edit')}
+                  </Button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+
+  const cardView = (
+    <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
+      {passwords.map(it => (
+        <PasswordCard key={it.id} it={it} />
+      ))}
+    </div>
+  )
+
   React.useEffect(() => {
     const handler = (e: any) => {
       const { id, type } = e.detail || {}
