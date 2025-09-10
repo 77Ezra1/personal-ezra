@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import ImportExportModal from '../components/ImportExportModal'
 import { useItems } from '../store/useItems'
 import { useSettings } from '../store/useSettings'
@@ -15,10 +15,49 @@ export default function Settings() {
   const t = useTranslation()
   const { exportSites, exportDocs, tags, removeTag } = useItems()
   const [importType, setImportType] = useState<'site' | 'doc' | null>(null)
-  const { unlocked, masterHash, setMaster, unlock, lock } = useAuth()
-  const [masterPw, setMasterPw] = useState('')
+  const { masterHash, setMaster, mnemonic, verifyMnemonic, resetMaster } = useAuth()
+  const [pw1, setPw1] = useState('')
+  const [pw2, setPw2] = useState('')
+  const [captcha, setCaptcha] = useState('')
+  const [captchaInput, setCaptchaInput] = useState('')
+  const [captchaError, setCaptchaError] = useState(false)
   const [showMasterModal, setShowMasterModal] = useState(false)
   const [lastMaster, setLastMaster] = useState('')
+  const [showMnemonicModal, setShowMnemonicModal] = useState(false)
+  const [showResetModal, setShowResetModal] = useState(false)
+  const [resetStep, setResetStep] = useState<'verify' | 'reset'>('verify')
+  const [resetIdx, setResetIdx] = useState<number[]>([])
+  const [resetWords, setResetWords] = useState<string[]>(['', '', ''])
+  const [newMaster, setNewMaster] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (pw1 && pw2 && pw1 === pw2) {
+      if (!captcha) {
+        const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        const code = Array.from({ length: 4 }, () => letters[Math.floor(Math.random() * letters.length)]).join('')
+        setCaptcha(code)
+      }
+    } else {
+      if (captcha) setCaptcha('')
+      if (captchaInput) setCaptchaInput('')
+      if (captchaError) setCaptchaError(false)
+    }
+  }, [pw1, pw2, captcha, captchaInput, captchaError])
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      const isCopy = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c'
+      if (e.key === 'PrintScreen' || isCopy) {
+        e.preventDefault()
+        alert(t('mnemonicTip'))
+      }
+    }
+    if (showMnemonicModal) {
+      window.addEventListener('keydown', handleKey)
+    }
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [showMnemonicModal, t])
 
   async function handleExport(kind: 'site' | 'doc') {
     const blob = kind === 'site' ? await exportSites() : await exportDocs()
@@ -45,61 +84,89 @@ export default function Settings() {
       </section>
       <section>
         <h2 className="text-lg font-medium mb-2">{t('master')}</h2>
-        {unlocked ? (
-          <div className="flex gap-2 items-center">
+        {!masterHash ? (
+          <div className="space-y-2 max-w-xs">
             <Input
               type="password"
-              value={masterPw}
-              onChange={e => setMasterPw(e.target.value)}
+              value={pw1}
+              onChange={e => setPw1(e.target.value)}
               placeholder={t('enterMaster')}
-              className="max-w-xs"
             />
-            <button
-              className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-              onClick={async () => {
-                if (!masterPw) return
-                await setMaster(masterPw)
-                setLastMaster(masterPw)
-                setShowMasterModal(true)
-                setMasterPw('')
-              }}
-            >
-              {t('save')}
-            </button>
-            <button
-              className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-              onClick={lock}
-            >
-              {t('lock')}
-            </button>
+            <Input
+              type="password"
+              value={pw2}
+              onChange={e => setPw2(e.target.value)}
+              placeholder={t('confirmMaster')}
+            />
+            {pw2 && pw1 !== pw2 && (
+              <div className="text-red-500 text-xs">{t('masterMismatch')}</div>
+            )}
+            {pw1 && pw1 === pw2 && captcha && (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-1 rounded bg-gray-100 select-none">{captcha}</span>
+                  <Input
+                    value={captchaInput}
+                    onChange={e => {
+                      setCaptchaInput(e.target.value)
+                      setCaptchaError(false)
+                    }}
+                    placeholder={t('enterCaptcha')}
+                  />
+                </div>
+                {captchaError && (
+                  <div className="text-red-500 text-xs">{t('captchaError')}</div>
+                )}
+                {!saving && (
+                  <button
+                    className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+                    onClick={async () => {
+                      if (captcha.toLowerCase() !== captchaInput.trim().toLowerCase()) {
+                        setCaptchaError(true)
+                        return
+                      }
+                      setSaving(true)
+                      try {
+                        await setMaster(pw1)
+                        setLastMaster(pw1)
+                        setShowMasterModal(true)
+                        setPw1('')
+                        setPw2('')
+                        setCaptcha('')
+                        setCaptchaInput('')
+                        setCaptchaError(false)
+                      } finally {
+                        setSaving(false)
+                      }
+                    }}
+                  >
+                    {t('save')}
+                  </button>
+                )}
+              </>
+            )}
           </div>
         ) : (
-          <div className="flex gap-2 items-center">
-            <Input
-              type="password"
-              value={masterPw}
-              onChange={e => setMasterPw(e.target.value)}
-              placeholder={t('enterMaster')}
-              className="max-w-xs"
-            />
+          <div className="flex flex-wrap gap-2 items-center">
             <button
               className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-              onClick={async () => {
-                if (masterHash) {
-                  const ok = await unlock(masterPw)
-                  if (!ok) {
-                    alert(t('wrongMaster'))
-                    return
-                  }
-                } else {
-                  await setMaster(masterPw)
-                  setLastMaster(masterPw)
-                  setShowMasterModal(true)
-                }
-                setMasterPw('')
+              onClick={() => setShowMnemonicModal(true)}
+            >
+              {t('backupMnemonic')}
+            </button>
+            <button
+              className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+              onClick={() => {
+                const idxs = Array.from({ length: 10 }, (_, i) => i)
+                  .sort(() => Math.random() - 0.5)
+                  .slice(0, 3)
+                setResetIdx(idxs)
+                setResetWords(['', '', ''])
+                setResetStep('verify')
+                setShowResetModal(true)
               }}
             >
-              {masterHash ? t('unlock') : t('save')}
+              {t('forgotPassword')}
             </button>
           </div>
         )}
@@ -138,6 +205,98 @@ export default function Settings() {
         </div>
       </section>
       <ImportExportModal open={importType !== null} initialType={importType ?? 'site'} onClose={() => setImportType(null)} />
+      <Modal
+        open={showMnemonicModal}
+        onClose={() => setShowMnemonicModal(false)}
+        title={t('mnemonic')}
+        footer={
+          <button
+            className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+            onClick={() => setShowMnemonicModal(false)}
+          >
+            {t('ok')}
+          </button>
+        }
+      >
+        <div
+          className="space-y-2"
+          onCopy={e => {
+            e.preventDefault()
+            alert(t('mnemonicTip'))
+          }}
+          onCut={e => e.preventDefault()}
+          onContextMenu={e => e.preventDefault()}
+        >
+          <div className="text-red-500 text-xs">{t('mnemonicTip')}</div>
+          <div className="flex flex-wrap gap-2 select-none">
+            {mnemonic?.map((w, i) => (
+              <span key={i} className="px-2 py-1 rounded bg-gray-100">{w}</span>
+            ))}
+          </div>
+        </div>
+      </Modal>
+      <Modal
+        open={showResetModal}
+        onClose={() => setShowResetModal(false)}
+        title={resetStep === 'verify' ? t('mnemonic') : t('master')}
+        footer={
+          resetStep === 'verify' ? (
+            <button
+              className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+              onClick={() => {
+                if (verifyMnemonic(resetIdx, resetWords)) {
+                  setResetStep('reset')
+                } else {
+                  alert(t('mnemonicError'))
+                }
+              }}
+            >
+              {t('ok')}
+            </button>
+          ) : (
+            <button
+              className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+              onClick={async () => {
+                if (!newMaster) return
+                await resetMaster(newMaster)
+                setLastMaster(newMaster)
+                setShowMasterModal(true)
+                setShowResetModal(false)
+                setNewMaster('')
+              }}
+            >
+              {t('save')}
+            </button>
+          )
+        }
+      >
+        {resetStep === 'verify' ? (
+          <div className="space-y-2">
+            {resetIdx.map((idx, i) => (
+              <div key={idx} className="flex items-center gap-2">
+                <span className="w-5 text-right">{idx + 1}.</span>
+                <Input
+                  value={resetWords[i]}
+                  onChange={e => {
+                    const v = [...resetWords]
+                    v[i] = e.target.value
+                    setResetWords(v)
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Input
+              type="password"
+              value={newMaster}
+              onChange={e => setNewMaster(e.target.value)}
+              placeholder={t('enterMaster')}
+            />
+          </div>
+        )}
+      </Modal>
       <Modal
         open={showMasterModal}
         onClose={() => {
