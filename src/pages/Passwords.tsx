@@ -100,7 +100,6 @@ export default function Passwords() {
       setUnlockOpen(true)
     }
   }
-
   async function openEdit(it: PasswordItem) {
     if (!ensureUnlock()) return
     setEditing(it)
@@ -242,7 +241,6 @@ export default function Passwords() {
       ))}
     </div>
   )
-
   return (
     <div className="h-[calc(100dvh-48px)] overflow-auto">
       <div className="sticky top-0 z-10 bg-surface/80 backdrop-blur border-b border-border">
