@@ -11,7 +11,6 @@ const dict = {
     docs: '文档',
     vault: '密码管理',
     dashboard: '工作台',
-    chat: '对话',
     settings: '设置',
     tags: '标签',
     noTags: '（暂无标签）',
@@ -69,7 +68,12 @@ const dict = {
     masterWarning: '主密码仅展示一次，如若丢失无法恢复，请妥善保管',
     ok: '好的',
     type: '类型',
-    noData: '暂无数据'
+    noData: '暂无数据',
+    backupMnemonic: '备份助记词',
+    mnemonic: '助记词',
+    forgotPassword: '忘记密码',
+    mnemonicError: '助记词错误',
+    mnemonicTip: '请手抄助记词，禁止截图或复制'
   },
   en: {
     search: 'Search…',
@@ -81,7 +85,6 @@ const dict = {
     docs: 'Docs',
     vault: 'Password Management',
     dashboard: 'Dashboard',
-    chat: 'Chat',
     settings: 'Settings',
     tags: 'Tags',
     noTags: '(no tags)',
@@ -139,7 +142,12 @@ const dict = {
     masterWarning: 'The master password is shown only once. If lost, it cannot be recovered. Please keep it safe',
     ok: 'OK',
     type: 'Type',
-    noData: 'No data'
+    noData: 'No data',
+    backupMnemonic: 'Backup Mnemonic',
+    mnemonic: 'Mnemonic',
+    forgotPassword: 'Forgot Password',
+    mnemonicError: 'Incorrect mnemonic',
+    mnemonicTip: 'Write down the mnemonic. Do not screenshot or copy it.'
   }
 }
 

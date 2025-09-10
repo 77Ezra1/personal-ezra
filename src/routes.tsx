@@ -4,7 +4,6 @@ import Sites from './pages/Sites'
 import Passwords from './pages/Passwords'
 import Docs from './pages/Docs'
 import Settings from './pages/Settings'
-import Chat from './pages/Chat'
 import App from './App'
 
 export const router = createBrowserRouter([
@@ -16,8 +15,8 @@ export const router = createBrowserRouter([
       { path: 'sites', element: <Sites /> },
       { path: 'passwords', element: <Passwords /> },
       { path: 'docs', element: <Docs /> },
-      { path: 'chat', element: <Chat /> },
       { path: 'settings', element: <Settings /> }
     ]
   }
 ])
+
