@@ -9,7 +9,7 @@ import { useAuth } from '../store/useAuth'
 import { parseTokens } from './TokenFilter'
 import clsx from 'clsx'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Lock, Unlock, Star, User, LogOut } from 'lucide-react'
+import { Lock, Unlock, Star, User, LogOut } from 'lucide-react'
 import ImportExportModal from './ImportExportModal'
 import { useTranslation } from '../lib/i18n'
 type RowType = 'site'|'password'|'doc'
@@ -119,7 +119,6 @@ export default function Topbar() {
     return () => window.removeEventListener('open-unlock', handler)
   }, [])
 
-  const onCreate = () => window.dispatchEvent(new CustomEvent('open-create-dialog'))
 
   // 打开或定位
   const locate = (type: RowType, id: string) => {

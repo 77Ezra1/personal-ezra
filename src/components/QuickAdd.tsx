@@ -1,8 +1,6 @@
 import { Save, Wand2 } from 'lucide-react'
 import IconButton from './ui/IconButton'
-import React from "react"
 import Input from "./ui/Input"
-import TagPicker from "./TagPicker"
 import { generatePassword, estimateStrength } from "../lib/password"
 
 type Props = {
@@ -14,8 +12,6 @@ type Props = {
   setUsername: (v: string) => void
   pwd: string
   setPwd: (v: string) => void
-  tags: string[]
-  setTags: (v: string[]) => void
   onSave: () => void
 }
 
@@ -24,8 +20,7 @@ export default function QuickAdd({
   url, setUrl,
   username, setUsername,
   pwd, setPwd,
-  tags, setTags,
-  onSave
+  onSave,
 }: Props) {
   const strength = estimateStrength(pwd)
 
@@ -61,9 +56,6 @@ export default function QuickAdd({
       </div>
 
       {/* 需要的话也可以在这里放标签选择器 */}
-      {/* <div className="mt-2">
-        <TagPicker value={tags} onChange={setTags} />
-      </div> */}
     </div>
   )
 }

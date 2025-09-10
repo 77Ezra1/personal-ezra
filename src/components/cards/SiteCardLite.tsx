@@ -1,4 +1,3 @@
-import React from 'react'
 import type { SiteItem } from '../../types'
 
 export default function SiteCardLite({ it }: { it: SiteItem }) {

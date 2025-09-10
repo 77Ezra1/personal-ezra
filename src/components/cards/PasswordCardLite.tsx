@@ -1,4 +1,3 @@
-import React from 'react'
 import type { PasswordItem } from '../../types'
 import { useTranslation } from '../../lib/i18n'
 

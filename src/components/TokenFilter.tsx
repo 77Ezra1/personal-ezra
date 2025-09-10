@@ -1,4 +1,3 @@
-import React from 'react'
 export interface Tokens { text: string; tags: string[]; url?: string; star?: boolean }
 export function parseTokens(input: string): Tokens {
   const parts = input.split(/\s+/).filter(Boolean)

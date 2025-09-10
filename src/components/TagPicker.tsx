@@ -1,5 +1,5 @@
 import IconButton from './ui/IconButton'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useItems } from '../store/useItems'
 import Input from './ui/Input'
 import { X, Tag as TagIcon } from 'lucide-react'

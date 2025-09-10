@@ -1,5 +1,3 @@
-import React from 'react'
-
 export default function ContextMenu({items, onClose, x, y}:{items:{label:string, onClick:()=>void, danger?:boolean}[], onClose:()=>void, x:number, y:number}){
   return (
     <div className="fixed z-50" style={{left:x, top:y}} onClick={onClose} onContextMenu={(e)=>{e.preventDefault(); onClose()}}>

@@ -1,4 +1,3 @@
-import React from 'react'
 import type { DocItem } from '../../types'
 export default function DocCardLite({it}:{it: DocItem}){
   return (

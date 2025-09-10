@@ -1,6 +1,5 @@
 import { Edit2, ExternalLink, Trash2 } from 'lucide-react'
 import IconButton from './ui/IconButton'
-import React from 'react'
 import type { SiteItem } from '../types'
 import { useTranslation } from '../lib/i18n'
 
