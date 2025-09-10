@@ -9,7 +9,7 @@ import Segmented from '../components/ui/Segmented'
 import TagRow from '../components/TagRow'
 import TagPicker from '../components/TagPicker'
 import { useSearchParams } from 'react-router-dom'
-import { Trash2, XCircle } from 'lucide-react'
+import { ExternalLink, Trash2, XCircle } from 'lucide-react'
 import FixedUrl from '../components/FixedUrl'
 import { useSettings } from '../store/useSettings'
 import { useTranslation } from '../lib/i18n'
@@ -24,12 +24,12 @@ function Field({ label, children }: { label: string; children: any }) {
 }
 
 export default function Docs() {
-  const { items, tags, load, addDoc, update, removeMany, selection, toggleSelect, clearSelection } = useItems()
+  const { items, load, addDoc, update, removeMany, selection, toggleSelect, clearSelection } = useItems()
   const [params] = useSearchParams()
   const activeTag = params.get('tag')
   const t = useTranslation()
 
-  const [q] = useState('')
+  const [q, setQ] = useState('')
   const viewMode = useSettings(s => s.viewMode)
   const [view, setView] = useState<'table' | 'card'>(viewMode === 'card' ? 'card' : 'table')
 
@@ -37,6 +37,7 @@ export default function Docs() {
   const [openNew, setOpenNew] = useState(false)
   const [nTitle, setNTitle] = useState('')
   const [nPath, setNPath] = useState('')
+  const [nDesc, setNDesc] = useState('')
   const [nTags, setNTags] = useState<string[]>([])
 
   // 编辑
@@ -91,8 +92,6 @@ export default function Docs() {
     )
   }, [list, q, activeTag])
 
-  const tagMap = useMemo(() => Object.fromEntries(tags.map(t => [t.id, t])), [tags])
-
   // ======= 列表视图（均分列宽 + 右侧留白） =======
   const tableView = (
     <div className="overflow-auto border border-border rounded-2xl bg-surface">
@@ -108,8 +107,8 @@ export default function Docs() {
           <tr className="text-left text-muted">
             <th className="px-3 py-2"></th>
             <th className="px-3 py-2">{t('title')}</th>
-            <th className="px-3 py-2">{t('tags')}</th>
             <th className="px-3 py-2">{t('pathOrSource')}</th>
+            <th className="px-3 py-2">{t('tags')}</th>
             <th className="px-3 py-2 text-right pr-4 md:pr-6">{t('actions')}</th>
           </tr>
         </thead>
@@ -123,9 +122,16 @@ export default function Docs() {
                 </button>
               </td>
               <td className="px-3 py-2">
+                <FixedUrl url={it.path} length={36} className="text-muted" stripProtocol={false} />
               </td>
+              <td className="px-3 py-2 text-center">{it.tags?.length || 0}</td>
               <td className="px-3 py-2 pr-4 md:pr-6">
                 <div className="flex items-center gap-2 justify-end">
+                  {/^https?:\/\//i.test(it.path) && (
+                    <IconButton size="sm" srLabel={t('open')} onClick={() => window.open(it.path, '_blank')}>
+                      <ExternalLink className="w-4 h-4" />
+                    </IconButton>
+                  )}
                   <Button size="sm" variant="secondary" className="px-3" onClick={() => { setEdit(it); setOpenEdit(true) }}>
                     {t('edit')}
                   </Button>
@@ -147,6 +153,11 @@ export default function Docs() {
           <div className="mt-1"><FixedUrl url={it.path} length={32} className="text-muted" stripProtocol={false} /></div>
           {it.description && <div className="text-xs text-muted mt-1 line-clamp-2">{it.description}</div>}
           <div className="mt-2 flex items-center gap-2 justify-end">
+            {/^https?:\/\//i.test(it.path) && (
+              <IconButton size="sm" srLabel={t('open')} onClick={() => window.open(it.path, '_blank')}>
+                <ExternalLink className="w-4 h-4" />
+              </IconButton>
+            )}
             <Button size="sm" variant="secondary" className="px-3" onClick={() => { setEdit(it); setOpenEdit(true) }}>
               {t('edit')}
             </Button>
@@ -159,6 +170,11 @@ export default function Docs() {
   const ui = (
     <div className="h-[calc(100dvh-48px)] overflow-auto">
       <div className="sticky top-0 z-10 bg-surface/80 backdrop-blur border-b border-border">
+        <div className="max-w-screen-lg mx-auto px-6 py-3 flex items-center gap-3 rounded-2xl shadow-sm bg-surface">
+          <Input placeholder={t('search')} value={q} onChange={e => setQ(e.target.value)} className="flex-1" />
+          <Segmented value={view} onChange={setView} options={[{ label: t('table'), value: 'table' }, { label: t('card'), value: 'card' }]} />
+          <Button onClick={() => setOpenNew(true)}>{t('newDoc')}</Button>
+        </div>
         <div className="max-w-screen-lg mx-auto px-6 pb-2">
           <TagRow />
           {selection.size > 0 && (
@@ -193,9 +209,9 @@ export default function Docs() {
             </Button>
             <Button
               onClick={async () => {
-                if (!nTitle || !nPath) { alert('请填写完整'); return }
-                await addDoc({ title: nTitle, path: nPath, source: 'local', tags: nTags })
-                setOpenNew(false); setNTitle(''); setNPath(''); setNTags([])
+                if (!nTitle || !nPath) { alert(t('enterTitleAndUrl')); return }
+                await addDoc({ title: nTitle, path: nPath, source: 'local', description: nDesc, tags: nTags })
+                setOpenNew(false); setNTitle(''); setNPath(''); setNDesc(''); setNTags([])
               }}
             >
               {t('save')}
@@ -203,9 +219,10 @@ export default function Docs() {
           </>
         }>
         <div className="grid gap-3">
-          <Field label="标题"><Input value={nTitle} onChange={e => setNTitle(e.target.value)} /></Field>
-          <Field label="路径/来源"><Input value={nPath} onChange={e => setNPath(e.target.value)} placeholder="例如：/docs/a.pdf 或 URL" /></Field>
-          <Field label="标签"><TagPicker value={nTags} onChange={setNTags} /></Field>
+          <Field label={t('title')}><Input value={nTitle} onChange={e => setNTitle(e.target.value)} /></Field>
+          <Field label={t('pathOrSource')}><Input value={nPath} onChange={e => setNPath(e.target.value)} placeholder="/docs/a.pdf" /></Field>
+          <Field label={t('description')}><Input value={nDesc} onChange={e => setNDesc(e.target.value)} placeholder={t('optional')} /></Field>
+          <Field label={t('tags')}><TagPicker value={nTags} onChange={setNTags} /></Field>
         </div>
       </Modal>
 
@@ -241,10 +258,10 @@ export default function Docs() {
           </>
         }>
         <div className="grid gap-3">
-          <Field label="标题"><Input value={edit?.title || ''} onChange={e => setEdit(p => p ? { ...p, title: e.target.value } as DocItem : p)} /></Field>
-          <Field label="路径/来源"><Input value={edit?.path || ''} onChange={e => setEdit(p => p ? { ...p, path: e.target.value } as DocItem : p)} /></Field>
-          <Field label="备注"><Input value={edit?.description || ''} onChange={e => setEdit(p => p ? { ...p, description: e.target.value } as DocItem : p)} /></Field>
-          <Field label="标签"><TagPicker value={edit?.tags || []} onChange={v => setEdit(p => p ? { ...p, tags: v } as DocItem : p)} /></Field>
+          <Field label={t('title')}><Input value={edit?.title || ''} onChange={e => setEdit(p => p ? { ...p, title: e.target.value } as DocItem : p)} /></Field>
+          <Field label={t('pathOrSource')}><Input value={edit?.path || ''} onChange={e => setEdit(p => p ? { ...p, path: e.target.value } as DocItem : p)} /></Field>
+          <Field label={t('description')}><Input value={edit?.description || ''} onChange={e => setEdit(p => p ? { ...p, description: e.target.value } as DocItem : p)} /></Field>
+          <Field label={t('tags')}><TagPicker value={edit?.tags || []} onChange={v => setEdit(p => p ? { ...p, tags: v } as DocItem : p)} /></Field>
         </div>
       </Modal>
     </>
