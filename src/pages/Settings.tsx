@@ -29,6 +29,7 @@ export default function Settings() {
   const [resetIdx, setResetIdx] = useState<number[]>([])
   const [resetWords, setResetWords] = useState<string[]>(['', '', ''])
   const [newMaster, setNewMaster] = useState('')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (pw1 && pw2 && pw1 === pw2) {
@@ -116,25 +117,32 @@ export default function Settings() {
                 {captchaError && (
                   <div className="text-red-500 text-xs">{t('captchaError')}</div>
                 )}
-                <button
-                  className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-                  onClick={async () => {
-                    if (captcha.toLowerCase() !== captchaInput.trim().toLowerCase()) {
-                      setCaptchaError(true)
-                      return
-                    }
-                    await setMaster(pw1)
-                    setLastMaster(pw1)
-                    setShowMasterModal(true)
-                    setPw1('')
-                    setPw2('')
-                    setCaptcha('')
-                    setCaptchaInput('')
-                    setCaptchaError(false)
-                  }}
-                >
-                  {t('save')}
-                </button>
+                {!saving && (
+                  <button
+                    className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+                    onClick={async () => {
+                      if (captcha.toLowerCase() !== captchaInput.trim().toLowerCase()) {
+                        setCaptchaError(true)
+                        return
+                      }
+                      setSaving(true)
+                      try {
+                        await setMaster(pw1)
+                        setLastMaster(pw1)
+                        setShowMasterModal(true)
+                        setPw1('')
+                        setPw2('')
+                        setCaptcha('')
+                        setCaptchaInput('')
+                        setCaptchaError(false)
+                      } finally {
+                        setSaving(false)
+                      }
+                    }}
+                  >
+                    {t('save')}
+                  </button>
+                )}
               </>
             )}
           </div>
