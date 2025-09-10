@@ -15,10 +15,16 @@ export default function Settings() {
   const t = useTranslation()
   const { exportSites, exportDocs, tags, removeTag } = useItems()
   const [importType, setImportType] = useState<'site' | 'doc' | null>(null)
-  const { unlocked, masterHash, setMaster, unlock, lock } = useAuth()
+  const { masterHash, setMaster, mnemonic, verifyMnemonic, resetMaster } = useAuth()
   const [masterPw, setMasterPw] = useState('')
   const [showMasterModal, setShowMasterModal] = useState(false)
   const [lastMaster, setLastMaster] = useState('')
+  const [showMnemonicModal, setShowMnemonicModal] = useState(false)
+  const [showResetModal, setShowResetModal] = useState(false)
+  const [resetStep, setResetStep] = useState<'verify' | 'reset'>('verify')
+  const [resetIdx, setResetIdx] = useState<number[]>([])
+  const [resetWords, setResetWords] = useState<string[]>(['', '', ''])
+  const [newMaster, setNewMaster] = useState('')
 
   async function handleExport(kind: 'site' | 'doc') {
     const blob = kind === 'site' ? await exportSites() : await exportDocs()
@@ -45,64 +51,51 @@ export default function Settings() {
       </section>
       <section>
         <h2 className="text-lg font-medium mb-2">{t('master')}</h2>
-        {unlocked ? (
-          <div className="flex gap-2 items-center">
-            <Input
-              type="password"
-              value={masterPw}
-              onChange={e => setMasterPw(e.target.value)}
-              placeholder={t('enterMaster')}
-              className="max-w-xs"
-            />
-            <button
-              className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-              onClick={async () => {
-                if (!masterPw) return
-                await setMaster(masterPw)
-                setLastMaster(masterPw)
-                setShowMasterModal(true)
-                setMasterPw('')
-              }}
-            >
-              {t('save')}
-            </button>
-            <button
-              className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-              onClick={lock}
-            >
-              {t('lock')}
-            </button>
-          </div>
-        ) : (
-          <div className="flex gap-2 items-center">
-            <Input
-              type="password"
-              value={masterPw}
-              onChange={e => setMasterPw(e.target.value)}
-              placeholder={t('enterMaster')}
-              className="max-w-xs"
-            />
-            <button
-              className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-              onClick={async () => {
-                if (masterHash) {
-                  const ok = await unlock(masterPw)
-                  if (!ok) {
-                    alert(t('wrongMaster'))
-                    return
-                  }
-                } else {
-                  await setMaster(masterPw)
-                  setLastMaster(masterPw)
-                  setShowMasterModal(true)
-                }
-                setMasterPw('')
-              }}
-            >
-              {masterHash ? t('unlock') : t('save')}
-            </button>
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2 items-center">
+          <Input
+            type="password"
+            value={masterPw}
+            onChange={e => setMasterPw(e.target.value)}
+            placeholder={t('enterMaster')}
+            className="max-w-xs"
+          />
+          <button
+            className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+            onClick={async () => {
+              if (!masterPw) return
+              await setMaster(masterPw)
+              setLastMaster(masterPw)
+              setShowMasterModal(true)
+              setMasterPw('')
+            }}
+          >
+            {t('save')}
+          </button>
+          {masterHash && (
+            <>
+              <button
+                className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+                onClick={() => setShowMnemonicModal(true)}
+              >
+                {t('backupMnemonic')}
+              </button>
+              <button
+                className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+                onClick={() => {
+                  const idxs = Array.from({ length: 10 }, (_, i) => i)
+                    .sort(() => Math.random() - 0.5)
+                    .slice(0, 3)
+                  setResetIdx(idxs)
+                  setResetWords(['', '', ''])
+                  setResetStep('verify')
+                  setShowResetModal(true)
+                }}
+              >
+                {t('forgotPassword')}
+              </button>
+            </>
+          )}
+        </div>
       </section>
       <section>
         <h2 className="text-lg font-medium mb-2">导入/导出</h2>
@@ -138,6 +131,87 @@ export default function Settings() {
         </div>
       </section>
       <ImportExportModal open={importType !== null} initialType={importType ?? 'site'} onClose={() => setImportType(null)} />
+      <Modal
+        open={showMnemonicModal}
+        onClose={() => setShowMnemonicModal(false)}
+        title={t('mnemonic')}
+        footer={
+          <button
+            className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+            onClick={() => setShowMnemonicModal(false)}
+          >
+            {t('ok')}
+          </button>
+        }
+      >
+        <div className="flex flex-wrap gap-2">
+          {mnemonic?.map((w, i) => (
+            <span key={i} className="px-2 py-1 rounded bg-gray-100">{w}</span>
+          ))}
+        </div>
+      </Modal>
+      <Modal
+        open={showResetModal}
+        onClose={() => setShowResetModal(false)}
+        title={resetStep === 'verify' ? t('mnemonic') : t('master')}
+        footer={
+          resetStep === 'verify' ? (
+            <button
+              className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+              onClick={() => {
+                if (verifyMnemonic(resetIdx, resetWords)) {
+                  setResetStep('reset')
+                } else {
+                  alert(t('mnemonicError'))
+                }
+              }}
+            >
+              {t('ok')}
+            </button>
+          ) : (
+            <button
+              className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+              onClick={async () => {
+                if (!newMaster) return
+                await resetMaster(newMaster)
+                setLastMaster(newMaster)
+                setShowMasterModal(true)
+                setShowResetModal(false)
+                setNewMaster('')
+              }}
+            >
+              {t('save')}
+            </button>
+          )
+        }
+      >
+        {resetStep === 'verify' ? (
+          <div className="space-y-2">
+            {resetIdx.map((idx, i) => (
+              <div key={idx} className="flex items-center gap-2">
+                <span className="w-5 text-right">{idx + 1}.</span>
+                <Input
+                  value={resetWords[i]}
+                  onChange={e => {
+                    const v = [...resetWords]
+                    v[i] = e.target.value
+                    setResetWords(v)
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Input
+              type="password"
+              value={newMaster}
+              onChange={e => setNewMaster(e.target.value)}
+              placeholder={t('enterMaster')}
+            />
+          </div>
+        )}
+      </Modal>
       <Modal
         open={showMasterModal}
         onClose={() => {
