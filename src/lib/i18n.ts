@@ -38,6 +38,7 @@ const dict = {
     noResults: '没有匹配结果',
     enterMaster: '请输入主密码',
     wrongMaster: '主密码错误',
+    unlockVaultPrompt: '请输入主密码以解锁密码管理库',
     site: '站点',
     doc: '文档',
     title: '标题',
@@ -53,13 +54,17 @@ const dict = {
     editSite: '编辑网站',
     newPassword: '新建密码',
     editPassword: '编辑密码',
-    username: '账号',
+    copyPassword: '复制密码',
+    account: '账号',
+    username: '用户名',
     password: '密码',
     url: '地址',
     description: '备注',
     optional: '可选',
     enterTitleAndUrl: '请填写标题和地址',
-    copySuffix: ' 副本'
+    copySuffix: ' 副本',
+    masterWarning: '主密码仅展示一次，如若丢失无法恢复，请妥善保管',
+    ok: '好的'
   },
   en: {
     search: 'Search…',
@@ -98,6 +103,7 @@ const dict = {
     noResults: 'No matching results',
     enterMaster: 'Enter master password',
     wrongMaster: 'Incorrect master password',
+    unlockVaultPrompt: 'Enter master password to unlock the vault',
     site: 'Site',
     doc: 'Doc',
     title: 'Title',
@@ -113,13 +119,17 @@ const dict = {
     editSite: 'Edit Site',
     newPassword: 'New Password',
     editPassword: 'Edit Password',
+    copyPassword: 'Copy password',
+    account: 'Account',
     username: 'Username',
     password: 'Password',
     url: 'URL',
     description: 'Description',
     optional: 'Optional',
     enterTitleAndUrl: 'Please fill title and URL',
-    copySuffix: ' copy'
+    copySuffix: ' copy',
+    masterWarning: 'The master password is shown only once. If lost, it cannot be recovered. Please keep it safe',
+    ok: 'OK'
   }
 }
 
