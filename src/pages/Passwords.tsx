@@ -34,6 +34,7 @@ export default function Passwords() {
     clearSelection,
     removeMany,
     update,
+    addPassword,
     setFilters,
   } = useItems()
   const [params] = useSearchParams()
@@ -116,12 +117,28 @@ export default function Passwords() {
     setModalOpen(true)
   }
 
+  function openNew() {
+    if (!ensureUnlock()) return
+    setEditing(null)
+    setTitle('')
+    setUsername('')
+    setPassword('')
+    setUrl('')
+    setTags([])
+    setModalOpen(true)
+  }
+
   async function save() {
     if (!ensureUnlock()) return
-    if (!editing) return
+    if (!title.trim() || !password) return
     const passwordCipher = await encryptString(master!, password)
-    await update(editing.id, { title, username, passwordCipher, url, tags })
+    if (editing) {
+      await update(editing.id, { title, username, passwordCipher, url, tags })
+    } else {
+      await addPassword({ title, username, passwordCipher, url, tags })
+    }
     setModalOpen(false)
+    setEditing(null)
   }
 
   async function copyPwd(it: PasswordItem) {
@@ -170,7 +187,7 @@ export default function Passwords() {
         <thead className="bg-surface-hover">
           <tr className="text-left text-muted">
             <th className="px-3 py-2"></th>
-            <th className="px-3 py-2">{t('title')}</th>
+            <th className="px-3 py-2">{t('account')}</th>
             <th className="px-3 py-2">{t('username')}</th>
             <th className="px-3 py-2 text-right pr-4 md:pr-6">{t('actions')}</th>
           </tr>
@@ -284,7 +301,11 @@ export default function Passwords() {
       <div className="max-w-screen-lg mx-auto px-6 py-3 bg-surface text-text rounded-2xl shadow-sm">
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-lg font-medium">{t('vault')}</h1>
-          {!unlocked && <Button onClick={openUnlock}>{t('unlock')}</Button>}
+          {unlocked ? (
+            <Button onClick={openNew}>{t('new')}</Button>
+          ) : (
+            <Button onClick={openUnlock}>{t('unlock')}</Button>
+          )}
         </div>
         {view === 'table' ? tableView : cardView}
         {passwords.length === 0 && <div className="text-sm text-muted mt-2">{t('noResults')}</div>}
@@ -299,13 +320,15 @@ export default function Passwords() {
             <Button variant="secondary" onClick={() => setModalOpen(false)}>
               {t('cancel')}
             </Button>
-            <Button onClick={save}>{t('save')}</Button>
+            <Button onClick={save} disabled={!title.trim() || !password}>
+              {t('save')}
+            </Button>
           </>
         }
       >
         <div className="grid gap-3">
-          <Field label={t('title')}>
-            <Input value={title} onChange={e => setTitle(e.target.value)} />
+          <Field label={t('account')}>
+            <Input value={title} onChange={e => setTitle(e.target.value)} required />
           </Field>
           <Field label={t('username')}>
             <Input value={username} onChange={e => setUsername(e.target.value)} />
@@ -315,6 +338,7 @@ export default function Passwords() {
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
+              required
             />
           </Field>
           <Field label={t('url')}>
