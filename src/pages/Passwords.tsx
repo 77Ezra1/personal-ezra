@@ -101,6 +101,7 @@ export default function Passwords() {
       setUnlockOpen(true)
     }
   }
+
   async function openEdit(it: PasswordItem) {
     if (!ensureUnlock()) return
     setEditing(it)
@@ -341,7 +342,11 @@ export default function Passwords() {
             />
           </Field>
           <Field label={t('url')}>
-            <Input value={url} onChange={e => setUrl(e.target.value)} placeholder={t('optional')} />
+            <Input
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              placeholder={t('optionalUrl')}
+            />
           </Field>
           <Field label={t('tags')}>
             <TagPicker value={tags} onChange={setTags} />
