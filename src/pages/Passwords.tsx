@@ -148,7 +148,6 @@ export default function Passwords() {
       await copyWithTimeout(plain)
     } catch {}
   }
-
   React.useEffect(() => {
     const handler = (e: any) => {
       const { id, type } = e.detail || {}

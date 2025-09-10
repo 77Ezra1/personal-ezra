@@ -64,7 +64,9 @@ const dict = {
     enterTitleAndUrl: '请填写标题和地址',
     copySuffix: ' 副本',
     masterWarning: '主密码仅展示一次，如若丢失无法恢复，请妥善保管',
-    ok: '好的'
+    ok: '好的',
+    type: '类型',
+    noData: '暂无数据'
   },
   en: {
     search: 'Search…',
@@ -129,7 +131,9 @@ const dict = {
     enterTitleAndUrl: 'Please fill title and URL',
     copySuffix: ' copy',
     masterWarning: 'The master password is shown only once. If lost, it cannot be recovered. Please keep it safe',
-    ok: 'OK'
+    ok: 'OK',
+    type: 'Type',
+    noData: 'No data'
   }
 }
 
