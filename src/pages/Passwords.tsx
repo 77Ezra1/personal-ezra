@@ -105,7 +105,6 @@ export default function Passwords() {
       setUnlockOpen(true)
     }
   }
-
   async function openEdit(it: PasswordItem) {
     if (!ensureUnlock()) return
     setEditing(it)
@@ -348,7 +347,7 @@ export default function Passwords() {
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editing ? t('editPassword') : t('newPassword')}
+        title={t('editPassword')}
         footer={
           <>
             <Button variant="secondary" onClick={() => setModalOpen(false)}>
