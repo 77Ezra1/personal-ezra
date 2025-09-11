@@ -6,28 +6,7 @@ import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
 import { translate } from '../lib/i18n'
 import { useSettings } from './useSettings'
-
-function parseCsv(text: string): string[][] {
-  const lines = text.trim().split(/\r?\n/).filter(Boolean)
-  return lines.map(line => {
-    const res: string[] = []
-    let cur = ''
-    let inQuotes = false
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i]
-      if (c === '"') {
-        if (inQuotes && line[i + 1] === '"') { cur += '"'; i++ } else { inQuotes = !inQuotes }
-      } else if (c === ',' && !inQuotes) {
-        res.push(cur)
-        cur = ''
-      } else {
-        cur += c
-      }
-    }
-    res.push(cur)
-    return res.map(v => v.trim())
-  })
-}
+import Papa from 'papaparse'
 
 function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'password') {
   const entries = Object.entries(row).map(([k, v]) => [k.toLowerCase(), v] as [string, unknown])
@@ -320,15 +299,20 @@ export const useItems = create<ItemState>((set, get) => ({
           })
         }
       } else {
-        const rows = parseCsv(text)
-        if (rows.length > 1) {
-          const header = rows[0].map(h => h.toLowerCase())
-          for (let i = 1; i < rows.length; i++) {
-            const row: Record<string,string> = {}
-            header.forEach((h, idx) => { row[h] = rows[i][idx] })
-            const m = mapFields(row, 'site')
-            const now = Date.now()
-            sites.push({ id: nanoid(), type: 'site', title: m.title || '', url: m.url || '', description: m.description || '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='site').length) + i })
+        const result = Papa.parse<string[]>(text, { skipEmptyLines: true })
+        if (result.errors.length) {
+          errors.push(...result.errors.map(e => e.message))
+        } else {
+          const rows = result.data as string[][]
+          if (rows.length > 1) {
+            const header = rows[0].map(h => h.toLowerCase())
+            for (let i = 1; i < rows.length; i++) {
+              const row: Record<string,string> = {}
+              header.forEach((h, idx) => { row[h] = rows[i][idx] })
+              const m = mapFields(row, 'site')
+              const now = Date.now()
+              sites.push({ id: nanoid(), type: 'site', title: m.title || '', url: m.url || '', description: m.description || '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='site').length) + i })
+            }
           }
         }
       }
@@ -366,15 +350,20 @@ export const useItems = create<ItemState>((set, get) => ({
           })
         }
       } else {
-        const rows = parseCsv(text)
-        if (rows.length > 1) {
-          const header = rows[0].map(h => h.toLowerCase())
-          for (let i = 1; i < rows.length; i++) {
-            const row: Record<string,string> = {}
-            header.forEach((h, idx) => { row[h] = rows[i][idx] })
-            const m = mapFields(row, 'password')
-            const now = Date.now()
-            pwds.push({ id: nanoid(), type: 'password', title: m.title || '', username: m.username || '', passwordCipher: m.passwordCipher || '', url: m.url || '', description: '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='password').length) + i })
+        const result = Papa.parse<string[]>(text, { skipEmptyLines: true })
+        if (result.errors.length) {
+          errors.push(...result.errors.map(e => e.message))
+        } else {
+          const rows = result.data as string[][]
+          if (rows.length > 1) {
+            const header = rows[0].map(h => h.toLowerCase())
+            for (let i = 1; i < rows.length; i++) {
+              const row: Record<string,string> = {}
+              header.forEach((h, idx) => { row[h] = rows[i][idx] })
+              const m = mapFields(row, 'password')
+              const now = Date.now()
+              pwds.push({ id: nanoid(), type: 'password', title: m.title || '', username: m.username || '', passwordCipher: m.passwordCipher || '', url: m.url || '', description: '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='password').length) + i })
+            }
           }
         }
       }
@@ -412,15 +401,20 @@ export const useItems = create<ItemState>((set, get) => ({
           })
         }
       } else {
-        const rows = parseCsv(text)
-        if (rows.length > 1) {
-          const header = rows[0].map(h => h.toLowerCase())
-          for (let i = 1; i < rows.length; i++) {
-            const row: Record<string,string> = {}
-            header.forEach((h, idx) => { row[h] = rows[i][idx] })
-            const m = mapFields(row, 'doc')
-            const now = Date.now()
-            docs.push({ id: nanoid(), type: 'doc', title: m.title || '', path: m.path || '', source: (m.source as any) || 'local', description: '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='doc').length) + i })
+        const result = Papa.parse<string[]>(text, { skipEmptyLines: true })
+        if (result.errors.length) {
+          errors.push(...result.errors.map(e => e.message))
+        } else {
+          const rows = result.data as string[][]
+          if (rows.length > 1) {
+            const header = rows[0].map(h => h.toLowerCase())
+            for (let i = 1; i < rows.length; i++) {
+              const row: Record<string,string> = {}
+              header.forEach((h, idx) => { row[h] = rows[i][idx] })
+              const m = mapFields(row, 'doc')
+              const now = Date.now()
+              docs.push({ id: nanoid(), type: 'doc', title: m.title || '', path: m.path || '', source: (m.source as any) || 'local', description: '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='doc').length) + i })
+            }
           }
         }
       }

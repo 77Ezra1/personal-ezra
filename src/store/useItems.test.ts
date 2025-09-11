@@ -78,6 +78,38 @@ describe('items import/export', () => {
     expect(pwd.username).toBe('user')
     expect(pwd.passwordCipher).toBe('cipher')
   })
+
+  it('imports quoted fields with commas', async () => {
+    const { importSites } = useItems.getState()
+    const csv = 'name,link,desc\n"Example, Inc",https://ex.com,"hello, world"'
+    const file: any = { text: async () => csv }
+    await importSites(file)
+    const items = useItems.getState().items
+    expect(items.length).toBe(1)
+    const site = items[0] as any
+    expect(site.title).toBe('Example, Inc')
+    expect(site.description).toBe('hello, world')
+  })
+
+  it('imports fields with line breaks', async () => {
+    const { importSites } = useItems.getState()
+    const csv = 'name,link,desc\n"Example","https://ex.com","hello\nworld"'
+    const file: any = { text: async () => csv }
+    await importSites(file)
+    const items = useItems.getState().items
+    expect(items.length).toBe(1)
+    const site = items[0] as any
+    expect(site.description).toBe('hello\nworld')
+  })
+
+  it('reports malformed rows', async () => {
+    const { importSites } = useItems.getState()
+    const csv = 'name,link\n"Unclosed quote,https://ex.com'
+    const file: any = { text: async () => csv }
+    const res = await importSites(file)
+    expect(res.errors.length).toBeGreaterThan(0)
+    expect(res.items.length).toBe(0)
+  })
 })
 
 describe('duplicate', () => {
