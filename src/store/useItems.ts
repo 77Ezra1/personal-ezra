@@ -180,8 +180,10 @@ export const useItems = create<ItemState>((set, get) => ({
     const order = get().nextOrder.site
     const item: SiteItem = { id, type: 'site', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
     await db.items.put(item)
-    set(s => ({ nextOrder: { ...s.nextOrder, site: order + 1 } }))
-    await get().load()
+    set(s => ({
+      items: [...s.items, item].sort((a, b) => b.updatedAt - a.updatedAt),
+      nextOrder: { ...s.nextOrder, site: order + 1 }
+    }))
     return id
   },
   async addPassword(p) {
@@ -190,8 +192,10 @@ export const useItems = create<ItemState>((set, get) => ({
     const order = get().nextOrder.password
     const item: PasswordItem = { id, type: 'password', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
     await db.items.put(item)
-    set(s => ({ nextOrder: { ...s.nextOrder, password: order + 1 } }))
-    await get().load()
+    set(s => ({
+      items: [...s.items, item].sort((a, b) => b.updatedAt - a.updatedAt),
+      nextOrder: { ...s.nextOrder, password: order + 1 }
+    }))
     return id
   },
   async addDoc(p) {
@@ -200,15 +204,22 @@ export const useItems = create<ItemState>((set, get) => ({
     const order = get().nextOrder.doc
     const item: DocItem = { id, type: 'doc', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
     await db.items.put(item)
-    set(s => ({ nextOrder: { ...s.nextOrder, doc: order + 1 } }))
-    await get().load()
+    set(s => ({
+      items: [...s.items, item].sort((a, b) => b.updatedAt - a.updatedAt),
+      nextOrder: { ...s.nextOrder, doc: order + 1 }
+    }))
     return id
   },
   async update(id, patch) {
     const item = await db.items.get(id)
     if (!item) return
     const updated = { ...item, ...patch, updatedAt: Date.now() } as AnyItem
-    await db.items.put(updated); await get().load()
+    await db.items.put(updated)
+    set(s => ({
+      items: s.items
+        .map(i => (i.id === id ? updated : i))
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+    }))
   },
   async updateMany(ids, patch) {
     const { items } = get()
@@ -218,7 +229,13 @@ export const useItems = create<ItemState>((set, get) => ({
       return { ...item, ...patch, updatedAt: Date.now() } as AnyItem
     }).filter(Boolean) as AnyItem[]
     await db.items.bulkPut(updates)
-    await get().load()
+    set(s => {
+      const map = new Map(updates.map(u => [u.id, u]))
+      const items = s.items
+        .map(i => map.get(i.id) ?? i)
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+      return { items }
+    })
   },
   async duplicate(id) {
     const it = await db.items.get(id)
@@ -227,22 +244,27 @@ export const useItems = create<ItemState>((set, get) => ({
     const suffix = translate(lang, 'copySuffix')
     const copy = { ...it, id: nanoid(), title: it.title + suffix, createdAt: Date.now(), updatedAt: Date.now() }
     await db.items.put(copy as AnyItem)
-    await get().load()
+    set(s => ({
+      items: [...s.items, copy as AnyItem].sort((a, b) => b.updatedAt - a.updatedAt)
+    }))
     return copy.id
   },
   async remove(id) {
-    await db.items.delete(id); await get().load()
+    await db.items.delete(id)
+    set(s => ({ items: s.items.filter(i => i.id !== id) }))
   },
   async removeMany(ids) {
-    await db.items.bulkDelete(ids); await get().load()
+    await db.items.bulkDelete(ids)
+    set(s => ({ items: s.items.filter(i => !ids.includes(i.id)) }))
   },
 
   async addTag(p) {
     const id = nanoid()
     const { tags } = get()
     const color = TAG_COLORS[tags.length % TAG_COLORS.length] as TagColor
-    await db.tags.put({ id, ...p, color })
-    await get().load()
+    const tag = { id, ...p, color }
+    await db.tags.put(tag)
+    set(s => ({ tags: [...s.tags, tag] }))
     return id
   },
 
@@ -253,7 +275,10 @@ export const useItems = create<ItemState>((set, get) => ({
       it.tags.includes(id) ? { ...it, tags: it.tags.filter(t => t !== id) } : it
     )) as AnyItem[]
     await db.items.bulkPut(updates)
-    await get().load()
+    set(s => ({
+      items: updates,
+      tags: s.tags.filter(t => t.id !== id)
+    }))
   },
 
   setFilters(f) { set((s) => ({ filters: { ...s.filters, ...f } })) },
@@ -312,7 +337,10 @@ export const useItems = create<ItemState>((set, get) => ({
     }
     if (!dryRun && sites.length) {
       await db.items.bulkPut(sites)
-      await get().load()
+      set(s => ({
+        items: [...s.items, ...sites].sort((a, b) => b.updatedAt - a.updatedAt),
+        nextOrder: { ...s.nextOrder, site: s.nextOrder.site + sites.length }
+      }))
     }
     return { items: sites, errors }
   },
@@ -355,7 +383,10 @@ export const useItems = create<ItemState>((set, get) => ({
     }
     if (!dryRun && pwds.length) {
       await db.items.bulkPut(pwds)
-      await get().load()
+      set(s => ({
+        items: [...s.items, ...pwds].sort((a, b) => b.updatedAt - a.updatedAt),
+        nextOrder: { ...s.nextOrder, password: s.nextOrder.password + pwds.length }
+      }))
     }
     return { items: pwds, errors }
   },
@@ -398,7 +429,10 @@ export const useItems = create<ItemState>((set, get) => ({
     }
     if (!dryRun && docs.length) {
       await db.items.bulkPut(docs)
-      await get().load()
+      set(s => ({
+        items: [...s.items, ...docs].sort((a, b) => b.updatedAt - a.updatedAt),
+        nextOrder: { ...s.nextOrder, doc: s.nextOrder.doc + docs.length }
+      }))
     }
     return { items: docs, errors }
   }
