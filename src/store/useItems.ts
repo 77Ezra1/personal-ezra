@@ -6,28 +6,7 @@ import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
 import { translate } from '../lib/i18n'
 import { useSettings } from './useSettings'
-
-function parseCsv(text: string): string[][] {
-  const lines = text.trim().split(/\r?\n/).filter(Boolean)
-  return lines.map(line => {
-    const res: string[] = []
-    let cur = ''
-    let inQuotes = false
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i]
-      if (c === '"') {
-        if (inQuotes && line[i + 1] === '"') { cur += '"'; i++ } else { inQuotes = !inQuotes }
-      } else if (c === ',' && !inQuotes) {
-        res.push(cur)
-        cur = ''
-      } else {
-        cur += c
-      }
-    }
-    res.push(cur)
-    return res.map(v => v.trim())
-  })
-}
+import Papa from 'papaparse'
 
 function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'password') {
   const entries = Object.entries(row).map(([k, v]) => [k.toLowerCase(), v] as [string, unknown])
