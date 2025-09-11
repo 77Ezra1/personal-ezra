@@ -127,6 +127,7 @@ interface ItemState {
   filters: Filters
   selection: Set<string>
   nextOrder: Record<ItemType, number>
+  indexMap: Record<string, number>
 
   load: () => Promise<void>
   addSite: (p: Omit<SiteItem,'id'|'createdAt'|'updatedAt'|'type'>) => Promise<string>
@@ -158,6 +159,7 @@ export const useItems = create<ItemState>((set, get) => ({
   filters: {},
   selection: new Set<string>(),
   nextOrder: { site: 1, password: 1, doc: 1 },
+  indexMap: {},
 
   async load() {
     const [items, tags] = await Promise.all([
@@ -165,13 +167,15 @@ export const useItems = create<ItemState>((set, get) => ({
       db.tags.toArray()
     ])
     const nextOrder: Record<ItemType, number> = { site: 1, password: 1, doc: 1 }
-    items.forEach(it => {
+    const indexMap: Record<string, number> = {}
+    items.forEach((it, idx) => {
       const ord = it.order ?? 0
       if (ord >= nextOrder[it.type]) {
         nextOrder[it.type] = ord + 1
       }
+      indexMap[it.id] = idx
     })
-    set({ items, tags, nextOrder })
+    set({ items, tags, nextOrder, indexMap })
   },
 
   async addSite(p) {
@@ -262,11 +266,17 @@ export const useItems = create<ItemState>((set, get) => ({
     set(s => {
       const sel = new Set(s.selection)
       if (rangeWith && sel.size) {
-        const items = s.items.filter(i => i.type === (s.filters.type ?? i.type))
-        const a = items.findIndex(i => i.id === rangeWith)
-        const b = items.findIndex(i => i.id === id)
-        const [start, end] = a<b ? [a,b] : [b,a]
-        for (let i=start;i<=end;i++) sel.add(items[i].id)
+        const a = s.indexMap[rangeWith]
+        const b = s.indexMap[id]
+        if (a !== undefined && b !== undefined) {
+          const [start, end] = a < b ? [a, b] : [b, a]
+          for (let i = start; i <= end; i++) {
+            const item = s.items[i]
+            if (item.type === (s.filters.type ?? item.type)) {
+              sel.add(item.id)
+            }
+          }
+        }
       } else {
         if (sel.has(id)) sel.delete(id); else sel.add(id)
       }
