@@ -26,13 +26,24 @@ export default function CommandK() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const filtered = React.useMemo(() => {
+  const { list: filtered, groups, offsets } = React.useMemo(() => {
     const list = q
-      ? items.filter(i => (i.title + ' ' + ('url' in i ? (i as any).url : '') + ' ' + (i.description || '')).toLowerCase().includes(q.toLowerCase()))
+      ? items.filter(i =>
+          (i.title + ' ' + ('url' in i ? (i as any).url : '') + ' ' + (i.description || '')).toLowerCase().includes(q.toLowerCase())
+        )
       : items
-    const groups: Record<string, AnyItem[]> = { site: [], password: [], doc: [] } as any
+    const groups: Record<'site' | 'password' | 'doc', AnyItem[]> = {
+      site: [],
+      password: [],
+      doc: [],
+    }
     list.forEach(it => groups[it.type].push(it))
-    return [...groups.site, ...groups.password, ...groups.doc]
+    const offsets = {
+      site: 0,
+      password: groups.site.length,
+      doc: groups.site.length + groups.password.length,
+    }
+    return { list, groups, offsets }
   }, [items, q])
 
   React.useEffect(() => { setIdx(0) }, [q, open])
@@ -61,11 +72,17 @@ export default function CommandK() {
           }}
         />
         <div className="max-h-80 overflow-auto">
+          {/* TODO: Virtualize this list if item counts grow large */}
           <Section title="网站">
-            {filtered.filter(i=>i.type==='site').map((it, i) => {
-              const k = filtered.findIndex(x=>x.id===it.id)
+            {groups.site.map((it, i) => {
+              const k = offsets.site + i
               return (
-                <div key={it.id} className={"px-3 py-2 cursor-pointer "+(idx===k?'bg-gray-100':'hover:bg-gray-50')} onMouseEnter={()=>setIdx(k)} onClick={()=>onEnter(it)}>
+                <div
+                  key={it.id}
+                  className={'px-3 py-2 cursor-pointer ' + (idx === k ? 'bg-gray-100' : 'hover:bg-gray-50')}
+                  onMouseEnter={() => setIdx(k)}
+                  onClick={() => onEnter(it)}
+                >
                   <div className="font-medium">{it.title}</div>
                   <div className="text-xs text-gray-500">{(it as any).url}</div>
                 </div>
@@ -73,10 +90,15 @@ export default function CommandK() {
             })}
           </Section>
           <Section title="密码">
-            {filtered.filter(i=>i.type==='password').map((it, i) => {
-              const k = filtered.findIndex(x=>x.id===it.id)
+            {groups.password.map((it, i) => {
+              const k = offsets.password + i
               return (
-                <div key={it.id} className={"px-3 py-2 cursor-pointer "+(idx===k?'bg-gray-100':'hover:bg-gray-50')} onMouseEnter={()=>setIdx(k)} onClick={()=>onEnter(it)}>
+                <div
+                  key={it.id}
+                  className={'px-3 py-2 cursor-pointer ' + (idx === k ? 'bg-gray-100' : 'hover:bg-gray-50')}
+                  onMouseEnter={() => setIdx(k)}
+                  onClick={() => onEnter(it)}
+                >
                   <div className="font-medium">{it.title}</div>
                   <div className="text-xs text-gray-500">复制密码（需已解锁）</div>
                 </div>
@@ -84,10 +106,15 @@ export default function CommandK() {
             })}
           </Section>
           <Section title="文档">
-            {filtered.filter(i=>i.type==='doc').map((it, i) => {
-              const k = filtered.findIndex(x=>x.id===it.id)
+            {groups.doc.map((it, i) => {
+              const k = offsets.doc + i
               return (
-                <div key={it.id} className={"px-3 py-2 cursor-pointer "+(idx===k?'bg-gray-100':'hover:bg-gray-50')} onMouseEnter={()=>setIdx(k)} onClick={()=>onEnter(it)}>
+                <div
+                  key={it.id}
+                  className={'px-3 py-2 cursor-pointer ' + (idx === k ? 'bg-gray-100' : 'hover:bg-gray-50')}
+                  onMouseEnter={() => setIdx(k)}
+                  onClick={() => onEnter(it)}
+                >
                   <div className="font-medium">{it.title}</div>
                   <div className="text-xs text-gray-500">打开链接</div>
                 </div>
