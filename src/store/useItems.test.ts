@@ -128,6 +128,20 @@ describe('duplicate', () => {
 })
 
 describe('toggleSelect', () => {
+  it('selects range across all items when unfiltered', async () => {
+    const { addSite, addDoc, addPassword, clearSelection, toggleSelect } = useItems.getState()
+    const s1 = await addSite({ title: 'S1', url: '', description: '', tags: [] })
+    await new Promise(r => setTimeout(r, 1))
+    const d1 = await addDoc({ title: 'D1', path: '/d1', source: 'local', tags: [] })
+    await new Promise(r => setTimeout(r, 1))
+    const p1 = await addPassword({ title: 'P1', username: '', passwordCipher: '', url: '', description: '', tags: [] })
+    clearSelection()
+    toggleSelect(s1)
+    toggleSelect(p1, s1)
+    const sel = useItems.getState().selection
+    expect([...sel].sort()).toEqual([s1, d1, p1].sort())
+  })
+
   it('selects range of sites when filtered', async () => {
     const { addSite, addDoc, setFilters, clearSelection, toggleSelect } = useItems.getState()
     await addSite({ title: 'S1', url: '', description: '', tags: [] })
