@@ -28,7 +28,12 @@ export default function Settings() {
   const [resetStep, setResetStep] = useState<'verify' | 'reset'>('verify')
   const [resetIdx, setResetIdx] = useState<number[]>([])
   const [resetWords, setResetWords] = useState<string[]>(['', '', ''])
-  const [newMaster, setNewMaster] = useState('')
+  const [newPw1, setNewPw1] = useState('')
+  const [newPw2, setNewPw2] = useState('')
+  const [resetCaptcha, setResetCaptcha] = useState('')
+  const [resetCaptchaInput, setResetCaptchaInput] = useState('')
+  const [resetCaptchaError, setResetCaptchaError] = useState(false)
+  const [resetSaving, setResetSaving] = useState(false)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -44,6 +49,22 @@ export default function Settings() {
       if (captchaError) setCaptchaError(false)
     }
   }, [pw1, pw2, captcha, captchaInput, captchaError])
+
+  useEffect(() => {
+    if (resetStep === 'reset') {
+      if (newPw1 && newPw2 && newPw1 === newPw2) {
+        if (!resetCaptcha) {
+          const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+          const code = Array.from({ length: 4 }, () => letters[Math.floor(Math.random() * letters.length)]).join('')
+          setResetCaptcha(code)
+        }
+      } else {
+        if (resetCaptcha) setResetCaptcha('')
+        if (resetCaptchaInput) setResetCaptchaInput('')
+        if (resetCaptchaError) setResetCaptchaError(false)
+      }
+    }
+  }, [resetStep, newPw1, newPw2, resetCaptcha, resetCaptchaInput, resetCaptchaError])
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -163,6 +184,11 @@ export default function Settings() {
                 setResetIdx(idxs)
                 setResetWords(['', '', ''])
                 setResetStep('verify')
+                setNewPw1('')
+                setNewPw2('')
+                setResetCaptcha('')
+                setResetCaptchaInput('')
+                setResetCaptchaError(false)
                 setShowResetModal(true)
               }}
             >
@@ -237,7 +263,16 @@ export default function Settings() {
       </Modal>
       <Modal
         open={showResetModal}
-        onClose={() => setShowResetModal(false)}
+        onClose={() => {
+          setShowResetModal(false)
+          setResetStep('verify')
+          setResetWords(['', '', ''])
+          setNewPw1('')
+          setNewPw2('')
+          setResetCaptcha('')
+          setResetCaptchaInput('')
+          setResetCaptchaError(false)
+        }}
         title={resetStep === 'verify' ? t('mnemonic') : t('master')}
         footer={
           resetStep === 'verify' ? (
@@ -254,19 +289,34 @@ export default function Settings() {
               {t('ok')}
             </button>
           ) : (
-            <button
-              className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
-              onClick={async () => {
-                if (!newMaster) return
-                await resetMaster(newMaster)
-                setLastMaster(newMaster)
-                setShowMasterModal(true)
-                setShowResetModal(false)
-                setNewMaster('')
-              }}
-            >
-              {t('save')}
-            </button>
+            !resetSaving && (
+              <button
+                className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+                onClick={async () => {
+                  if (newPw1 !== newPw2) return
+                  if (resetCaptcha.toLowerCase() !== resetCaptchaInput.trim().toLowerCase()) {
+                    setResetCaptchaError(true)
+                    return
+                  }
+                  setResetSaving(true)
+                  try {
+                    await resetMaster(newPw1)
+                    setLastMaster(newPw1)
+                    setShowMasterModal(true)
+                    setShowResetModal(false)
+                    setNewPw1('')
+                    setNewPw2('')
+                    setResetCaptcha('')
+                    setResetCaptchaInput('')
+                    setResetCaptchaError(false)
+                  } finally {
+                    setResetSaving(false)
+                  }
+                }}
+              >
+                {t('save')}
+              </button>
+            )
           )
         }
       >
@@ -290,10 +340,37 @@ export default function Settings() {
           <div className="space-y-2">
             <Input
               type="password"
-              value={newMaster}
-              onChange={e => setNewMaster(e.target.value)}
+              value={newPw1}
+              onChange={e => setNewPw1(e.target.value)}
               placeholder={t('enterMaster')}
             />
+            <Input
+              type="password"
+              value={newPw2}
+              onChange={e => setNewPw2(e.target.value)}
+              placeholder={t('confirmMaster')}
+            />
+            {newPw2 && newPw1 !== newPw2 && (
+              <div className="text-red-500 text-xs">{t('masterMismatch')}</div>
+            )}
+            {newPw1 && newPw1 === newPw2 && resetCaptcha && (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-1 rounded bg-gray-100 select-none">{resetCaptcha}</span>
+                  <Input
+                    value={resetCaptchaInput}
+                    onChange={e => {
+                      setResetCaptchaInput(e.target.value)
+                      setResetCaptchaError(false)
+                    }}
+                    placeholder={t('enterCaptcha')}
+                  />
+                </div>
+                {resetCaptchaError && (
+                  <div className="text-red-500 text-xs">{t('captchaError')}</div>
+                )}
+              </>
+            )}
           </div>
         )}
       </Modal>
