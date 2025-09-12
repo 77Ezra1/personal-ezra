@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { db } from '../lib/db'
-import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType }
-  from '../types'
+import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType } from '../types'
 import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
 import { translate } from '../lib/i18n'
@@ -145,7 +144,16 @@ function buildItem(type: ItemType, m: any, order: number): AnyItem {
   }
 }
 
-type Filters = { type?: 'site'|'password'|'doc'; tags?: string[] }
+function parseCsv(text: string) {
+  return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
+}
+
+async function serializeItems(type: ItemType): Promise<Blob> {
+  const items = await db.items.where('type').equals(type).toArray()
+  return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
+}
+
+type Filters = { type?: 'site' | 'password' | 'doc'; tags?: string[] }
 
 interface ItemState {
   items: AnyItem[]
@@ -179,6 +187,53 @@ interface ItemState {
   importDocs: (file: File, dryRun?: boolean) => Promise<{ items: DocItem[]; errors: string[] }>
 }
 
+async function importItems<T extends AnyItem>(
+  type: ItemType,
+  file: File,
+  dryRun: boolean,
+  get: () => ItemState
+): Promise<{ items: T[]; errors: string[] }> {
+  const text = await file.text()
+  const { items } = get()
+  const existingCount = items.filter(i => i.type === type).length
+  const res: T[] = []
+  const errors: string[] = []
+  try {
+      if (/^\s*[\[{]/.test(text)) {
+      const data = JSON.parse(text)
+      if (Array.isArray(data)) {
+        data.forEach((d: any, idx: number) => {
+          const m = mapFields(d, type)
+          res.push(buildItem(type, m, existingCount + idx + 1) as T)
+        })
+      }
+    } else {
+      const parsed = parseCsv(text)
+      if (parsed.errors.length) {
+        errors.push(...parsed.errors.map(e => e.message))
+        return { items: res, errors }
+      }
+      const rows = parsed.data
+      if (rows.length > 1) {
+        const header = rows[0].map(h => h.toLowerCase())
+        for (let i = 1; i < rows.length; i++) {
+          const row: Record<string, string> = {}
+          header.forEach((h, idx) => { row[h] = rows[i][idx] })
+          const m = mapFields(row, type)
+          res.push(buildItem(type, m, existingCount + i) as T)
+        }
+      }
+    }
+  } catch (e: any) {
+    errors.push(e.message)
+  }
+  if (!dryRun && res.length) {
+    await db.items.bulkPut(res)
+    await get().load()
+  }
+  return { items: res, errors }
+}
+
 export const useItems = create<ItemState>((set, get) => ({
   items: [],
   tags: [],
@@ -190,7 +245,7 @@ export const useItems = create<ItemState>((set, get) => ({
   async load() {
     const [items, tags] = await Promise.all([
       db.items.orderBy('updatedAt').reverse().toArray(),
-      db.tags.toArray()
+      db.tags.toArray(),
     ])
     const nextOrder: Record<ItemType, number> = { site: 1, password: 1, doc: 1 }
     const indexMap: Record<string, number> = {}
@@ -234,16 +289,18 @@ export const useItems = create<ItemState>((set, get) => ({
     await get().load()
     return id
   },
+
   async update(id, patch) {
     const item = await db.items.get(id)
     if (!item) return
     const updated = { ...item, ...patch, updatedAt: Date.now() } as AnyItem
-    await db.items.put(updated); await get().load()
+    await db.items.put(updated)
+    await get().load()
   },
   async updateMany(ids, patch) {
     const { items } = get()
     const updates = ids.map(id => {
-      const item = items.find(i=>i.id===id)
+      const item = items.find(i => i.id === id)
       if (!item) return null
       return { ...item, ...patch, updatedAt: Date.now() } as AnyItem
     }).filter(Boolean) as AnyItem[]
@@ -261,10 +318,12 @@ export const useItems = create<ItemState>((set, get) => ({
     return copy.id
   },
   async remove(id) {
-    await db.items.delete(id); await get().load()
+    await db.items.delete(id)
+    await get().load()
   },
   async removeMany(ids) {
-    await db.items.bulkDelete(ids); await get().load()
+    await db.items.bulkDelete(ids)
+    await get().load()
   },
 
   async addTag(p) {
@@ -275,7 +334,6 @@ export const useItems = create<ItemState>((set, get) => ({
     await get().load()
     return id
   },
-
   async removeTag(id) {
     await db.tags.delete(id)
     const { items } = get()
@@ -286,7 +344,7 @@ export const useItems = create<ItemState>((set, get) => ({
     await get().load()
   },
 
-  setFilters(f) { set((s) => ({ filters: { ...s.filters, ...f } })) },
+  setFilters(f) { set(s => ({ filters: { ...s.filters, ...f } })) },
   clearSelection() { set({ selection: new Set() }) },
   toggleSelect(id, rangeWith = null) {
     set(s => {
@@ -310,175 +368,11 @@ export const useItems = create<ItemState>((set, get) => ({
     })
   },
 
-  async exportSites() {
-    const items = await db.items.where('type').equals('site').toArray()
-    return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
-  }
+  exportSites: () => serializeItems('site'),
+  importSites: (file, dryRun) => importItems<SiteItem>('site', file, dryRun ?? false, get),
+  exportPasswords: () => serializeItems('password'),
+  importPasswords: (file, dryRun) => importItems<PasswordItem>('password', file, dryRun ?? false, get),
+  exportDocs: () => serializeItems('doc'),
+  importDocs: (file, dryRun) => importItems<DocItem>('doc', file, dryRun ?? false, get),
+}))
 
-  const importItems = async <T extends AnyItem>(type: ItemType, file: File, dryRun = false) => {
-    const text = await file.text()
-    const { items } = get()
-    const existingCount = items.filter(i => i.type === type).length
-    const res: T[] = []
-    const errors: string[] = []
-    try {
-      if (/^\s*[\[{]/.test(text)) {
-        const data = JSON.parse(text)
-        if (Array.isArray(data)) {
-          data.forEach((d: any, idx: number) => {
-            const m = mapFields(d, type)
-            res.push(buildItem(type, m, existingCount + idx + 1) as T)
-          })
-        }
-      } else {
-        const rows = parseCsv(text)
-        if (rows.length > 1) {
-          const header = rows[0].map(h => h.toLowerCase())
-          for (let i = 1; i < rows.length; i++) {
-            const row: Record<string, string> = {}
-            header.forEach((h, idx) => { row[h] = rows[i][idx] })
-            const m = mapFields(row, type)
-            res.push(buildItem(type, m, existingCount + i) as T)
-          }
-        }
-      }
-    } catch (e: any) {
-      errors.push(e.message)
-    }
-    if (!dryRun && res.length) {
-      await db.items.bulkPut(res)
-      await get().load()
-    }
-    return { items: res, errors }
-  }
-
-  return {
-    items: [],
-    tags: [],
-    filters: {},
-    selection: new Set<string>(),
-    nextOrder: { site: 1, password: 1, doc: 1 },
-
-    async load() {
-      const [items, tags] = await Promise.all([
-        db.items.orderBy('updatedAt').reverse().toArray(),
-        db.tags.toArray(),
-      ])
-      const nextOrder: Record<ItemType, number> = { site: 1, password: 1, doc: 1 }
-      items.forEach(it => {
-        const ord = it.order ?? 0
-        if (ord >= nextOrder[it.type]) {
-          nextOrder[it.type] = ord + 1
-        }
-      })
-      set({ items, tags, nextOrder })
-    },
-
-    async addSite(p) {
-      const id = nanoid()
-      const now = Date.now()
-      const order = get().nextOrder.site
-      const item: SiteItem = { id, type: 'site', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-      await db.items.put(item)
-      set(s => ({ nextOrder: { ...s.nextOrder, site: order + 1 } }))
-      await get().load()
-      return id
-    },
-    async addPassword(p) {
-      const id = nanoid()
-      const now = Date.now()
-      const order = get().nextOrder.password
-      const item: PasswordItem = { id, type: 'password', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-      await db.items.put(item)
-      set(s => ({ nextOrder: { ...s.nextOrder, password: order + 1 } }))
-      await get().load()
-      return id
-    },
-    async addDoc(p) {
-      const id = nanoid()
-      const now = Date.now()
-      const order = get().nextOrder.doc
-      const item: DocItem = { id, type: 'doc', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-      await db.items.put(item)
-      set(s => ({ nextOrder: { ...s.nextOrder, doc: order + 1 } }))
-      await get().load()
-      return id
-    },
-    async update(id, patch) {
-      const item = await db.items.get(id)
-      if (!item) return
-      const updated = { ...item, ...patch, updatedAt: Date.now() } as AnyItem
-      await db.items.put(updated); await get().load()
-    },
-    async updateMany(ids, patch) {
-      const { items } = get()
-      const updates = ids.map(id => {
-        const item = items.find(i => i.id === id)
-        if (!item) return null
-        return { ...item, ...patch, updatedAt: Date.now() } as AnyItem
-      }).filter(Boolean) as AnyItem[]
-      await db.items.bulkPut(updates)
-      await get().load()
-    },
-    async duplicate(id) {
-      const it = await db.items.get(id)
-      if (!it) return
-      const lang = useSettings.getState().language
-      const suffix = translate(lang, 'copySuffix')
-      const copy = { ...it, id: nanoid(), title: it.title + suffix, createdAt: Date.now(), updatedAt: Date.now() }
-      await db.items.put(copy as AnyItem)
-      await get().load()
-      return copy.id
-    },
-    async remove(id) {
-      await db.items.delete(id); await get().load()
-    },
-    async removeMany(ids) {
-      await db.items.bulkDelete(ids); await get().load()
-    },
-
-    async addTag(p) {
-      const id = nanoid()
-      const { tags } = get()
-      const color = TAG_COLORS[tags.length % TAG_COLORS.length] as TagColor
-      await db.tags.put({ id, ...p, color })
-      await get().load()
-      return id
-    },
-
-    async removeTag(id) {
-      await db.tags.delete(id)
-      const { items } = get()
-      const updates = items.map(it => (
-        it.tags.includes(id) ? { ...it, tags: it.tags.filter(t => t !== id) } : it
-      )) as AnyItem[]
-      await db.items.bulkPut(updates)
-      await get().load()
-    },
-
-    setFilters(f) { set((s) => ({ filters: { ...s.filters, ...f } })) },
-    clearSelection() { set({ selection: new Set() }) },
-    toggleSelect(id, rangeWith = null) {
-      set(s => {
-        const sel = new Set(s.selection)
-        if (rangeWith && sel.size) {
-          const items = s.items.filter(i => i.type === (s.filters.type ?? i.type))
-          const a = items.findIndex(i => i.id === rangeWith)
-          const b = items.findIndex(i => i.id === id)
-          const [start, end] = a < b ? [a, b] : [b, a]
-          for (let i = start; i <= end; i++) sel.add(items[i].id)
-        } else {
-          if (sel.has(id)) sel.delete(id); else sel.add(id)
-        }
-        return { selection: sel }
-      })
-    },
-
-    exportSites: () => serializeItems('site'),
-    importSites: (file, dryRun) => importItems<SiteItem>('site', file, dryRun),
-    exportPasswords: () => serializeItems('password'),
-    importPasswords: (file, dryRun) => importItems<PasswordItem>('password', file, dryRun),
-    exportDocs: () => serializeItems('doc'),
-    importDocs: (file, dryRun) => importItems<DocItem>('doc', file, dryRun),
-  }
-})
