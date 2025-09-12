@@ -12,6 +12,8 @@
   "dependencies": {
     "@tauri-apps/api": "^1.5.6",
     "clsx": "^2.1.1",
+    "dexie": "^4.2.0",
+    "fake-indexeddb": "^6.2.2",
     "fuse.js": "^7.0.0",
     "lucide-react": "^0.454.0",
     "nanoid": "^5.0.7",
@@ -20,7 +22,7 @@
     "react-dom": "^18.2.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^6.26.2",
-    "sql.js": "^1.10.2",
+    "sql.js": "^1.13.0",
     "zustand": "^4.5.2"
   },
   "devDependencies": {

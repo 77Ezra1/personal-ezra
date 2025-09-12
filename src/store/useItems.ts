@@ -1,5 +1,7 @@
 import { create } from 'zustand'
-import { exec, query } from '../lib/db'
+import { db, dbAddItem, dbGetItem, dbPutTag, dbDeleteTag, dbBulkPut, exec, query } from '../lib/db'
+import { getStrongholdKey } from '../lib/stronghold'
+import { encryptString, decryptString } from '../lib/crypto'
 import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType } from '../types'
 import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
