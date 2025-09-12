@@ -8,10 +8,7 @@ importers:
 
   .:
     dependencies:
-      '@tauri-apps/api':
-        specifier: ^2.8.0
-        version: 2.8.0
-      '@tauri-apps/plugin-sql':
+      '@tauri-apps/plugin-stronghold':
         specifier: ^2.3.0
         version: 2.3.0
       clsx:
@@ -956,8 +953,8 @@ packages:
   '@tauri-apps/api@2.8.0':
     resolution: {integrity: sha512-ga7zdhbS2GXOMTIZRT0mYjKJtR9fivsXzsyq5U3vjDL0s6DTMwYRm0UHNjzTY5dh4+LSC68Sm/7WEiimbQNYlw==}
 
-  '@tauri-apps/plugin-sql@2.3.0':
-    resolution: {integrity: sha512-JYwIocfsLaDWa41LMiZWuzts7yCJR+EpZPRmgpO7Gd7XiAS9S67dKz306j/k/d9XntB0YopMRBol2OIWMschuA==}
+  '@tauri-apps/plugin-stronghold@2.3.0':
+    resolution: {integrity: sha512-RU3p6OQqEs1B0D67HAm6SFtIlOv8Pmjocm32Oz6dywmfsjCY74/P2bUAv7SGqVSzBLwz8ODaavCGeS2s6yXqcg==}
 
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
@@ -3645,7 +3642,7 @@ snapshots:
 
   '@tauri-apps/api@2.8.0': {}
 
-  '@tauri-apps/plugin-sql@2.3.0':
+  '@tauri-apps/plugin-stronghold@2.3.0':
     dependencies:
       '@tauri-apps/api': 2.8.0
 
