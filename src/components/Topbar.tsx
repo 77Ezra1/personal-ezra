@@ -36,7 +36,7 @@ export default function Topbar() {
   const [openUser, setOpenUser] = useState(false)
   const [online, setOnline] = useState(navigator.onLine)
 
-  const { unlocked, unlock, lock, username, avatar, logout, masterHash } = useAuth()
+  const { unlocked, unlock, lock, username, avatar, logout, hasMaster } = useAuth()
   const items = useItems(s => s.items)
   const initial = username?.[0]?.toUpperCase()
   const t = useTranslation()
