@@ -8,10 +8,6 @@ import { useSettings } from './useSettings'
 import Papa from 'papaparse'
 import { saveFile, deleteFile } from '../lib/fs'
 
-function parseCsv(text: string) {
-  return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
-}
-
 function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'password') {
   const entries = Object.entries(row).map(([k, v]) => [k.toLowerCase(), v] as [string, unknown])
   const lc: Record<string, unknown> = Object.fromEntries(entries)
