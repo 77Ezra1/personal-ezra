@@ -7,12 +7,8 @@ import { translate } from '../lib/i18n'
 import { useSettings } from './useSettings'
 import Papa from 'papaparse'
 
-function parseCsv(text: string): string[][] {
-  const res = Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
-  if (res.errors.length) {
-    throw new Error(res.errors.map(e => e.message).join('; '))
-  }
-  return res.data as string[][]
+function parseCsv(text: string) {
+  return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
 }
 
 function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'password') {
@@ -150,10 +146,6 @@ function buildItem(type: ItemType, m: any, order: number): AnyItem {
     updatedAt: now,
     order,
   }
-}
-
-function parseCsv(text: string) {
-  return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
 }
 
 async function serializeItems(type: ItemType): Promise<Blob> {
