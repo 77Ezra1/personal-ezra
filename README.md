@@ -2,6 +2,8 @@
 
 基于 React + TypeScript + Vite + Tailwind + Zustand + SQLite 的个人管理系统最小可运行骨架。
 
+本项目推荐使用 [pnpm](https://pnpm.io/) 作为包管理器。
+
 ## 本地运行
 
 ```bash
