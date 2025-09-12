@@ -7,6 +7,14 @@ import { translate } from '../lib/i18n'
 import { useSettings } from './useSettings'
 import Papa from 'papaparse'
 
+function parseCsv(text: string): string[][] {
+  const res = Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
+  if (res.errors.length) {
+    throw new Error(res.errors.map(e => e.message).join('; '))
+  }
+  return res.data as string[][]
+}
+
 function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'password') {
   const entries = Object.entries(row).map(([k, v]) => [k.toLowerCase(), v] as [string, unknown])
   const lc: Record<string, unknown> = Object.fromEntries(entries)
@@ -164,9 +172,11 @@ interface ItemState {
   indexMap: Record<string, number>
 
   load: () => Promise<void>
-  addSite: (p: Omit<SiteItem,'id'|'createdAt'|'updatedAt'|'type'>) => Promise<string>
-  addPassword: (p: Omit<PasswordItem,'id'|'createdAt'|'updatedAt'|'type'>) => Promise<string>
-  addDoc: (p: Omit<DocItem,'id'|'createdAt'|'updatedAt'|'type'>) => Promise<string>
+  addSite: (p: Omit<SiteItem, 'id' | 'createdAt' | 'updatedAt' | 'type'>) => Promise<string>
+  addPassword: (
+    p: Omit<PasswordItem, 'id' | 'createdAt' | 'updatedAt' | 'type'>
+  ) => Promise<string>
+  addDoc: (p: Omit<DocItem, 'id' | 'createdAt' | 'updatedAt' | 'type'>) => Promise<string>
   update: (id: string, patch: Partial<AnyItem>) => Promise<void>
   updateMany: (ids: string[], patch: Partial<AnyItem>) => Promise<void>
   duplicate: (id: string) => Promise<string | undefined>
@@ -180,11 +190,20 @@ interface ItemState {
   toggleSelect: (id: string, rangeWith?: string | null) => void
 
   exportSites: () => Promise<Blob>
-  importSites: (file: File, dryRun?: boolean) => Promise<{ items: SiteItem[]; errors: string[] }>
+  importSites: (
+    file: File,
+    dryRun?: boolean
+  ) => Promise<{ items: SiteItem[]; errors: string[] }>
   exportPasswords: () => Promise<Blob>
-  importPasswords: (file: File, dryRun?: boolean) => Promise<{ items: PasswordItem[]; errors: string[] }>
+  importPasswords: (
+    file: File,
+    dryRun?: boolean
+  ) => Promise<{ items: PasswordItem[]; errors: string[] }>
   exportDocs: () => Promise<Blob>
-  importDocs: (file: File, dryRun?: boolean) => Promise<{ items: DocItem[]; errors: string[] }>
+  importDocs: (
+    file: File,
+    dryRun?: boolean
+  ) => Promise<{ items: DocItem[]; errors: string[] }>
 }
 
 async function importItems<T extends AnyItem>(
@@ -375,4 +394,3 @@ export const useItems = create<ItemState>((set, get) => ({
   exportDocs: () => serializeItems('doc'),
   importDocs: (file, dryRun) => importItems<DocItem>('doc', file, dryRun ?? false, get),
 }))
-
