@@ -9,7 +9,7 @@ import { useAuth } from '../store/useAuth'
 import { parseTokens } from './TokenFilter'
 import clsx from 'clsx'
 import { useNavigate } from 'react-router-dom'
-import { Lock, Unlock, Star, User, LogOut } from 'lucide-react'
+import { Lock, Unlock, Star, User, LogOut, Download, Wifi, WifiOff } from 'lucide-react'
 import ImportExportModal from './ImportExportModal'
 import { useTranslation } from '../lib/i18n'
 type RowType = 'site'|'password'|'doc'
@@ -34,8 +34,9 @@ export default function Topbar() {
   const userRef = useRef<HTMLDivElement>(null)
 
   const [openUser, setOpenUser] = useState(false)
+  const [online, setOnline] = useState(navigator.onLine)
 
-  const { unlocked, unlock, lock, username, avatar, logout, masterHash } = useAuth()
+  const { unlocked, unlock, lock, username, avatar, logout, hasMaster } = useAuth()
   const items = useItems(s => s.items)
   const initial = username?.[0]?.toUpperCase()
   const t = useTranslation()
@@ -119,6 +120,16 @@ export default function Topbar() {
     return () => window.removeEventListener('open-unlock', handler)
   }, [])
 
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine)
+    window.addEventListener('online', update)
+    window.addEventListener('offline', update)
+    return () => {
+      window.removeEventListener('online', update)
+      window.removeEventListener('offline', update)
+    }
+  }, [])
+
 
   // 打开或定位
   const locate = (type: RowType, id: string) => {
@@ -153,25 +164,37 @@ export default function Topbar() {
     <>
       <div className="relative">
         <div className="h-12 bg-white grid grid-cols-[1fr,auto] items-center px-3 gap-3">
+          <Input
+            placeholder={t('searchPlaceholder')}
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            onKeyDown={onKeyDown}
+            className="w-[420px]"
+          />
           <div className="flex items-center gap-2">
-            <Input
-              placeholder={t('searchPlaceholder')}
-              value={q}
-              onChange={e => setQ(e.target.value)}
-              onKeyDown={onKeyDown}
-              className="w-[420px]"
-            />
-              {unlocked
-                ? <IconButton onClick={lock} srLabel={t('lock')}><Lock className="w-4 h-4" /></IconButton>
-                : (
-                  <IconButton
-                    onClick={() => (masterHash ? setOpenUnlock(true) : navigate('/settings'))}
-                    srLabel={t('unlock')}
-                  >
-                    <Unlock className="w-4 h-4" />
-                  </IconButton>
-                )
-              }
+            {unlocked
+              ? <IconButton onClick={lock} srLabel={t('lock')}><Lock className="w-4 h-4" /></IconButton>
+              : (
+                <IconButton
+                  onClick={() => (masterHash ? setOpenUnlock(true) : navigate('/settings'))}
+                  srLabel={online ? t('unlock') : t('networkRequired')}
+                  disabled={!online}
+                >
+                  <Unlock className="w-4 h-4" />
+                </IconButton>
+              )
+            }
+            <IconButton
+              onClick={() => setOpenImport(true)}
+              srLabel={online ? t('importExport') : t('networkRequired')}
+              disabled={!online}
+            >
+              <Download className="w-4 h-4" />
+            </IconButton>
+            <div title={online ? t('online') : t('offline')} className="flex items-center gap-1 text-gray-600">
+              {online ? <Wifi className="w-4 h-4 text-green-600" /> : <WifiOff className="w-4 h-4 text-red-600" />}
+              <span className="text-xs">{online ? t('online') : t('offline')}</span>
+            </div>
             <div ref={userRef} className="relative">
               <button
                 className="flex items-center gap-2 h-9 px-2 rounded-xl hover:bg-gray-100"

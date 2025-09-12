@@ -47,6 +47,7 @@ const dict = {
     doc: '文档',
     title: '标题',
     pathOrSource: '路径/来源',
+    file: '文件',
     actions: '操作',
     edit: '编辑',
     delete: '删除',
@@ -77,7 +78,10 @@ const dict = {
     mnemonic: '助记词',
     forgotPassword: '忘记密码',
     mnemonicError: '助记词错误',
-    mnemonicTip: '请手抄助记词，禁止截图或复制'
+    mnemonicTip: '请手抄助记词，禁止截图或复制',
+    online: '在线',
+    offline: '离线',
+    networkRequired: '需要网络连接'
   },
   en: {
     search: 'Search…',
@@ -125,6 +129,7 @@ const dict = {
     doc: 'Doc',
     title: 'Title',
     pathOrSource: 'Path/Source',
+    file: 'File',
     actions: 'Actions',
     edit: 'Edit',
     delete: 'Delete',
@@ -155,7 +160,10 @@ const dict = {
     mnemonic: 'Mnemonic',
     forgotPassword: 'Forgot Password',
     mnemonicError: 'Incorrect mnemonic',
-    mnemonicTip: 'Write down the mnemonic. Do not screenshot or copy it.'
+    mnemonicTip: 'Write down the mnemonic. Do not screenshot or copy it.',
+    online: 'Online',
+    offline: 'Offline',
+    networkRequired: 'Network required'
   }
 }
 
