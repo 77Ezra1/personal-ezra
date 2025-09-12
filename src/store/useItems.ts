@@ -6,13 +6,10 @@ import { nanoid } from 'nanoid'
 import { translate } from '../lib/i18n'
 import { useSettings } from './useSettings'
 import Papa from 'papaparse'
+import { saveFile, deleteFile } from '../lib/fs'
 
-function parseCsv(text: string): string[][] {
-  const res = Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
-  if (res.errors.length) {
-    throw new Error(res.errors.map(e => e.message).join('; '))
-  }
-  return res.data as string[][]
+function parseCsv(text: string) {
+  return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
 }
 
 function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'password') {
@@ -152,10 +149,6 @@ function buildItem(type: ItemType, m: any, order: number): AnyItem {
   }
 }
 
-function parseCsv(text: string) {
-  return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
-}
-
 async function serializeItems(type: ItemType): Promise<Blob> {
   const items = await db.items.where('type').equals(type).toArray()
   return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
@@ -176,8 +169,8 @@ interface ItemState {
   addPassword: (
     p: Omit<PasswordItem, 'id' | 'createdAt' | 'updatedAt' | 'type'>
   ) => Promise<string>
-  addDoc: (p: Omit<DocItem, 'id' | 'createdAt' | 'updatedAt' | 'type'>) => Promise<string>
-  update: (id: string, patch: Partial<AnyItem>) => Promise<void>
+  addDoc: (p: Omit<DocItem, 'id' | 'createdAt' | 'updatedAt' | 'type'> & { file?: File }) => Promise<string>
+  update: (id: string, patch: Partial<AnyItem & { file?: File }>) => Promise<void>
   updateMany: (ids: string[], patch: Partial<AnyItem>) => Promise<void>
   duplicate: (id: string) => Promise<string | undefined>
   remove: (id: string) => Promise<void>
@@ -299,10 +292,31 @@ export const useItems = create<ItemState>((set, get) => ({
     return id
   },
   async addDoc(p) {
+    const { file, ...rest } = p as any
+    let path = rest.path || ''
+    let fileSize: number | undefined
+    let fileUpdatedAt: number | undefined
+    if (file) {
+      const meta = await saveFile(file, 'docs')
+      path = meta.path
+      fileSize = meta.size
+      fileUpdatedAt = meta.mtime
+    }
     const id = nanoid()
     const now = Date.now()
     const order = get().nextOrder.doc
-    const item: DocItem = { id, type: 'doc', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
+    const item: DocItem = {
+      id,
+      type: 'doc',
+      createdAt: now,
+      updatedAt: now,
+      order,
+      ...rest,
+      path,
+      fileSize,
+      fileUpdatedAt,
+      tags: rest.tags ?? []
+    }
     await db.items.put(item)
     set(s => ({ nextOrder: { ...s.nextOrder, doc: order + 1 } }))
     await get().load()
@@ -312,7 +326,24 @@ export const useItems = create<ItemState>((set, get) => ({
   async update(id, patch) {
     const item = await db.items.get(id)
     if (!item) return
-    const updated = { ...item, ...patch, updatedAt: Date.now() } as AnyItem
+    const { file, ...rest } = patch as any
+    let path = rest.path
+    let fileSize = rest.fileSize
+    let fileUpdatedAt = rest.fileUpdatedAt
+    if (file) {
+      const meta = await saveFile(file, 'docs')
+      path = meta.path
+      fileSize = meta.size
+      fileUpdatedAt = meta.mtime
+    }
+    const updated = {
+      ...item,
+      ...rest,
+      path,
+      fileSize,
+      fileUpdatedAt,
+      updatedAt: Date.now(),
+    } as AnyItem
     await db.items.put(updated)
     await get().load()
   },
@@ -337,10 +368,21 @@ export const useItems = create<ItemState>((set, get) => ({
     return copy.id
   },
   async remove(id) {
+    const it = await db.items.get(id)
+    if (it && it.type === 'doc' && it.source === 'local') {
+      await deleteFile(it.path)
+    }
     await db.items.delete(id)
     await get().load()
   },
   async removeMany(ids) {
+    const { items } = get()
+    for (const id of ids) {
+      const it = items.find(i => i.id === id)
+      if (it && it.type === 'doc' && it.source === 'local') {
+        await deleteFile(it.path)
+      }
+    }
     await db.items.bulkDelete(ids)
     await get().load()
   },

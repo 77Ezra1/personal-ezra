@@ -34,6 +34,8 @@ export interface DocItem extends BaseItem {
   source: 'gdrive' | 'onedrive' | 'dropbox' | 'local' | 'url'
   path: string
   preview?: string
+  fileSize?: number
+  fileUpdatedAt?: number
   favorite?: boolean
   order?: number
 }
