@@ -7,14 +7,6 @@ import { translate } from '../lib/i18n'
 import { useSettings } from './useSettings'
 import Papa from 'papaparse'
 
-function parseCsv(text: string): string[][] {
-  const res = Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
-  if (res.errors.length) {
-    throw new Error(res.errors.map(e => e.message).join('; '))
-  }
-  return res.data as string[][]
-}
-
 function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'password') {
   const entries = Object.entries(row).map(([k, v]) => [k.toLowerCase(), v] as [string, unknown])
   const lc: Record<string, unknown> = Object.fromEntries(entries)
