@@ -1,12 +1,19 @@
 import { create } from 'zustand'
 import { db } from '../lib/db'
-import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType }
-  from '../types'
+import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType } from '../types'
 import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
 import { translate } from '../lib/i18n'
 import { useSettings } from './useSettings'
 import Papa from 'papaparse'
+
+function parseCsv(text: string): string[][] {
+  const res = Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
+  if (res.errors.length) {
+    throw new Error(res.errors.map(e => e.message).join('; '))
+  }
+  return res.data as string[][]
+}
 
 function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'password') {
   const entries = Object.entries(row).map(([k, v]) => [k.toLowerCase(), v] as [string, unknown])
@@ -179,142 +186,12 @@ interface ItemState {
   importDocs: (file: File, dryRun?: boolean) => Promise<{ items: DocItem[]; errors: string[] }>
 }
 
-export const useItems = create<ItemState>((set, get) => ({
-  items: [],
-  tags: [],
-  filters: {},
-  selection: new Set<string>(),
-  nextOrder: { site: 1, password: 1, doc: 1 },
-  indexMap: {},
+const serializeItems = async (type: ItemType) => {
+  const items = await db.items.where('type').equals(type).toArray()
+  return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
+}
 
-  async load() {
-    const [items, tags] = await Promise.all([
-      db.items.orderBy('updatedAt').reverse().toArray(),
-      db.tags.toArray()
-    ])
-    const nextOrder: Record<ItemType, number> = { site: 1, password: 1, doc: 1 }
-    const indexMap: Record<string, number> = {}
-    items.forEach((it, idx) => {
-      const ord = it.order ?? 0
-      if (ord >= nextOrder[it.type]) {
-        nextOrder[it.type] = ord + 1
-      }
-      indexMap[it.id] = idx
-    })
-    set({ items, tags, nextOrder, indexMap })
-  },
-
-  async addSite(p) {
-    const id = nanoid()
-    const now = Date.now()
-    const order = get().nextOrder.site
-    const item: SiteItem = { id, type: 'site', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-    await db.items.put(item)
-    set(s => ({ nextOrder: { ...s.nextOrder, site: order + 1 } }))
-    await get().load()
-    return id
-  },
-  async addPassword(p) {
-    const id = nanoid()
-    const now = Date.now()
-    const order = get().nextOrder.password
-    const item: PasswordItem = { id, type: 'password', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-    await db.items.put(item)
-    set(s => ({ nextOrder: { ...s.nextOrder, password: order + 1 } }))
-    await get().load()
-    return id
-  },
-  async addDoc(p) {
-    const id = nanoid()
-    const now = Date.now()
-    const order = get().nextOrder.doc
-    const item: DocItem = { id, type: 'doc', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-    await db.items.put(item)
-    set(s => ({ nextOrder: { ...s.nextOrder, doc: order + 1 } }))
-    await get().load()
-    return id
-  },
-  async update(id, patch) {
-    const item = await db.items.get(id)
-    if (!item) return
-    const updated = { ...item, ...patch, updatedAt: Date.now() } as AnyItem
-    await db.items.put(updated); await get().load()
-  },
-  async updateMany(ids, patch) {
-    const { items } = get()
-    const updates = ids.map(id => {
-      const item = items.find(i=>i.id===id)
-      if (!item) return null
-      return { ...item, ...patch, updatedAt: Date.now() } as AnyItem
-    }).filter(Boolean) as AnyItem[]
-    await db.items.bulkPut(updates)
-    await get().load()
-  },
-  async duplicate(id) {
-    const it = await db.items.get(id)
-    if (!it) return
-    const lang = useSettings.getState().language
-    const suffix = translate(lang, 'copySuffix')
-    const copy = { ...it, id: nanoid(), title: it.title + suffix, createdAt: Date.now(), updatedAt: Date.now() }
-    await db.items.put(copy as AnyItem)
-    await get().load()
-    return copy.id
-  },
-  async remove(id) {
-    await db.items.delete(id); await get().load()
-  },
-  async removeMany(ids) {
-    await db.items.bulkDelete(ids); await get().load()
-  },
-
-  async addTag(p) {
-    const id = nanoid()
-    const { tags } = get()
-    const color = TAG_COLORS[tags.length % TAG_COLORS.length] as TagColor
-    await db.tags.put({ id, ...p, color })
-    await get().load()
-    return id
-  },
-
-  async removeTag(id) {
-    await db.tags.delete(id)
-    const { items } = get()
-    const updates = items.map(it => (
-      it.tags.includes(id) ? { ...it, tags: it.tags.filter(t => t !== id) } : it
-    )) as AnyItem[]
-    await db.items.bulkPut(updates)
-    await get().load()
-  },
-
-  setFilters(f) { set((s) => ({ filters: { ...s.filters, ...f } })) },
-  clearSelection() { set({ selection: new Set() }) },
-  toggleSelect(id, rangeWith = null) {
-    set(s => {
-      const sel = new Set(s.selection)
-      if (rangeWith && sel.size) {
-        const a = s.indexMap[rangeWith]
-        const b = s.indexMap[id]
-        if (a !== undefined && b !== undefined) {
-          const [start, end] = a < b ? [a, b] : [b, a]
-          for (let i = start; i <= end; i++) {
-            const item = s.items[i]
-            if (item.type === (s.filters.type ?? item.type)) {
-              sel.add(item.id)
-            }
-          }
-        }
-      } else {
-        if (sel.has(id)) sel.delete(id); else sel.add(id)
-      }
-      return { selection: sel }
-    })
-  },
-
-  async exportSites() {
-    const items = await db.items.where('type').equals('site').toArray()
-    return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
-  }
-
+export const useItems = create<ItemState>((set, get) => {
   const importItems = async <T extends AnyItem>(type: ItemType, file: File, dryRun = false) => {
     const text = await file.text()
     const { items } = get()
@@ -358,20 +235,23 @@ export const useItems = create<ItemState>((set, get) => ({
     filters: {},
     selection: new Set<string>(),
     nextOrder: { site: 1, password: 1, doc: 1 },
+    indexMap: {},
 
     async load() {
       const [items, tags] = await Promise.all([
         db.items.orderBy('updatedAt').reverse().toArray(),
-        db.tags.toArray(),
+        db.tags.toArray()
       ])
       const nextOrder: Record<ItemType, number> = { site: 1, password: 1, doc: 1 }
-      items.forEach(it => {
+      const indexMap: Record<string, number> = {}
+      items.forEach((it, idx) => {
         const ord = it.order ?? 0
         if (ord >= nextOrder[it.type]) {
           nextOrder[it.type] = ord + 1
         }
+        indexMap[it.id] = idx
       })
-      set({ items, tags, nextOrder })
+      set({ items, tags, nextOrder, indexMap })
     },
 
     async addSite(p) {
@@ -413,7 +293,7 @@ export const useItems = create<ItemState>((set, get) => ({
     async updateMany(ids, patch) {
       const { items } = get()
       const updates = ids.map(id => {
-        const item = items.find(i => i.id === id)
+        const item = items.find(i=>i.id===id)
         if (!item) return null
         return { ...item, ...patch, updatedAt: Date.now() } as AnyItem
       }).filter(Boolean) as AnyItem[]
@@ -462,11 +342,17 @@ export const useItems = create<ItemState>((set, get) => ({
       set(s => {
         const sel = new Set(s.selection)
         if (rangeWith && sel.size) {
-          const items = s.items.filter(i => i.type === (s.filters.type ?? i.type))
-          const a = items.findIndex(i => i.id === rangeWith)
-          const b = items.findIndex(i => i.id === id)
-          const [start, end] = a < b ? [a, b] : [b, a]
-          for (let i = start; i <= end; i++) sel.add(items[i].id)
+          const a = s.indexMap[rangeWith]
+          const b = s.indexMap[id]
+          if (a !== undefined && b !== undefined) {
+            const [start, end] = a < b ? [a, b] : [b, a]
+            for (let i = start; i <= end; i++) {
+              const item = s.items[i]
+              if (item.type === (s.filters.type ?? item.type)) {
+                sel.add(item.id)
+              }
+            }
+          }
         } else {
           if (sel.has(id)) sel.delete(id); else sel.add(id)
         }
@@ -482,3 +368,4 @@ export const useItems = create<ItemState>((set, get) => ({
     importDocs: (file, dryRun) => importItems<DocItem>('doc', file, dryRun),
   }
 })
+
