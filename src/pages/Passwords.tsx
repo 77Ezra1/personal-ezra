@@ -11,7 +11,6 @@ import { Trash2, XCircle, Copy } from 'lucide-react'
 import { useItems } from '../store/useItems'
 import type { PasswordItem } from '../types'
 import { useTranslation } from '../lib/i18n'
-import { encryptString, decryptString } from '../lib/crypto'
 import { copyWithTimeout } from '../lib/clipboard'
 import { useAuth } from '../store/useAuth'
 import { useSettings } from '../store/useSettings'
@@ -112,12 +111,7 @@ export default function Passwords() {
     setUsername(it.username)
     setUrl(it.url || '')
     setTags(it.tags)
-    try {
-      const plain = await decryptString(key!, it.passwordCipher)
-      setPassword(plain)
-    } catch {
-      setPassword('')
-    }
+    setPassword(it.passwordCipher)
     setModalOpen(true)
   }
 
@@ -135,11 +129,10 @@ export default function Passwords() {
   async function save() {
     if (!ensureUnlock()) return
     if (!title.trim() || !password) return
-    const passwordCipher = await encryptString(key!, password)
     if (editing) {
-      await update(editing.id, { title, username, passwordCipher, url, tags })
+      await update(editing.id, { title, username, passwordCipher: password, url, tags })
     } else {
-      await addPassword({ title, username, passwordCipher, url, tags })
+      await addPassword({ title, username, passwordCipher: password, url, tags })
     }
     setModalOpen(false)
     setEditing(null)
@@ -147,10 +140,7 @@ export default function Passwords() {
 
   async function copyPwd(it: PasswordItem) {
     if (!ensureUnlock()) return
-    try {
-      const plain = await decryptString(key!, it.passwordCipher)
-      await copyWithTimeout(plain)
-    } catch {}
+    await copyWithTimeout(it.passwordCipher)
   }
 
   function PasswordCard({ it }: { it: PasswordItem }) {

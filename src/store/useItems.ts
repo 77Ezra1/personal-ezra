@@ -6,7 +6,12 @@ import { nanoid } from 'nanoid'
 import { translate } from '../lib/i18n'
 import { useSettings } from './useSettings'
 import Papa from 'papaparse'
+import { encryptString, decryptString } from '../lib/crypto'
+import { getStrongholdKey } from '../lib/stronghold'
 
+function parseCsv(text: string) {
+  return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
+}
 function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'password') {
   const entries = Object.entries(row).map(([k, v]) => [k.toLowerCase(), v] as [string, unknown])
   const lc: Record<string, unknown> = Object.fromEntries(entries)
@@ -144,123 +149,10 @@ function buildItem(type: ItemType, m: any, order: number): AnyItem {
   }
 }
 
-function parseCsv(text: string) {
-  return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
-}
-
-const ITEM_COLUMNS =
-  'id, type, title, url, description, username, passwordCipher, path, source, tags, createdAt, updatedAt, "order"'
-
-function rowToItem(r: any): AnyItem {
-  const base = {
-    id: r.id,
-    type: r.type as ItemType,
-    title: r.title || '',
-    tags: r.tags ? (r.tags as string).split(',').filter(Boolean) : [],
-    createdAt: r.createdAt,
-    updatedAt: r.updatedAt,
-    order: r.order,
+  async function serializeItems(type: ItemType): Promise<Blob> {
+    const items = await db.items.where('type').equals(type).toArray()
+    return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
   }
-  if (r.type === 'site') {
-    return { ...base, type: 'site', url: r.url || '', description: r.description || '' } as SiteItem
-  }
-  if (r.type === 'password') {
-    return {
-      ...base,
-      type: 'password',
-      username: r.username || '',
-      passwordCipher: r.passwordCipher || '',
-      url: r.url || '',
-      description: r.description || '',
-    } as PasswordItem
-  }
-  return {
-    ...base,
-    type: 'doc',
-    path: r.path || '',
-    source: r.source || '',
-    description: r.description || '',
-  } as DocItem
-}
-
-function itemParams(item: AnyItem) {
-  return [
-    item.id,
-    item.type,
-    item.title,
-    'url' in item ? (item as SiteItem | PasswordItem).url : null,
-    'description' in item ? (item as any).description : null,
-    'username' in item ? (item as PasswordItem).username : null,
-    'passwordCipher' in item ? (item as PasswordItem).passwordCipher : null,
-    'path' in item ? (item as DocItem).path : null,
-    'source' in item ? (item as DocItem).source : null,
-    item.tags.join(','),
-    item.createdAt,
-    item.updatedAt,
-    item.order,
-  ]
-}
-
-async function dbAddItem(item: AnyItem) {
-  await exec(
-    `INSERT INTO items (${ITEM_COLUMNS}) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-    itemParams(item)
-  )
-}
-
-async function dbUpdateItem(item: AnyItem) {
-  await exec(
-    `REPLACE INTO items (${ITEM_COLUMNS}) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-    itemParams(item)
-  )
-}
-
-async function dbGetItems(): Promise<AnyItem[]> {
-  const rows = await query<any>(`SELECT ${ITEM_COLUMNS} FROM items ORDER BY updatedAt DESC`)
-  return rows.map(rowToItem)
-}
-
-async function dbGetItem(id: string): Promise<AnyItem | undefined> {
-  const rows = await query<any>(`SELECT ${ITEM_COLUMNS} FROM items WHERE id = $1`, [id])
-  return rows.length ? rowToItem(rows[0]) : undefined
-}
-
-async function dbGetItemsByType(type: ItemType): Promise<AnyItem[]> {
-  const rows = await query<any>(`SELECT ${ITEM_COLUMNS} FROM items WHERE type = $1`, [type])
-  return rows.map(rowToItem)
-}
-
-async function dbBulkPut(items: AnyItem[]) {
-  for (const it of items) await dbUpdateItem(it)
-}
-
-async function dbDeleteItem(id: string) {
-  await exec('DELETE FROM items WHERE id = $1', [id])
-}
-
-async function dbBulkDelete(ids: string[]) {
-  if (!ids.length) return
-  const placeholders = ids.map((_, i) => `$${i + 1}`).join(',')
-  await exec(`DELETE FROM items WHERE id IN (${placeholders})`, ids)
-}
-
-async function dbGetTags(): Promise<Tag[]> {
-  const rows = await query<any>('SELECT id, name, color, parentId FROM tags')
-  return rows.map((r: any) => ({ id: r.id, name: r.name, color: r.color ?? undefined, parentId: r.parentId ?? undefined }))
-}
-
-async function dbPutTag(tag: Tag) {
-  await exec('REPLACE INTO tags (id, name, color, parentId) VALUES ($1,$2,$3,$4)', [tag.id, tag.name, tag.color ?? null, tag.parentId ?? null])
-}
-
-async function dbDeleteTag(id: string) {
-  await exec('DELETE FROM tags WHERE id = $1', [id])
-}
-
-async function serializeItems(type: ItemType): Promise<Blob> {
-  const items = await dbGetItemsByType(type)
-  return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
-}
 
 type Filters = { type?: 'site' | 'password' | 'doc'; tags?: string[] }
 
@@ -348,7 +240,25 @@ async function importItems<T extends AnyItem>(
     errors.push(e.message)
   }
   if (!dryRun && res.length) {
-    await dbBulkPut(res)
+    let toStore: any[] = res
+    if (type === 'password') {
+      const key = await getStrongholdKey()
+      toStore = await Promise.all(
+        res.map(async (it: any) => {
+          const username = await encryptString(key, it.username)
+          const url = it.url ? await encryptString(key, it.url) : undefined
+          const password_cipher = await encryptString(key, it.passwordCipher)
+          return {
+            ...it,
+            username,
+            url,
+            password_cipher,
+          }
+        })
+      )
+      toStore.forEach(it => { delete (it as any).passwordCipher })
+    }
+    await db.items.bulkPut(toStore)
     await get().load()
   }
   return { items: res, errors }
@@ -363,10 +273,25 @@ export const useItems = create<ItemState>((set, get) => ({
   indexMap: {},
 
   async load() {
-    const [items, tags] = await Promise.all([
-      dbGetItems(),
-      dbGetTags(),
+    const key = await getStrongholdKey()
+    const [rawItems, tags] = await Promise.all([
+      db.items.orderBy('updatedAt').reverse().toArray(),
+      db.tags.toArray(),
     ])
+    const items = await Promise.all(
+      rawItems.map(async it => {
+        if (it.type === 'password') {
+          const dbIt: any = it
+          const username = dbIt.username ? await decryptString(key, dbIt.username) : ''
+          const url = dbIt.url ? await decryptString(key, dbIt.url) : undefined
+          const pwd = dbIt.password_cipher ? await decryptString(key, dbIt.password_cipher) : ''
+          const cleaned: PasswordItem = { ...it, username, url, passwordCipher: pwd }
+          delete (cleaned as any).password_cipher
+          return cleaned
+        }
+        return it
+      })
+    )
     const nextOrder: Record<ItemType, number> = { site: 1, password: 1, doc: 1 }
     const indexMap: Record<string, number> = {}
     items.forEach((it, idx) => {
@@ -393,8 +318,26 @@ export const useItems = create<ItemState>((set, get) => ({
     const id = nanoid()
     const now = Date.now()
     const order = get().nextOrder.password
-    const item: PasswordItem = { id, type: 'password', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-    await dbAddItem(item)
+    const key = await getStrongholdKey()
+    const username = await encryptString(key, p.username)
+    const url = p.url ? await encryptString(key, p.url) : undefined
+    const password_cipher = await encryptString(key, p.passwordCipher)
+    const item: any = {
+      id,
+      type: 'password',
+      createdAt: now,
+      updatedAt: now,
+      order,
+      title: p.title,
+      username,
+      url,
+      password_cipher,
+      tags: p.tags ?? [],
+      description: p.description ?? '',
+      favorite: p.favorite,
+      totpCipher: p.totpCipher,
+    }
+    await db.items.put(item)
     set(s => ({ nextOrder: { ...s.nextOrder, password: order + 1 } }))
     await get().load()
     return id
@@ -413,18 +356,40 @@ export const useItems = create<ItemState>((set, get) => ({
   async update(id, patch) {
     const item = await dbGetItem(id)
     if (!item) return
-    const updated = { ...item, ...patch, updatedAt: Date.now() } as AnyItem
-    await dbUpdateItem(updated)
+    const key = await getStrongholdKey()
+    const dbPatch: any = { ...patch }
+    if (item.type === 'password') {
+      if (patch.username !== undefined) dbPatch.username = await encryptString(key, patch.username!)
+      if (patch.url !== undefined) dbPatch.url = await encryptString(key, patch.url!)
+      if ((patch as any).passwordCipher !== undefined) {
+        dbPatch.password_cipher = await encryptString(key, (patch as any).passwordCipher)
+      }
+      delete dbPatch.passwordCipher
+    }
+    const updated = { ...item, ...dbPatch, updatedAt: Date.now() } as any
+    await db.items.put(updated)
     await get().load()
   },
   async updateMany(ids, patch) {
     const { items } = get()
-    const updates = ids.map(id => {
-      const item = items.find(i => i.id === id)
-      if (!item) return null
-      return { ...item, ...patch, updatedAt: Date.now() } as AnyItem
-    }).filter(Boolean) as AnyItem[]
-    await dbBulkPut(updates)
+    const key = await getStrongholdKey()
+    const updates = await Promise.all(
+      ids.map(async id => {
+        const item = items.find(i => i.id === id)
+        if (!item) return null
+        const updated: any = { ...item, ...patch, updatedAt: Date.now() }
+        if (item.type === 'password') {
+          if (updated.username !== undefined) updated.username = await encryptString(key, updated.username)
+          if (updated.url !== undefined) updated.url = await encryptString(key, updated.url)
+          if (updated.passwordCipher !== undefined) {
+            updated.password_cipher = await encryptString(key, updated.passwordCipher)
+            delete updated.passwordCipher
+          }
+        }
+        return updated
+      })
+    )
+    await db.items.bulkPut(updates.filter(Boolean) as any[])
     await get().load()
   },
   async duplicate(id) {
