@@ -6,8 +6,11 @@ import { nanoid } from 'nanoid'
 import { translate } from '../lib/i18n'
 import { useSettings } from './useSettings'
 import Papa from 'papaparse'
-import { encryptString, decryptString } from '../lib/crypto'
-import { getStrongholdKey } from '../lib/stronghold'
+import { saveFile, deleteFile } from '../lib/fs'
+
+function parseCsv(text: string) {
+  return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
+}
 
 function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'password') {
   const entries = Object.entries(row).map(([k, v]) => [k.toLowerCase(), v] as [string, unknown])
@@ -146,10 +149,10 @@ function buildItem(type: ItemType, m: any, order: number): AnyItem {
   }
 }
 
-  async function serializeItems(type: ItemType): Promise<Blob> {
-    const items = await db.items.where('type').equals(type).toArray()
-    return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
-  }
+async function serializeItems(type: ItemType): Promise<Blob> {
+  const items = await db.items.where('type').equals(type).toArray()
+  return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
+}
 
 type Filters = { type?: 'site' | 'password' | 'doc'; tags?: string[] }
 
@@ -166,8 +169,8 @@ interface ItemState {
   addPassword: (
     p: Omit<PasswordItem, 'id' | 'createdAt' | 'updatedAt' | 'type'>
   ) => Promise<string>
-  addDoc: (p: Omit<DocItem, 'id' | 'createdAt' | 'updatedAt' | 'type'>) => Promise<string>
-  update: (id: string, patch: Partial<AnyItem>) => Promise<void>
+  addDoc: (p: Omit<DocItem, 'id' | 'createdAt' | 'updatedAt' | 'type'> & { file?: File }) => Promise<string>
+  update: (id: string, patch: Partial<AnyItem & { file?: File }>) => Promise<void>
   updateMany: (ids: string[], patch: Partial<AnyItem>) => Promise<void>
   duplicate: (id: string) => Promise<string | undefined>
   remove: (id: string) => Promise<void>
@@ -340,11 +343,32 @@ export const useItems = create<ItemState>((set, get) => ({
     return id
   },
   async addDoc(p) {
+    const { file, ...rest } = p as any
+    let path = rest.path || ''
+    let fileSize: number | undefined
+    let fileUpdatedAt: number | undefined
+    if (file) {
+      const meta = await saveFile(file, 'docs')
+      path = meta.path
+      fileSize = meta.size
+      fileUpdatedAt = meta.mtime
+    }
     const id = nanoid()
     const now = Date.now()
     const order = get().nextOrder.doc
-    const item: DocItem = { id, type: 'doc', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-    await dbAddItem(item)
+    const item: DocItem = {
+      id,
+      type: 'doc',
+      createdAt: now,
+      updatedAt: now,
+      order,
+      ...rest,
+      path,
+      fileSize,
+      fileUpdatedAt,
+      tags: rest.tags ?? []
+    }
+    await db.items.put(item)
     set(s => ({ nextOrder: { ...s.nextOrder, doc: order + 1 } }))
     await get().load()
     return id
@@ -353,17 +377,24 @@ export const useItems = create<ItemState>((set, get) => ({
   async update(id, patch) {
     const item = await dbGetItem(id)
     if (!item) return
-    const key = await getStrongholdKey()
-    const dbPatch: any = { ...patch }
-    if (item.type === 'password') {
-      if (patch.username !== undefined) dbPatch.username = await encryptString(key, patch.username!)
-      if (patch.url !== undefined) dbPatch.url = await encryptString(key, patch.url!)
-      if ((patch as any).passwordCipher !== undefined) {
-        dbPatch.password_cipher = await encryptString(key, (patch as any).passwordCipher)
-      }
-      delete dbPatch.passwordCipher
+    const { file, ...rest } = patch as any
+    let path = rest.path
+    let fileSize = rest.fileSize
+    let fileUpdatedAt = rest.fileUpdatedAt
+    if (file) {
+      const meta = await saveFile(file, 'docs')
+      path = meta.path
+      fileSize = meta.size
+      fileUpdatedAt = meta.mtime
     }
-    const updated = { ...item, ...dbPatch, updatedAt: Date.now() } as any
+    const updated = {
+      ...item,
+      ...rest,
+      path,
+      fileSize,
+      fileUpdatedAt,
+      updatedAt: Date.now(),
+    } as AnyItem
     await db.items.put(updated)
     await get().load()
   },
@@ -400,11 +431,22 @@ export const useItems = create<ItemState>((set, get) => ({
     return copy.id
   },
   async remove(id) {
-    await dbDeleteItem(id)
+    const it = await db.items.get(id)
+    if (it && it.type === 'doc' && it.source === 'local') {
+      await deleteFile(it.path)
+    }
+    await db.items.delete(id)
     await get().load()
   },
   async removeMany(ids) {
-    await dbBulkDelete(ids)
+    const { items } = get()
+    for (const id of ids) {
+      const it = items.find(i => i.id === id)
+      if (it && it.type === 'doc' && it.source === 'local') {
+        await deleteFile(it.path)
+      }
+    }
+    await db.items.bulkDelete(ids)
     await get().load()
   },
 

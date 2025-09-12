@@ -13,6 +13,7 @@ import { ExternalLink, Trash2, XCircle } from 'lucide-react'
 import FixedUrl from '../components/FixedUrl'
 import { useSettings } from '../store/useSettings'
 import { useTranslation } from '../lib/i18n'
+import { openFile } from '../lib/fs'
 
 function Field({ label, children }: { label: string; children: any }) {
   return (
@@ -21,6 +22,14 @@ function Field({ label, children }: { label: string; children: any }) {
       {children}
     </div>
   )
+}
+
+function fmt(size?: number) {
+  if (!size) return ''
+  const units = ['B', 'KB', 'MB', 'GB']
+  let s = size, i = 0
+  while (s >= 1024 && i < units.length - 1) { s /= 1024; i++ }
+  return `${s.toFixed(1)} ${units[i]}`
 }
 
 export default function Docs() {
@@ -39,10 +48,12 @@ export default function Docs() {
   const [nPath, setNPath] = useState('')
   const [nDesc, setNDesc] = useState('')
   const [nTags, setNTags] = useState<string[]>([])
+  const [nFile, setNFile] = useState<File | null>(null)
 
   // 编辑
   const [openEdit, setOpenEdit] = useState(false)
   const [edit, setEdit] = useState<DocItem | null>(null)
+  const [editFile, setEditFile] = useState<File | null>(null)
 
   useEffect(() => { load() }, [])
   useEffect(() => {
@@ -123,12 +134,15 @@ export default function Docs() {
               </td>
               <td className="px-3 py-2">
                 <FixedUrl url={it.path} length={36} className="text-muted" stripProtocol={false} />
+                {it.fileSize && (
+                  <div className="text-xs text-muted mt-1">{fmt(it.fileSize)} · {it.fileUpdatedAt ? new Date(it.fileUpdatedAt).toLocaleDateString() : ''}</div>
+                )}
               </td>
               <td className="px-3 py-2 text-center">{it.tags?.length || 0}</td>
               <td className="px-3 py-2 pr-4 md:pr-6">
                 <div className="flex items-center gap-2 justify-end">
-                  {/^https?:\/\//i.test(it.path) && (
-                    <IconButton size="sm" srLabel={t('open')} onClick={() => window.open(it.path, '_blank')}>
+                  {it.path && (
+                    <IconButton size="sm" srLabel={t('open')} onClick={() => openFile(it.path)}>
                       <ExternalLink className="w-4 h-4" />
                     </IconButton>
                   )}
@@ -151,10 +165,13 @@ export default function Docs() {
         <div key={it.id} data-id={it.id} className="group border border-border rounded-2xl p-4 hover:shadow-md transition bg-surface">
           <div className="font-medium truncate" title={it.title}>{it.title}</div>
           <div className="mt-1"><FixedUrl url={it.path} length={32} className="text-muted" stripProtocol={false} /></div>
+          {it.fileSize && (
+            <div className="text-xs text-muted mt-1">{fmt(it.fileSize)} · {it.fileUpdatedAt ? new Date(it.fileUpdatedAt).toLocaleDateString() : ''}</div>
+          )}
           {it.description && <div className="text-xs text-muted mt-1 line-clamp-2">{it.description}</div>}
           <div className="mt-2 flex items-center gap-2 justify-end">
-            {/^https?:\/\//i.test(it.path) && (
-              <IconButton size="sm" srLabel={t('open')} onClick={() => window.open(it.path, '_blank')}>
+            {it.path && (
+              <IconButton size="sm" srLabel={t('open')} onClick={() => openFile(it.path)}>
                 <ExternalLink className="w-4 h-4" />
               </IconButton>
             )}
@@ -209,9 +226,9 @@ export default function Docs() {
             </Button>
             <Button
               onClick={async () => {
-                if (!nTitle || !nPath) { alert(t('enterTitleAndUrl')); return }
-                await addDoc({ title: nTitle, path: nPath, source: 'local', description: nDesc, tags: nTags })
-                setOpenNew(false); setNTitle(''); setNPath(''); setNDesc(''); setNTags([])
+                if (!nTitle || (!nPath && !nFile)) { alert(t('enterTitleAndUrl')); return }
+                await addDoc({ title: nTitle, path: nPath, source: 'local', description: nDesc, tags: nTags, file: nFile || undefined })
+                setOpenNew(false); setNTitle(''); setNPath(''); setNDesc(''); setNTags([]); setNFile(null)
               }}
             >
               {t('save')}
@@ -221,6 +238,7 @@ export default function Docs() {
         <div className="grid gap-3">
           <Field label={t('title')}><Input value={nTitle} onChange={e => setNTitle(e.target.value)} /></Field>
           <Field label={t('pathOrSource')}><Input value={nPath} onChange={e => setNPath(e.target.value)} placeholder="/docs/a.pdf" /></Field>
+          <Field label={t('file')}><input type="file" onChange={e => { const f = e.target.files?.[0]; if (f) { setNFile(f); setNPath(f.name) } }} /></Field>
           <Field label={t('description')}><Input value={nDesc} onChange={e => setNDesc(e.target.value)} placeholder={t('optional')} /></Field>
           <Field label={t('tags')}><TagPicker value={nTags} onChange={setNTags} /></Field>
         </div>
@@ -233,33 +251,29 @@ export default function Docs() {
         title={t('editDoc')}
         footer={
           <>
-            {edit?.path && /^https?:\/\//i.test(edit.path) && (
-              <a
-                className="h-9 px-3 rounded-lg border border-border grid place-items-center mr-auto bg-surface hover:bg-surface-hover"
-                href={edit.path}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {t('open')}
-              </a>
-            )}
-            <Button variant="secondary" onClick={() => setOpenEdit(false)}>
-              {t('cancel')}
+          {edit?.path && (
+            <Button variant="secondary" onClick={() => openFile(edit.path)} className="mr-auto">
+              {t('open')}
             </Button>
-            <Button
-              onClick={async () => {
-                if (!edit) return
-                await update(edit.id, { title: edit.title, path: edit.path, description: edit.description, tags: edit.tags })
-                setOpenEdit(false)
-              }}
-            >
-              {t('save')}
-            </Button>
-          </>
-        }>
+          )}
+          <Button variant="secondary" onClick={() => setOpenEdit(false)}>
+            {t('cancel')}
+          </Button>
+          <Button
+            onClick={async () => {
+              if (!edit) return
+              await update(edit.id, { title: edit.title, path: edit.path, description: edit.description, tags: edit.tags, file: editFile || undefined })
+              setOpenEdit(false); setEditFile(null)
+            }}
+          >
+            {t('save')}
+          </Button>
+        </>
+      }>
         <div className="grid gap-3">
           <Field label={t('title')}><Input value={edit?.title || ''} onChange={e => setEdit(p => p ? { ...p, title: e.target.value } as DocItem : p)} /></Field>
           <Field label={t('pathOrSource')}><Input value={edit?.path || ''} onChange={e => setEdit(p => p ? { ...p, path: e.target.value } as DocItem : p)} /></Field>
+          <Field label={t('file')}><input type="file" onChange={e => { const f = e.target.files?.[0]; if (f) { setEditFile(f); setEdit(p => p ? { ...p, path: f.name } as DocItem : p) } }} /></Field>
           <Field label={t('description')}><Input value={edit?.description || ''} onChange={e => setEdit(p => p ? { ...p, description: e.target.value } as DocItem : p)} /></Field>
           <Field label={t('tags')}><TagPicker value={edit?.tags || []} onChange={v => setEdit(p => p ? { ...p, tags: v } as DocItem : p)} /></Field>
         </div>
