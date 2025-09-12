@@ -1,13 +1,19 @@
 import { useEffect, useState } from 'react'
 import Modal from './ui/Modal'
 import { useItems } from '../store/useItems'
+import { useAuth } from '../store/useAuth'
+import { createBackup, restoreBackup } from '../lib/backup'
 
 export default function ImportExportModal({ open, onClose, initialType = 'site' }: { open: boolean; onClose: () => void; initialType?: 'site' | 'doc' }) {
   const { exportSites, exportDocs, importSites, importDocs } = useItems()
+  const master = useAuth(s => s.master)
   const [type, setType] = useState<'site' | 'doc'>(initialType)
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<any[]>([])
   const [errors, setErrors] = useState<string[]>([])
+  const [backupFile, setBackupFile] = useState<File | null>(null)
+  const [decryptPw, setDecryptPw] = useState('')
+  const [restoreError, setRestoreError] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) setType(initialType)
@@ -40,6 +46,32 @@ export default function ImportExportModal({ open, onClose, initialType = 'site' 
       setFile(null)
       setPreview([])
       onClose()
+    }
+  }
+
+  async function handleBackup() {
+    if (!master) { alert('请先解锁'); return }
+    try {
+      // @ts-ignore File System Access API
+      const handle = await (window as any).showSaveFilePicker({ suggestedName: 'pms-backup.pms' })
+      const blob = await createBackup(master)
+      const writable = await handle.createWritable()
+      await writable.write(blob)
+      await writable.close()
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  async function handleRestore() {
+    if (!backupFile) return
+    setRestoreError(null)
+    try {
+      await restoreBackup(decryptPw, backupFile)
+      onClose()
+      window.location.reload()
+    } catch (e: any) {
+      setRestoreError(e?.message || String(e))
     }
   }
 
@@ -89,6 +121,16 @@ export default function ImportExportModal({ open, onClose, initialType = 'site' 
             </table>
           </div>
         )}
+      </section>
+      <section className="space-y-2">
+        <div className="font-medium">备份与恢复</div>
+        <div className="flex gap-2 items-center">
+          <button className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50" onClick={handleBackup}>备份</button>
+          <input type="file" accept=".pms" onChange={e => setBackupFile(e.target.files?.[0] ?? null)} />
+          <input type="password" className="border rounded px-2 py-1" placeholder="解密口令" value={decryptPw} onChange={e => setDecryptPw(e.target.value)} />
+          <button disabled={!backupFile} className="h-8 px-3 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50" onClick={handleRestore}>恢复</button>
+        </div>
+        {restoreError && <div className="text-xs text-red-600">{restoreError}</div>}
       </section>
     </Modal>
   )
