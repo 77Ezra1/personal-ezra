@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { db } from '../lib/db'
+import { exec, query } from '../lib/db'
 import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType } from '../types'
 import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
@@ -148,8 +148,117 @@ function parseCsv(text: string) {
   return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
 }
 
+const ITEM_COLUMNS =
+  'id, type, title, url, description, username, passwordCipher, path, source, tags, createdAt, updatedAt, "order"'
+
+function rowToItem(r: any): AnyItem {
+  const base = {
+    id: r.id,
+    type: r.type as ItemType,
+    title: r.title || '',
+    tags: r.tags ? (r.tags as string).split(',').filter(Boolean) : [],
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    order: r.order,
+  }
+  if (r.type === 'site') {
+    return { ...base, type: 'site', url: r.url || '', description: r.description || '' } as SiteItem
+  }
+  if (r.type === 'password') {
+    return {
+      ...base,
+      type: 'password',
+      username: r.username || '',
+      passwordCipher: r.passwordCipher || '',
+      url: r.url || '',
+      description: r.description || '',
+    } as PasswordItem
+  }
+  return {
+    ...base,
+    type: 'doc',
+    path: r.path || '',
+    source: r.source || '',
+    description: r.description || '',
+  } as DocItem
+}
+
+function itemParams(item: AnyItem) {
+  return [
+    item.id,
+    item.type,
+    item.title,
+    'url' in item ? (item as SiteItem | PasswordItem).url : null,
+    'description' in item ? (item as any).description : null,
+    'username' in item ? (item as PasswordItem).username : null,
+    'passwordCipher' in item ? (item as PasswordItem).passwordCipher : null,
+    'path' in item ? (item as DocItem).path : null,
+    'source' in item ? (item as DocItem).source : null,
+    item.tags.join(','),
+    item.createdAt,
+    item.updatedAt,
+    item.order,
+  ]
+}
+
+async function dbAddItem(item: AnyItem) {
+  await exec(
+    `INSERT INTO items (${ITEM_COLUMNS}) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    itemParams(item)
+  )
+}
+
+async function dbUpdateItem(item: AnyItem) {
+  await exec(
+    `REPLACE INTO items (${ITEM_COLUMNS}) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    itemParams(item)
+  )
+}
+
+async function dbGetItems(): Promise<AnyItem[]> {
+  const rows = await query<any>(`SELECT ${ITEM_COLUMNS} FROM items ORDER BY updatedAt DESC`)
+  return rows.map(rowToItem)
+}
+
+async function dbGetItem(id: string): Promise<AnyItem | undefined> {
+  const rows = await query<any>(`SELECT ${ITEM_COLUMNS} FROM items WHERE id = $1`, [id])
+  return rows.length ? rowToItem(rows[0]) : undefined
+}
+
+async function dbGetItemsByType(type: ItemType): Promise<AnyItem[]> {
+  const rows = await query<any>(`SELECT ${ITEM_COLUMNS} FROM items WHERE type = $1`, [type])
+  return rows.map(rowToItem)
+}
+
+async function dbBulkPut(items: AnyItem[]) {
+  for (const it of items) await dbUpdateItem(it)
+}
+
+async function dbDeleteItem(id: string) {
+  await exec('DELETE FROM items WHERE id = $1', [id])
+}
+
+async function dbBulkDelete(ids: string[]) {
+  if (!ids.length) return
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(',')
+  await exec(`DELETE FROM items WHERE id IN (${placeholders})`, ids)
+}
+
+async function dbGetTags(): Promise<Tag[]> {
+  const rows = await query<any>('SELECT id, name, color, parentId FROM tags')
+  return rows.map((r: any) => ({ id: r.id, name: r.name, color: r.color ?? undefined, parentId: r.parentId ?? undefined }))
+}
+
+async function dbPutTag(tag: Tag) {
+  await exec('REPLACE INTO tags (id, name, color, parentId) VALUES ($1,$2,$3,$4)', [tag.id, tag.name, tag.color ?? null, tag.parentId ?? null])
+}
+
+async function dbDeleteTag(id: string) {
+  await exec('DELETE FROM tags WHERE id = $1', [id])
+}
+
 async function serializeItems(type: ItemType): Promise<Blob> {
-  const items = await db.items.where('type').equals(type).toArray()
+  const items = await dbGetItemsByType(type)
   return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
 }
 
@@ -239,7 +348,7 @@ async function importItems<T extends AnyItem>(
     errors.push(e.message)
   }
   if (!dryRun && res.length) {
-    await db.items.bulkPut(res)
+    await dbBulkPut(res)
     await get().load()
   }
   return { items: res, errors }
@@ -255,8 +364,8 @@ export const useItems = create<ItemState>((set, get) => ({
 
   async load() {
     const [items, tags] = await Promise.all([
-      db.items.orderBy('updatedAt').reverse().toArray(),
-      db.tags.toArray(),
+      dbGetItems(),
+      dbGetTags(),
     ])
     const nextOrder: Record<ItemType, number> = { site: 1, password: 1, doc: 1 }
     const indexMap: Record<string, number> = {}
@@ -275,7 +384,7 @@ export const useItems = create<ItemState>((set, get) => ({
     const now = Date.now()
     const order = get().nextOrder.site
     const item: SiteItem = { id, type: 'site', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-    await db.items.put(item)
+    await dbAddItem(item)
     set(s => ({ nextOrder: { ...s.nextOrder, site: order + 1 } }))
     await get().load()
     return id
@@ -285,7 +394,7 @@ export const useItems = create<ItemState>((set, get) => ({
     const now = Date.now()
     const order = get().nextOrder.password
     const item: PasswordItem = { id, type: 'password', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-    await db.items.put(item)
+    await dbAddItem(item)
     set(s => ({ nextOrder: { ...s.nextOrder, password: order + 1 } }))
     await get().load()
     return id
@@ -295,17 +404,17 @@ export const useItems = create<ItemState>((set, get) => ({
     const now = Date.now()
     const order = get().nextOrder.doc
     const item: DocItem = { id, type: 'doc', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-    await db.items.put(item)
+    await dbAddItem(item)
     set(s => ({ nextOrder: { ...s.nextOrder, doc: order + 1 } }))
     await get().load()
     return id
   },
 
   async update(id, patch) {
-    const item = await db.items.get(id)
+    const item = await dbGetItem(id)
     if (!item) return
     const updated = { ...item, ...patch, updatedAt: Date.now() } as AnyItem
-    await db.items.put(updated)
+    await dbUpdateItem(updated)
     await get().load()
   },
   async updateMany(ids, patch) {
@@ -315,25 +424,25 @@ export const useItems = create<ItemState>((set, get) => ({
       if (!item) return null
       return { ...item, ...patch, updatedAt: Date.now() } as AnyItem
     }).filter(Boolean) as AnyItem[]
-    await db.items.bulkPut(updates)
+    await dbBulkPut(updates)
     await get().load()
   },
   async duplicate(id) {
-    const it = await db.items.get(id)
+    const it = await dbGetItem(id)
     if (!it) return
     const lang = useSettings.getState().language
     const suffix = translate(lang, 'copySuffix')
     const copy = { ...it, id: nanoid(), title: it.title + suffix, createdAt: Date.now(), updatedAt: Date.now() }
-    await db.items.put(copy as AnyItem)
+    await dbAddItem(copy as AnyItem)
     await get().load()
     return copy.id
   },
   async remove(id) {
-    await db.items.delete(id)
+    await dbDeleteItem(id)
     await get().load()
   },
   async removeMany(ids) {
-    await db.items.bulkDelete(ids)
+    await dbBulkDelete(ids)
     await get().load()
   },
 
@@ -341,17 +450,17 @@ export const useItems = create<ItemState>((set, get) => ({
     const id = nanoid()
     const { tags } = get()
     const color = TAG_COLORS[tags.length % TAG_COLORS.length] as TagColor
-    await db.tags.put({ id, ...p, color })
+    await dbPutTag({ id, ...p, color })
     await get().load()
     return id
   },
   async removeTag(id) {
-    await db.tags.delete(id)
+    await dbDeleteTag(id)
     const { items } = get()
     const updates = items.map(it => (
       it.tags.includes(id) ? { ...it, tags: it.tags.filter(t => t !== id) } : it
     )) as AnyItem[]
-    await db.items.bulkPut(updates)
+    await dbBulkPut(updates)
     await get().load()
   },
 
