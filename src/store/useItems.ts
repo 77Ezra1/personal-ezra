@@ -9,9 +9,6 @@ import Papa from 'papaparse'
 import { encryptString, decryptString } from '../lib/crypto'
 import { getStrongholdKey } from '../lib/stronghold'
 
-function parseCsv(text: string) {
-  return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
-}
 function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'password') {
   const entries = Object.entries(row).map(([k, v]) => [k.toLowerCase(), v] as [string, unknown])
   const lc: Record<string, unknown> = Object.fromEntries(entries)
