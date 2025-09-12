@@ -1,7 +1,14 @@
 import { create } from 'zustand'
 import { db } from '../lib/db'
-import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType }
-  from '../types'
+import type {
+  AnyItem,
+  SiteItem,
+  PasswordItem,
+  DocItem,
+  Tag,
+  TagColor,
+  ItemType,
+} from '../types'
 import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
 import { translate } from '../lib/i18n'
@@ -106,53 +113,6 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'passwor
   return { title, path, source, tags }
 }
 
-function buildItem(type: ItemType, m: any, order: number): AnyItem {
-  const now = Date.now()
-  const tags = m.tags
-    ? (m.tags as string).split(/[;,]/).map((t: string) => t.trim()).filter(Boolean)
-    : []
-  if (type === 'site') {
-    return {
-      id: nanoid(),
-      type: 'site',
-      title: m.title || '',
-      url: m.url || '',
-      description: m.description || '',
-      tags,
-      createdAt: now,
-      updatedAt: now,
-      order,
-    }
-  }
-  if (type === 'password') {
-    return {
-      id: nanoid(),
-      type: 'password',
-      title: m.title || '',
-      username: m.username || '',
-      passwordCipher: m.passwordCipher || '',
-      url: m.url || '',
-      description: '',
-      tags,
-      createdAt: now,
-      updatedAt: now,
-      order,
-    }
-  }
-  return {
-    id: nanoid(),
-    type: 'doc',
-    title: m.title || '',
-    path: m.path || '',
-    source: (m.source as any) || 'local',
-    description: '',
-    tags,
-    createdAt: now,
-    updatedAt: now,
-    order,
-  }
-}
-
 type Filters = { type?: 'site'|'password'|'doc'; tags?: string[] }
 
 interface ItemState {
@@ -164,9 +124,11 @@ interface ItemState {
   indexMap: Record<string, number>
 
   load: () => Promise<void>
-  addSite: (p: Omit<SiteItem,'id'|'createdAt'|'updatedAt'|'type'>) => Promise<string>
-  addPassword: (p: Omit<PasswordItem,'id'|'createdAt'|'updatedAt'|'type'>) => Promise<string>
-  addDoc: (p: Omit<DocItem,'id'|'createdAt'|'updatedAt'|'type'>) => Promise<string>
+  addSite: (p: Omit<SiteItem, 'id' | 'createdAt' | 'updatedAt' | 'type'>) => Promise<string>
+  addPassword: (
+    p: Omit<PasswordItem, 'id' | 'createdAt' | 'updatedAt' | 'type'>
+  ) => Promise<string>
+  addDoc: (p: Omit<DocItem, 'id' | 'createdAt' | 'updatedAt' | 'type'>) => Promise<string>
   update: (id: string, patch: Partial<AnyItem>) => Promise<void>
   updateMany: (ids: string[], patch: Partial<AnyItem>) => Promise<void>
   duplicate: (id: string) => Promise<string | undefined>
@@ -180,32 +142,41 @@ interface ItemState {
   toggleSelect: (id: string, rangeWith?: string | null) => void
 
   exportSites: () => Promise<Blob>
-  importSites: (file: File, dryRun?: boolean) => Promise<{ items: SiteItem[]; errors: string[] }>
+  importSites: (
+    file: File,
+    dryRun?: boolean
+  ) => Promise<{ items: SiteItem[]; errors: string[] }>
   exportPasswords: () => Promise<Blob>
-  importPasswords: (file: File, dryRun?: boolean) => Promise<{ items: PasswordItem[]; errors: string[] }>
+  importPasswords: (
+    file: File,
+    dryRun?: boolean
+  ) => Promise<{ items: PasswordItem[]; errors: string[] }>
   exportDocs: () => Promise<Blob>
-  importDocs: (file: File, dryRun?: boolean) => Promise<{ items: DocItem[]; errors: string[] }>
+  importDocs: (
+    file: File,
+    dryRun?: boolean
+  ) => Promise<{ items: DocItem[]; errors: string[] }>
 }
 
 export const useItems = create<ItemState>((set, get) => {
   const serializeItems = async (type: ItemType) => {
     const items = await db.items.where('type').equals(type).toArray()
     return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
-  }
+  },
 
-  const importItems = async <T extends AnyItem>(type: ItemType, file: File, dryRun = false) => {
+  async importSites(file, dryRun = false) {
     const text = await file.text()
     const { items } = get()
-    const existingCount = items.filter(i => i.type === type).length
-    const res: T[] = []
+    const sites: SiteItem[] = []
     const errors: string[] = []
     try {
       if (/^\s*[\[{]/.test(text)) {
         const data = JSON.parse(text)
         if (Array.isArray(data)) {
-          data.forEach((d: any, idx: number) => {
-            const m = mapFields(d, type)
-            res.push(buildItem(type, m, existingCount + idx + 1) as T)
+          data.forEach((d: any, idx) => {
+            const m = mapFields(d, 'site')
+            const now = Date.now()
+            sites.push({ id: nanoid(), type: 'site', title: m.title || '', url: m.url || '', description: m.description || '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='site').length) + idx + 1 })
           })
         }
       } else {
@@ -213,22 +184,23 @@ export const useItems = create<ItemState>((set, get) => {
         if (rows.length > 1) {
           const header = rows[0].map(h => h.toLowerCase())
           for (let i = 1; i < rows.length; i++) {
-            const row: Record<string, string> = {}
+            const row: Record<string,string> = {}
             header.forEach((h, idx) => { row[h] = rows[i][idx] })
-            const m = mapFields(row, type)
-            res.push(buildItem(type, m, existingCount + i) as T)
+            const m = mapFields(row, 'site')
+            const now = Date.now()
+            sites.push({ id: nanoid(), type: 'site', title: m.title || '', url: m.url || '', description: m.description || '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='site').length) + i })
           }
         }
       }
     } catch (e: any) {
       errors.push(e.message)
     }
-    if (!dryRun && res.length) {
-      await db.items.bulkPut(res)
+    if (!dryRun && sites.length) {
+      await db.items.bulkPut(sites)
       await get().load()
     }
-    return { items: res, errors }
-  }
+    return { items: sites, errors }
+  },
 
   return {
     items: [],
@@ -324,18 +296,14 @@ export const useItems = create<ItemState>((set, get) => {
       const color = TAG_COLORS[tags.length % TAG_COLORS.length] as TagColor
       await db.tags.put({ id, ...p, color })
       await get().load()
-      return id
-    },
+    }
+    return { items: pwds, errors }
+  },
 
-    async removeTag(id) {
-      await db.tags.delete(id)
-      const { items } = get()
-      const updates = items.map(it => (
-        it.tags.includes(id) ? { ...it, tags: it.tags.filter(t => t !== id) } : it
-      )) as AnyItem[]
-      await db.items.bulkPut(updates)
-      await get().load()
-    },
+  async exportDocs() {
+    const items = await db.items.where('type').equals('doc').toArray()
+    return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
+  },
 
     setFilters(f) { set((s) => ({ filters: { ...s.filters, ...f } })) },
     clearSelection() { set({ selection: new Set() }) },
@@ -357,16 +325,27 @@ export const useItems = create<ItemState>((set, get) => {
         } else {
           if (sel.has(id)) sel.delete(id); else sel.add(id)
         }
-        return { selection: sel }
-      })
-    },
-
-    exportSites: () => serializeItems('site'),
-    importSites: (file, dryRun) => importItems<SiteItem>('site', file, dryRun),
-    exportPasswords: () => serializeItems('password'),
-    importPasswords: (file, dryRun) => importItems<PasswordItem>('password', file, dryRun),
-    exportDocs: () => serializeItems('doc'),
-    importDocs: (file, dryRun) => importItems<DocItem>('doc', file, dryRun),
+      } else {
+        const rows = parseCsv(text)
+        if (rows.length > 1) {
+          const header = rows[0].map(h => h.toLowerCase())
+          for (let i = 1; i < rows.length; i++) {
+            const row: Record<string,string> = {}
+            header.forEach((h, idx) => { row[h] = rows[i][idx] })
+            const m = mapFields(row, 'doc')
+            const now = Date.now()
+            docs.push({ id: nanoid(), type: 'doc', title: m.title || '', path: m.path || '', source: (m.source as any) || 'local', description: '', tags: (m.tags ? m.tags.split(/[;,]/).map(t=>t.trim()).filter(Boolean) : []), createdAt: now, updatedAt: now, order: (items.filter(i=>i.type==='doc').length) + i })
+          }
+        }
+      }
+    } catch (e: any) {
+      errors.push(e.message)
+    }
+    if (!dryRun && docs.length) {
+      await db.items.bulkPut(docs)
+      await get().load()
+    }
+    return { items: docs, errors }
   }
 })
 
