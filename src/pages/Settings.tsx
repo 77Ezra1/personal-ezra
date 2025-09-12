@@ -15,7 +15,7 @@ export default function Settings() {
   const t = useTranslation()
   const { exportSites, exportDocs, tags, removeTag } = useItems()
   const [importType, setImportType] = useState<'site' | 'doc' | null>(null)
-  const { masterHash, setMaster, mnemonic, verifyMnemonic, resetMaster } = useAuth()
+  const { hasMaster, setMaster, mnemonic, verifyMnemonic, resetMaster } = useAuth()
   const [pw1, setPw1] = useState('')
   const [pw2, setPw2] = useState('')
   const [captcha, setCaptcha] = useState('')
@@ -105,7 +105,7 @@ export default function Settings() {
       </section>
       <section>
         <h2 className="text-lg font-medium mb-2">{t('master')}</h2>
-        {!masterHash ? (
+        {!hasMaster ? (
           <div className="space-y-2 max-w-xs">
             <Input
               type="password"

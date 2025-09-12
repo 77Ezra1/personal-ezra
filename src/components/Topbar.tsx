@@ -35,7 +35,7 @@ export default function Topbar() {
 
   const [openUser, setOpenUser] = useState(false)
 
-  const { unlocked, unlock, lock, username, avatar, logout, masterHash } = useAuth()
+  const { unlocked, unlock, lock, username, avatar, logout, hasMaster } = useAuth()
   const items = useItems(s => s.items)
   const initial = username?.[0]?.toUpperCase()
   const t = useTranslation()
@@ -165,7 +165,7 @@ export default function Topbar() {
                 ? <IconButton onClick={lock} srLabel={t('lock')}><Lock className="w-4 h-4" /></IconButton>
                 : (
                   <IconButton
-                    onClick={() => (masterHash ? setOpenUnlock(true) : navigate('/settings'))}
+                    onClick={() => (hasMaster ? setOpenUnlock(true) : navigate('/settings'))}
                     srLabel={t('unlock')}
                   >
                     <Unlock className="w-4 h-4" />

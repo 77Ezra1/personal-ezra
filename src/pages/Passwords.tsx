@@ -87,10 +87,10 @@ export default function Passwords() {
   const [mpw, setMpw] = React.useState('')
 
   const navigate = useNavigate()
-  const { master, unlocked, unlock, masterHash } = useAuth()
+  const { key, unlocked, unlock, hasMaster } = useAuth()
 
   function ensureUnlock() {
-    if (!unlocked || !master) {
+    if (!unlocked || !key) {
       window.dispatchEvent(new Event('open-unlock'))
       return false
     }
@@ -98,7 +98,7 @@ export default function Passwords() {
   }
 
   function openUnlock() {
-    if (!masterHash) {
+    if (!hasMaster) {
       navigate('/settings')
     } else {
       setUnlockOpen(true)

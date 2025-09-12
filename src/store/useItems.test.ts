@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import 'fake-indexeddb/auto'
 import { useItems } from './useItems'
 import { useSettings } from './useSettings'
-import { db } from '../lib/db'
+import { exec } from '../lib/db'
 
 beforeEach(async () => {
-  await db.items.clear()
+  await exec('DELETE FROM items')
+  await exec('DELETE FROM tags')
+  await exec('DELETE FROM settings')
   await useItems.getState().load()
   useItems.setState({ filters: {}, selection: new Set() })
 })
@@ -16,7 +17,7 @@ describe('items import/export', () => {
     await addSite({ title: 'Example', url: 'https://example.com', description: '', tags: [] })
     const blob = await exportSites()
     const text = await blob.text()
-    await db.items.clear(); await load()
+    await exec('DELETE FROM items'); await load()
     const file: any = { text: async () => text }
     await importSites(file)
     expect(useItems.getState().items.length).toBe(1)
@@ -28,7 +29,7 @@ describe('items import/export', () => {
     await addDoc({ title: 'Doc', path: '/a', source: 'local', tags: [] })
     const blob = await exportDocs()
     const text = await blob.text()
-    await db.items.clear(); await load()
+    await exec('DELETE FROM items'); await load()
     const file: any = { text: async () => text }
     await importDocs(file)
     expect(useItems.getState().items.length).toBe(1)
@@ -40,7 +41,7 @@ describe('items import/export', () => {
     await addPassword({ title: 'Pw', username: 'u', passwordCipher: 'c', url: 'https://example.com', description: '', tags: [] })
     const blob = await exportPasswords()
     const text = await blob.text()
-    await db.items.clear(); await load()
+    await exec('DELETE FROM items'); await load()
     const file: any = { text: async () => text }
     await importPasswords(file)
     expect(useItems.getState().items.length).toBe(1)

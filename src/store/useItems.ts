@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { db } from '../lib/db'
+import { exec, query } from '../lib/db'
 import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType } from '../types'
 import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
@@ -12,7 +12,6 @@ import { getStrongholdKey } from '../lib/stronghold'
 function parseCsv(text: string) {
   return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
 }
-
 function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'password') {
   const entries = Object.entries(row).map(([k, v]) => [k.toLowerCase(), v] as [string, unknown])
   const lc: Record<string, unknown> = Object.fromEntries(entries)
@@ -310,7 +309,7 @@ export const useItems = create<ItemState>((set, get) => ({
     const now = Date.now()
     const order = get().nextOrder.site
     const item: SiteItem = { id, type: 'site', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-    await db.items.put(item)
+    await dbAddItem(item)
     set(s => ({ nextOrder: { ...s.nextOrder, site: order + 1 } }))
     await get().load()
     return id
@@ -348,14 +347,14 @@ export const useItems = create<ItemState>((set, get) => ({
     const now = Date.now()
     const order = get().nextOrder.doc
     const item: DocItem = { id, type: 'doc', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-    await db.items.put(item)
+    await dbAddItem(item)
     set(s => ({ nextOrder: { ...s.nextOrder, doc: order + 1 } }))
     await get().load()
     return id
   },
 
   async update(id, patch) {
-    const item = await db.items.get(id)
+    const item = await dbGetItem(id)
     if (!item) return
     const key = await getStrongholdKey()
     const dbPatch: any = { ...patch }
@@ -394,21 +393,21 @@ export const useItems = create<ItemState>((set, get) => ({
     await get().load()
   },
   async duplicate(id) {
-    const it = await db.items.get(id)
+    const it = await dbGetItem(id)
     if (!it) return
     const lang = useSettings.getState().language
     const suffix = translate(lang, 'copySuffix')
     const copy = { ...it, id: nanoid(), title: it.title + suffix, createdAt: Date.now(), updatedAt: Date.now() }
-    await db.items.put(copy as AnyItem)
+    await dbAddItem(copy as AnyItem)
     await get().load()
     return copy.id
   },
   async remove(id) {
-    await db.items.delete(id)
+    await dbDeleteItem(id)
     await get().load()
   },
   async removeMany(ids) {
-    await db.items.bulkDelete(ids)
+    await dbBulkDelete(ids)
     await get().load()
   },
 
@@ -416,17 +415,17 @@ export const useItems = create<ItemState>((set, get) => ({
     const id = nanoid()
     const { tags } = get()
     const color = TAG_COLORS[tags.length % TAG_COLORS.length] as TagColor
-    await db.tags.put({ id, ...p, color })
+    await dbPutTag({ id, ...p, color })
     await get().load()
     return id
   },
   async removeTag(id) {
-    await db.tags.delete(id)
+    await dbDeleteTag(id)
     const { items } = get()
     const updates = items.map(it => (
       it.tags.includes(id) ? { ...it, tags: it.tags.filter(t => t !== id) } : it
     )) as AnyItem[]
-    await db.items.bulkPut(updates)
+    await dbBulkPut(updates)
     await get().load()
   },
 
