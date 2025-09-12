@@ -1,11 +1,14 @@
 import { create } from 'zustand'
-import { exec, query } from '../lib/db'
+import { exec, query, db, dbAddItem, dbGetItem, dbPutTag, dbDeleteTag, dbBulkPut } from '../lib/db'
 import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType } from '../types'
 import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
 import { translate } from '../lib/i18n'
 import { useSettings } from './useSettings'
 import Papa from 'papaparse'
+import { encryptString, decryptString } from '../lib/crypto'
+import { getStrongholdKey } from '../lib/stronghold'
+import { saveFile, deleteFile } from '../lib/fs'
 
 function parseCsv(text: string) {
   return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })

@@ -1,26 +1,87 @@
-import Database from '@tauri-apps/plugin-sql'
-import initSqlJs from 'sql.js'
+import type { AnyItem, Tag } from '../types'
 
-let dbPromise: Promise<any> | null = null
+interface Setting {
+  key: string
+  value: string
+}
 
-  constructor() {
-    super('pms-db')
-    this.version(1).stores({
-      items: 'id, type, title, updatedAt, *tags',
-      tags: 'id, name, parentId',
-      settings: 'key'
-    })
-    this.version(2).stores({
-      items: 'id, type, title, updatedAt, password_cipher, *tags',
-      tags: 'id, name, parentId',
-      settings: 'key'
-    }).upgrade(tx => {
-      tx.table('items').toCollection().modify((it: any) => {
-        if (it.passwordCipher && !it.password_cipher) {
-          it.password_cipher = it.passwordCipher
-          delete it.passwordCipher
-        }
-      })
-    })
+class Table<T extends { id: string }> {
+  private data: T[] = []
+
+  async clear() { this.data = [] }
+  async count() { return this.data.length }
+  async toArray() { return [...this.data] }
+  async get(id: string) { return this.data.find(it => it.id === id) }
+  async put(obj: T) {
+    const idx = this.data.findIndex(it => it.id === obj.id)
+    if (idx >= 0) this.data[idx] = obj
+    else this.data.push(obj)
   }
+  async bulkPut(arr: T[]) { for (const o of arr) await this.put(o) }
+  async delete(id: string) { this.data = this.data.filter(it => it.id !== id) }
+  async bulkDelete(ids: string[]) { this.data = this.data.filter(it => !ids.includes(it.id)) }
+  where(field: keyof T | string) {
+    return {
+      equals: (val: any) => ({ toArray: async () => this.data.filter((it: any) => it[field as string] === val) })
+    }
+  }
+  orderBy(field: keyof T | string) {
+    return {
+      reverse: () => ({
+        toArray: async () => [...this.data].sort((a: any, b: any) => (a[field as string] ?? 0) - (b[field as string] ?? 0)).reverse()
+      })
+    }
+  }
+}
+
+export class PmsDB {
+  items = new Table<AnyItem & Record<string, any>>()
+  tags = new Table<Tag>()
+  settings = new Table<Setting>()
+
+  async delete() {
+    await Promise.all([this.items.clear(), this.tags.clear(), this.settings.clear()])
+  }
+}
+
+export const db = new PmsDB()
+
+export async function exec(sql: string, params: any[] = []) {
+  if (/^DELETE FROM items/i.test(sql)) return db.items.clear()
+  if (/^DELETE FROM tags/i.test(sql)) return db.tags.clear()
+  if (/^DELETE FROM settings/i.test(sql)) return db.settings.clear()
+  if (/^INSERT OR REPLACE INTO settings/i.test(sql)) {
+    const [key, value] = params
+    return db.settings.put({ key, value })
+  }
+  throw new Error('Unsupported SQL: ' + sql)
+}
+
+export async function query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+  if (/^SELECT key, value FROM settings WHERE key IN/i.test(sql)) {
+    const keys = params as string[]
+    const rows = await db.settings.toArray()
+    return rows.filter(r => keys.includes(r.key)) as T[]
+  }
+  throw new Error('Unsupported SQL: ' + sql)
+}
+
+export function dbAddItem(item: AnyItem) {
+  return db.items.put(item as any)
+}
+
+export function dbGetItem(id: string) {
+  return db.items.get(id as any)
+}
+
+export function dbPutTag(tag: Tag) {
+  return db.tags.put(tag)
+}
+
+export function dbDeleteTag(id: string) {
+  return db.tags.delete(id)
+}
+
+export function dbBulkPut(items: AnyItem[]) {
+  return db.items.bulkPut(items as any[])
 }
