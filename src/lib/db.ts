@@ -13,6 +13,18 @@ export class PMSDB extends Dexie {
       tags: 'id, name, parentId',
       settings: 'key'
     })
+    this.version(2).stores({
+      items: 'id, type, title, updatedAt, password_cipher, *tags',
+      tags: 'id, name, parentId',
+      settings: 'key'
+    }).upgrade(tx => {
+      tx.table('items').toCollection().modify((it: any) => {
+        if (it.passwordCipher && !it.password_cipher) {
+          it.password_cipher = it.passwordCipher
+          delete it.passwordCipher
+        }
+      })
+    })
   }
 }
 export const db = new PMSDB()
