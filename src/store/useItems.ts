@@ -1,7 +1,14 @@
 import { create } from 'zustand'
 import { db } from '../lib/db'
-import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType }
-  from '../types'
+import type {
+  AnyItem,
+  SiteItem,
+  PasswordItem,
+  DocItem,
+  Tag,
+  TagColor,
+  ItemType,
+} from '../types'
 import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
 import { translate } from '../lib/i18n'
@@ -115,9 +122,11 @@ interface ItemState {
   indexMap: Record<string, number>
 
   load: () => Promise<void>
-  addSite: (p: Omit<SiteItem,'id'|'createdAt'|'updatedAt'|'type'>) => Promise<string>
-  addPassword: (p: Omit<PasswordItem,'id'|'createdAt'|'updatedAt'|'type'>) => Promise<string>
-  addDoc: (p: Omit<DocItem,'id'|'createdAt'|'updatedAt'|'type'>) => Promise<string>
+  addSite: (p: Omit<SiteItem, 'id' | 'createdAt' | 'updatedAt' | 'type'>) => Promise<string>
+  addPassword: (
+    p: Omit<PasswordItem, 'id' | 'createdAt' | 'updatedAt' | 'type'>
+  ) => Promise<string>
+  addDoc: (p: Omit<DocItem, 'id' | 'createdAt' | 'updatedAt' | 'type'>) => Promise<string>
   update: (id: string, patch: Partial<AnyItem>) => Promise<void>
   updateMany: (ids: string[], patch: Partial<AnyItem>) => Promise<void>
   duplicate: (id: string) => Promise<string | undefined>
@@ -131,34 +140,35 @@ interface ItemState {
   toggleSelect: (id: string, rangeWith?: string | null) => void
 
   exportSites: () => Promise<Blob>
-  importSites: (file: File, dryRun?: boolean) => Promise<{ items: SiteItem[]; errors: string[] }>
+  importSites: (
+    file: File,
+    dryRun?: boolean
+  ) => Promise<{ items: SiteItem[]; errors: string[] }>
   exportPasswords: () => Promise<Blob>
-  importPasswords: (file: File, dryRun?: boolean) => Promise<{ items: PasswordItem[]; errors: string[] }>
+  importPasswords: (
+    file: File,
+    dryRun?: boolean
+  ) => Promise<{ items: PasswordItem[]; errors: string[] }>
   exportDocs: () => Promise<Blob>
-  importDocs: (file: File, dryRun?: boolean) => Promise<{ items: DocItem[]; errors: string[] }>
+  importDocs: (
+    file: File,
+    dryRun?: boolean
+  ) => Promise<{ items: DocItem[]; errors: string[] }>
 }
 
-export const useItems = create<ItemState>((set, get) => ({
-  items: [],
-  tags: [],
-  filters: {},
-  selection: new Set<string>(),
-  nextOrder: { site: 1, password: 1, doc: 1 },
-  indexMap: {},
+export const useItems = create<ItemState>((set, get) => {
+  function parseCsv(text: string): string[][] {
+    const res = Papa.parse<string[]>(text, { skipEmptyLines: true })
+    if (res.errors.length) {
+      throw new Error(res.errors.map(e => e.message).join('; '))
+    }
+    return res.data as string[][]
+  }
 
-  async load() {
-    const [items, tags] = await Promise.all([
-      db.items.orderBy('updatedAt').reverse().toArray(),
-      db.tags.toArray()
-    ])
-    const nextOrder: Record<ItemType, number> = { site: 1, password: 1, doc: 1 }
-    const indexMap: Record<string, number> = {}
-    items.forEach((it, idx) => {
-      const ord = it.order ?? 0
-      if (ord >= nextOrder[it.type]) {
-        nextOrder[it.type] = ord + 1
-      }
-      indexMap[it.id] = idx
+  async function serializeItems(type: ItemType): Promise<Blob> {
+    const items = await db.items.where('type').equals(type).toArray()
+    return new Blob([JSON.stringify(items, null, 2)], {
+      type: 'application/json',
     })
     set({ items, tags, nextOrder, indexMap })
   },
