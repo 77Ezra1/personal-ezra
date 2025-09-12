@@ -88,10 +88,10 @@ export default function Passwords() {
   const [mpw, setMpw] = React.useState('')
 
   const navigate = useNavigate()
-  const { master, unlocked, unlock, masterHash } = useAuth()
+  const { key, unlocked, unlock, hasMaster } = useAuth()
 
   function ensureUnlock() {
-    if (!unlocked || !master) {
+    if (!unlocked || !key) {
       window.dispatchEvent(new Event('open-unlock'))
       return false
     }
@@ -99,7 +99,7 @@ export default function Passwords() {
   }
 
   function openUnlock() {
-    if (!masterHash) {
+    if (!hasMaster) {
       navigate('/settings')
     } else {
       setUnlockOpen(true)
@@ -113,7 +113,7 @@ export default function Passwords() {
     setUrl(it.url || '')
     setTags(it.tags)
     try {
-      const plain = await decryptString(master!, it.passwordCipher)
+      const plain = await decryptString(key!, it.passwordCipher)
       setPassword(plain)
     } catch {
       setPassword('')
@@ -135,7 +135,7 @@ export default function Passwords() {
   async function save() {
     if (!ensureUnlock()) return
     if (!title.trim() || !password) return
-    const passwordCipher = await encryptString(master!, password)
+    const passwordCipher = await encryptString(key!, password)
     if (editing) {
       await update(editing.id, { title, username, passwordCipher, url, tags })
     } else {
@@ -148,7 +148,7 @@ export default function Passwords() {
   async function copyPwd(it: PasswordItem) {
     if (!ensureUnlock()) return
     try {
-      const plain = await decryptString(master!, it.passwordCipher)
+      const plain = await decryptString(key!, it.passwordCipher)
       await copyWithTimeout(plain)
     } catch {}
   }
