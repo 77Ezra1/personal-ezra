@@ -66,9 +66,22 @@ export default function CommandK() {
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Escape') setOpen(false)
-            if (e.key === 'ArrowDown') setIdx((v) => Math.min(v + 1, filtered.length - 1))
-            if (e.key === 'ArrowUp') setIdx((v) => Math.max(v - 1, 0))
-            if (e.key === 'Enter' && filtered[idx]) onEnter(filtered[idx])
+            if (filtered.length > 0) {
+              if (e.key === 'ArrowDown')
+                setIdx(v => {
+                  const newIdx = v + 1
+                  return Math.max(0, Math.min(newIdx, filtered.length - 1))
+                })
+              if (e.key === 'ArrowUp')
+                setIdx(v => {
+                  const newIdx = v - 1
+                  return Math.max(0, Math.min(newIdx, filtered.length - 1))
+                })
+            }
+            if (e.key === 'Enter') {
+              const item = filtered[idx]
+              if (item) onEnter(item)
+            }
           }}
         />
         <div className="max-h-80 overflow-auto">
