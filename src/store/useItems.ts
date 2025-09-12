@@ -1,14 +1,6 @@
 import { create } from 'zustand'
 import { db } from '../lib/db'
-import type {
-  AnyItem,
-  SiteItem,
-  PasswordItem,
-  DocItem,
-  Tag,
-  TagColor,
-  ItemType,
-} from '../types'
+import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType } from '../types'
 import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
 import { translate } from '../lib/i18n'
@@ -16,11 +8,11 @@ import { useSettings } from './useSettings'
 import Papa from 'papaparse'
 
 function parseCsv(text: string): string[][] {
-  const result = Papa.parse<string[]>(text, { skipEmptyLines: true })
-  if (result.errors.length) {
-    throw new Error(result.errors.map(e => e.message).join('; '))
+  const res = Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
+  if (res.errors.length) {
+    throw new Error(res.errors.map(e => e.message).join('; '))
   }
-  return result.data as string[][]
+  return res.data as string[][]
 }
 
 function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'password') {
@@ -158,13 +150,13 @@ interface ItemState {
   ) => Promise<{ items: DocItem[]; errors: string[] }>
 }
 
-export const useItems = create<ItemState>((set, get) => {
-  const serializeItems = async (type: ItemType) => {
-    const items = await db.items.where('type').equals(type).toArray()
-    return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
-  },
+const serializeItems = async (type: ItemType) => {
+  const items = await db.items.where('type').equals(type).toArray()
+  return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
+}
 
-  async importSites(file, dryRun = false) {
+export const useItems = create<ItemState>((set, get) => {
+  const importItems = async <T extends AnyItem>(type: ItemType, file: File, dryRun = false) => {
     const text = await file.text()
     const { items } = get()
     const sites: SiteItem[] = []
@@ -266,7 +258,7 @@ export const useItems = create<ItemState>((set, get) => {
     async updateMany(ids, patch) {
       const { items } = get()
       const updates = ids.map(id => {
-        const item = items.find(i => i.id === id)
+        const item = items.find(i=>i.id===id)
         if (!item) return null
         return { ...item, ...patch, updatedAt: Date.now() } as AnyItem
       }).filter(Boolean) as AnyItem[]
