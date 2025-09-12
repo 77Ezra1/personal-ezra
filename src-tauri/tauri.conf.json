@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/config.json",
+  "productName": "pms-web",
+  "version": "0.1.0",
+  "identifier": "pms.web",
+  "plugins": {
+    "sql": {
+      "preload": ["sqlite:pms.db"]
+    }
+  }
+}

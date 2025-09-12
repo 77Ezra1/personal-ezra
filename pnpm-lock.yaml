@@ -8,12 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@tauri-apps/plugin-stronghold':
+        specifier: ^2.3.0
+        version: 2.3.0
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
-      dexie:
-        specifier: ^4.0.8
-        version: 4.2.0
       fuse.js:
         specifier: ^7.0.0
         version: 7.1.0
@@ -57,9 +57,6 @@ importers:
       autoprefixer:
         specifier: ^10.4.19
         version: 10.4.21(postcss@8.5.6)
-      fake-indexeddb:
-        specifier: ^6.2.2
-        version: 6.2.2
       postcss:
         specifier: ^8.4.41
         version: 8.5.6
@@ -953,6 +950,12 @@ packages:
   '@surma/rollup-plugin-off-main-thread@2.2.3':
     resolution: {integrity: sha512-lR8q/9W7hZpMWweNiAKU7NQerBnzQQLvi8qnTDU/fxItPhtZVMbPV3lbCwjhIlNBe9Bbr5V+KHshvWmVSG9cxQ==}
 
+  '@tauri-apps/api@2.8.0':
+    resolution: {integrity: sha512-ga7zdhbS2GXOMTIZRT0mYjKJtR9fivsXzsyq5U3vjDL0s6DTMwYRm0UHNjzTY5dh4+LSC68Sm/7WEiimbQNYlw==}
+
+  '@tauri-apps/plugin-stronghold@2.3.0':
+    resolution: {integrity: sha512-RU3p6OQqEs1B0D67HAm6SFtIlOv8Pmjocm32Oz6dywmfsjCY74/P2bUAv7SGqVSzBLwz8ODaavCGeS2s6yXqcg==}
+
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
 
@@ -1311,9 +1314,6 @@ packages:
   devlop@1.1.0:
     resolution: {integrity: sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA==}
 
-  dexie@4.2.0:
-    resolution: {integrity: sha512-OSeyyWOUetDy9oFWeddJgi83OnRA3hSFh3RrbltmPgqHszE9f24eUCVLI4mPg0ifsWk0lQTdnS+jyGNrPMvhDA==}
-
   didyoumean@1.2.2:
     resolution: {integrity: sha512-gxtyfqMg7GKyhQmb056K7M3xszy/myH8w+B4RT+QXBQsvAOdc3XymqDDPHx1BgPgsdAA5SIifona89YtRATDzw==}
 
@@ -1399,10 +1399,6 @@ packages:
 
   extend@3.0.2:
     resolution: {integrity: sha512-fjquC59cD7CyW6urNXK0FBufkZcoiGG80wTuPujX590cB5Ttln20E2UB4S/WARVqhXffZl2LNgS+gQdPIIim/g==}
-
-  fake-indexeddb@6.2.2:
-    resolution: {integrity: sha512-SGbf7fzjeHz3+12NO1dYigcYn4ivviaeULV5yY5rdGihBvvgwMds4r4UBbNIUMwkze57KTDm32rq3j1Az8mzEw==}
-    engines: {node: '>=18'}
 
   fast-deep-equal@3.1.3:
     resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
@@ -3644,6 +3640,12 @@ snapshots:
       magic-string: 0.25.9
       string.prototype.matchall: 4.0.12
 
+  '@tauri-apps/api@2.8.0': {}
+
+  '@tauri-apps/plugin-stronghold@2.3.0':
+    dependencies:
+      '@tauri-apps/api': 2.8.0
+
   '@types/babel__core@7.20.5':
     dependencies:
       '@babel/parser': 7.28.3
@@ -4024,8 +4026,6 @@ snapshots:
     dependencies:
       dequal: 2.0.3
 
-  dexie@4.2.0: {}
-
   didyoumean@1.2.2: {}
 
   dlv@1.1.3: {}
@@ -4171,8 +4171,6 @@ snapshots:
   expect-type@1.2.2: {}
 
   extend@3.0.2: {}
-
-  fake-indexeddb@6.2.2: {}
 
   fast-deep-equal@3.1.3: {}
 
