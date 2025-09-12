@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { db } from '../lib/db'
+import { exec, query } from '../lib/db'
 import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType } from '../types'
 import { TAG_COLORS } from '../types'
 import { nanoid } from 'nanoid'
@@ -240,7 +240,25 @@ async function importItems<T extends AnyItem>(
     errors.push(e.message)
   }
   if (!dryRun && res.length) {
-    await db.items.bulkPut(res)
+    let toStore: any[] = res
+    if (type === 'password') {
+      const key = await getStrongholdKey()
+      toStore = await Promise.all(
+        res.map(async (it: any) => {
+          const username = await encryptString(key, it.username)
+          const url = it.url ? await encryptString(key, it.url) : undefined
+          const password_cipher = await encryptString(key, it.passwordCipher)
+          return {
+            ...it,
+            username,
+            url,
+            password_cipher,
+          }
+        })
+      )
+      toStore.forEach(it => { delete (it as any).passwordCipher })
+    }
+    await db.items.bulkPut(toStore)
     await get().load()
   }
   return { items: res, errors }
@@ -255,10 +273,25 @@ export const useItems = create<ItemState>((set, get) => ({
   indexMap: {},
 
   async load() {
-    const [items, tags] = await Promise.all([
+    const key = await getStrongholdKey()
+    const [rawItems, tags] = await Promise.all([
       db.items.orderBy('updatedAt').reverse().toArray(),
       db.tags.toArray(),
     ])
+    const items = await Promise.all(
+      rawItems.map(async it => {
+        if (it.type === 'password') {
+          const dbIt: any = it
+          const username = dbIt.username ? await decryptString(key, dbIt.username) : ''
+          const url = dbIt.url ? await decryptString(key, dbIt.url) : undefined
+          const pwd = dbIt.password_cipher ? await decryptString(key, dbIt.password_cipher) : ''
+          const cleaned: PasswordItem = { ...it, username, url, passwordCipher: pwd }
+          delete (cleaned as any).password_cipher
+          return cleaned
+        }
+        return it
+      })
+    )
     const nextOrder: Record<ItemType, number> = { site: 1, password: 1, doc: 1 }
     const indexMap: Record<string, number> = {}
     items.forEach((it, idx) => {
@@ -276,7 +309,7 @@ export const useItems = create<ItemState>((set, get) => ({
     const now = Date.now()
     const order = get().nextOrder.site
     const item: SiteItem = { id, type: 'site', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-    await db.items.put(item)
+    await dbAddItem(item)
     set(s => ({ nextOrder: { ...s.nextOrder, site: order + 1 } }))
     await get().load()
     return id
@@ -285,7 +318,25 @@ export const useItems = create<ItemState>((set, get) => ({
     const id = nanoid()
     const now = Date.now()
     const order = get().nextOrder.password
-    const item: PasswordItem = { id, type: 'password', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
+    const key = await getStrongholdKey()
+    const username = await encryptString(key, p.username)
+    const url = p.url ? await encryptString(key, p.url) : undefined
+    const password_cipher = await encryptString(key, p.passwordCipher)
+    const item: any = {
+      id,
+      type: 'password',
+      createdAt: now,
+      updatedAt: now,
+      order,
+      title: p.title,
+      username,
+      url,
+      password_cipher,
+      tags: p.tags ?? [],
+      description: p.description ?? '',
+      favorite: p.favorite,
+      totpCipher: p.totpCipher,
+    }
     await db.items.put(item)
     set(s => ({ nextOrder: { ...s.nextOrder, password: order + 1 } }))
     await get().load()
@@ -324,7 +375,7 @@ export const useItems = create<ItemState>((set, get) => ({
   },
 
   async update(id, patch) {
-    const item = await db.items.get(id)
+    const item = await dbGetItem(id)
     if (!item) return
     const { file, ...rest } = patch as any
     let path = rest.path
@@ -349,21 +400,33 @@ export const useItems = create<ItemState>((set, get) => ({
   },
   async updateMany(ids, patch) {
     const { items } = get()
-    const updates = ids.map(id => {
-      const item = items.find(i => i.id === id)
-      if (!item) return null
-      return { ...item, ...patch, updatedAt: Date.now() } as AnyItem
-    }).filter(Boolean) as AnyItem[]
-    await db.items.bulkPut(updates)
+    const key = await getStrongholdKey()
+    const updates = await Promise.all(
+      ids.map(async id => {
+        const item = items.find(i => i.id === id)
+        if (!item) return null
+        const updated: any = { ...item, ...patch, updatedAt: Date.now() }
+        if (item.type === 'password') {
+          if (updated.username !== undefined) updated.username = await encryptString(key, updated.username)
+          if (updated.url !== undefined) updated.url = await encryptString(key, updated.url)
+          if (updated.passwordCipher !== undefined) {
+            updated.password_cipher = await encryptString(key, updated.passwordCipher)
+            delete updated.passwordCipher
+          }
+        }
+        return updated
+      })
+    )
+    await db.items.bulkPut(updates.filter(Boolean) as any[])
     await get().load()
   },
   async duplicate(id) {
-    const it = await db.items.get(id)
+    const it = await dbGetItem(id)
     if (!it) return
     const lang = useSettings.getState().language
     const suffix = translate(lang, 'copySuffix')
     const copy = { ...it, id: nanoid(), title: it.title + suffix, createdAt: Date.now(), updatedAt: Date.now() }
-    await db.items.put(copy as AnyItem)
+    await dbAddItem(copy as AnyItem)
     await get().load()
     return copy.id
   },
@@ -391,17 +454,17 @@ export const useItems = create<ItemState>((set, get) => ({
     const id = nanoid()
     const { tags } = get()
     const color = TAG_COLORS[tags.length % TAG_COLORS.length] as TagColor
-    await db.tags.put({ id, ...p, color })
+    await dbPutTag({ id, ...p, color })
     await get().load()
     return id
   },
   async removeTag(id) {
-    await db.tags.delete(id)
+    await dbDeleteTag(id)
     const { items } = get()
     const updates = items.map(it => (
       it.tags.includes(id) ? { ...it, tags: it.tags.filter(t => t !== id) } : it
     )) as AnyItem[]
-    await db.items.bulkPut(updates)
+    await dbBulkPut(updates)
     await get().load()
   },
 

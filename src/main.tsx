@@ -8,8 +8,10 @@ import './index.css'
 import { toast } from './utils/toast'
 import { useSettings } from './store/useSettings'
 import { useAuth } from './store/useAuth'
+import { migrateIfNeeded } from './lib/migrate'
 
 if (typeof window !== 'undefined') {
+  migrateIfNeeded().catch(() => {})
   // 将 alert 替换为优雅的 Toast
   window.alert = (msg: any) => { try { toast.info(String(msg)) } catch { /* noop */ } }
 
