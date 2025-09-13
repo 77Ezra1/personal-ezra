@@ -41,6 +41,10 @@ export async function deleteFile(path: string) {
   try { await removeFile(path); } catch {}
 }
 
-export async function openFile() {
-  throw new Error('not implemented');
+export async function openFile(path: string) {
+  try {
+    window.open(path);
+  } catch (e) {
+    console.error(e);
+  }
 }
