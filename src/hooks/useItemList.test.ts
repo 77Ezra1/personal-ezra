@@ -4,8 +4,10 @@ import { useItemList } from './useItemList'
 import { useItems } from '../store/useItems'
 import type { SiteItem } from '../types'
 import { exec } from '../lib/db'
+import { useAuth } from '../store/useAuth'
 
 beforeEach(async () => {
+  useAuth.setState({ key: new Uint8Array(32) })
   await exec('DELETE FROM items')
   await exec('DELETE FROM tags')
   await useItems.getState().load()
