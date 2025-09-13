@@ -1,5 +1,20 @@
+# Node / Vite
 node_modules/
 dist/
-build/
-.env
-*.log
+.vite/
+pnpm-debug.log*
+*.local
+
+# Tauri / Rust
+target/
+src-tauri/target/
+.cargo/
+.cargo-target/
+*.pdb
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
