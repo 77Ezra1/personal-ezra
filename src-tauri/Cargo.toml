@@ -8,4 +8,4 @@ tauri = { version = "2", features = ["shell-open"] }
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 
 [build-dependencies]
-tauri-build = { version = "2" }
+tauri-build = { version = "2", features = [] }
