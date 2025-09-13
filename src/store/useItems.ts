@@ -7,8 +7,8 @@ import { translate } from '../lib/i18n'
 import { useSettings } from './useSettings'
 import Papa from 'papaparse'
 import { encryptString, decryptString } from '../lib/crypto'
-import { getStrongholdKey } from '../lib/stronghold'
 import { saveFile, deleteFile } from '../lib/fs'
+import { useAuth } from './useAuth'
 
 function parseCsv(text: string) {
   return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
@@ -244,7 +244,8 @@ async function importItems<T extends AnyItem>(
   if (!dryRun && res.length) {
     let toStore: any[] = res
     if (type === 'password') {
-      const key = await getStrongholdKey()
+      const key = useAuth.getState().key
+      if (!key) throw new Error('Missing master key')
       toStore = await Promise.all(
         res.map(async (it: any) => {
           const username = await encryptString(key, it.username)
@@ -275,7 +276,8 @@ export const useItems = create<ItemState>((set, get) => ({
   indexMap: {},
 
   async load() {
-    const key = await getStrongholdKey()
+    const key = useAuth.getState().key
+    if (!key) throw new Error('Missing master key')
     const [rawItems, tags] = await Promise.all([
       db.items.orderBy('updatedAt').reverse().toArray(),
       db.tags.toArray(),
@@ -320,7 +322,8 @@ export const useItems = create<ItemState>((set, get) => ({
     const id = nanoid()
     const now = Date.now()
     const order = get().nextOrder.password
-    const key = await getStrongholdKey()
+    const key = useAuth.getState().key
+    if (!key) throw new Error('Missing master key')
     const username = await encryptString(key, p.username)
     const url = p.url ? await encryptString(key, p.url) : undefined
     const password_cipher = await encryptString(key, p.passwordCipher)
@@ -402,7 +405,8 @@ export const useItems = create<ItemState>((set, get) => ({
   },
   async updateMany(ids, patch) {
     const { items } = get()
-    const key = await getStrongholdKey()
+    const key = useAuth.getState().key
+    if (!key) throw new Error('Missing master key')
     const updates = await Promise.all(
       ids.map(async id => {
         const item = items.find(i => i.id === id)

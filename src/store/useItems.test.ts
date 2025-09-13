@@ -2,8 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useItems } from './useItems'
 import { useSettings } from './useSettings'
 import { exec } from '../lib/db'
+import { useAuth } from './useAuth'
 
 beforeEach(async () => {
+  useAuth.setState({ key: new Uint8Array(32) })
   await exec('DELETE FROM items')
   await exec('DELETE FROM tags')
   await exec('DELETE FROM settings')
