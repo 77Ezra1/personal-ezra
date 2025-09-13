@@ -1,28 +1,19 @@
 import IconButton from '../components/ui/IconButton'
-import { useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useItems } from '../store/useItems'
 import type { DocItem } from '../types'
 import Input from '../components/ui/Input'
 import Button from '../components/ui/Button'
-import Modal from '../components/ui/Modal'
 import Segmented from '../components/ui/Segmented'
 import TagRow from '../components/TagRow'
 import TagPicker from '../components/TagPicker'
 import { useSearchParams } from 'react-router-dom'
 import { ExternalLink, Trash2, XCircle } from 'lucide-react'
 import FixedUrl from '../components/FixedUrl'
-import { useSettings } from '../store/useSettings'
 import { useTranslation } from '../lib/i18n'
 import { openFile } from '../lib/fs'
-
-function Field({ label, children }: { label: string; children: any }) {
-  return (
-    <div className="grid gap-1">
-      <label className="text-xs text-muted">{label}</label>
-      {children}
-    </div>
-  )
-}
+import ItemForm, { ItemField } from '../components/ItemForm'
+import { useItemList } from '../hooks/useItemList'
 
 function fmt(size?: number) {
   if (!size) return ''
@@ -33,75 +24,36 @@ function fmt(size?: number) {
 }
 
 export default function Docs() {
-  const { items, load, addDoc, update, removeMany, selection, toggleSelect, clearSelection } = useItems()
+  const { addDoc, update } = useItems()
   const [params] = useSearchParams()
   const activeTag = params.get('tag')
   const t = useTranslation()
 
-  const [q, setQ] = useState('')
-  const viewMode = useSettings(s => s.viewMode)
-  const [view, setView] = useState<'table' | 'card'>(viewMode === 'card' ? 'card' : 'table')
+  const {
+    q,
+    setQ,
+    view,
+    setView,
+    openNew,
+    setOpenNew,
+    openEdit,
+    setOpenEdit,
+    edit,
+    setEdit,
+    selection,
+    toggleSelect,
+    clearSelection,
+    removeMany,
+    filtered,
+  } = useItemList<DocItem>('doc', ['title', 'path', 'description'], activeTag)
 
-  // 新建
-  const [openNew, setOpenNew] = useState(false)
   const [nTitle, setNTitle] = useState('')
   const [nPath, setNPath] = useState('')
   const [nDesc, setNDesc] = useState('')
   const [nTags, setNTags] = useState<string[]>([])
   const [nFile, setNFile] = useState<File | null>(null)
 
-  // 编辑
-  const [openEdit, setOpenEdit] = useState(false)
-  const [edit, setEdit] = useState<DocItem | null>(null)
   const [editFile, setEditFile] = useState<File | null>(null)
-
-  useEffect(() => { load() }, [])
-  useEffect(() => {
-    if (viewMode === 'card') setView('card')
-    else if (viewMode === 'list') setView('table')
-  }, [viewMode])
-
-  // 顶部搜索：定位+高亮
-  useEffect(() => {
-    const handler = (e: any) => {
-      const { id, type } = e.detail || {}
-      if (type !== 'doc') return
-      const el = document.querySelector(`[data-id="${id}"]`) as HTMLElement | null
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        el.classList.add('bg-blue-50')
-        setTimeout(() => el.classList.remove('bg-blue-50'), 1600)
-      }
-    }
-    window.addEventListener('locate-item', handler)
-    return () => window.removeEventListener('locate-item', handler)
-  }, [])
-
-  // 顶部搜索：打开编辑
-  useEffect(() => {
-    const handler = (e: any) => {
-      const { id, type } = e.detail || {}
-      if (type !== 'doc') return
-      const it = (items as DocItem[]).find(x => x.id === id)
-      if (it) { setEdit(it); setOpenEdit(true) }
-    }
-    window.addEventListener('open-edit', handler)
-    return () => window.removeEventListener('open-edit', handler)
-  }, [items])
-
-  const list = useMemo(() => items.filter(i => i.type === 'doc') as DocItem[], [items])
-
-  const filtered = useMemo(() => {
-    let arr = list
-    const s = q.trim().toLowerCase()
-    if (activeTag) arr = arr.filter(it => it.tags?.includes(activeTag))
-    if (s) arr = arr.filter(it => (`${it.title} ${it.path} ${it.description ?? ''}`).toLowerCase().includes(s))
-    return arr.slice().sort((a, b) =>
-      (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) ||
-      (a.order ?? 0) - (b.order ?? 0) ||
-      b.updatedAt - a.updatedAt
-    )
-  }, [list, q, activeTag])
 
   // ======= 列表视图（均分列宽 + 右侧留白） =======
   const tableView = (
@@ -215,69 +167,114 @@ export default function Docs() {
       {ui}
 
       {/* 新建文档 */}
-      <Modal
+      <ItemForm
         open={openNew}
         onClose={() => setOpenNew(false)}
         title={t('newDoc')}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setOpenNew(false)}>
-              {t('cancel')}
-            </Button>
-            <Button
-              onClick={async () => {
-                if (!nTitle || (!nPath && !nFile)) { alert(t('enterTitleAndUrl')); return }
-                await addDoc({ title: nTitle, path: nPath, source: 'local', description: nDesc, tags: nTags, file: nFile || undefined })
-                setOpenNew(false); setNTitle(''); setNPath(''); setNDesc(''); setNTags([]); setNFile(null)
-              }}
-            >
-              {t('save')}
-            </Button>
-          </>
-        }>
-        <div className="grid gap-3">
-          <Field label={t('title')}><Input value={nTitle} onChange={e => setNTitle(e.target.value)} /></Field>
-          <Field label={t('pathOrSource')}><Input value={nPath} onChange={e => setNPath(e.target.value)} placeholder="/docs/a.pdf" /></Field>
-          <Field label={t('file')}><input type="file" onChange={e => { const f = e.target.files?.[0]; if (f) { setNFile(f); setNPath(f.name) } }} /></Field>
-          <Field label={t('description')}><Input value={nDesc} onChange={e => setNDesc(e.target.value)} placeholder={t('optional')} /></Field>
-          <Field label={t('tags')}><TagPicker value={nTags} onChange={setNTags} /></Field>
-        </div>
-      </Modal>
+        onSave={async () => {
+          if (!nTitle || (!nPath && !nFile)) {
+            alert(t('enterTitleAndUrl'))
+            return
+          }
+          await addDoc({
+            title: nTitle,
+            path: nPath,
+            source: 'local',
+            description: nDesc,
+            tags: nTags,
+            file: nFile || undefined,
+          })
+          setOpenNew(false)
+          setNTitle('')
+          setNPath('')
+          setNDesc('')
+          setNTags([])
+          setNFile(null)
+        }}
+        cancelLabel={t('cancel')}
+        saveLabel={t('save')}
+      >
+        <ItemField label={t('title')}>
+          <Input value={nTitle} onChange={e => setNTitle(e.target.value)} />
+        </ItemField>
+        <ItemField label={t('pathOrSource')}>
+          <Input value={nPath} onChange={e => setNPath(e.target.value)} placeholder="/docs/a.pdf" />
+        </ItemField>
+        <ItemField label={t('file')}>
+          <input
+            type="file"
+            onChange={e => {
+              const f = e.target.files?.[0]
+              if (f) {
+                setNFile(f)
+                setNPath(f.name)
+              }
+            }}
+          />
+        </ItemField>
+        <ItemField label={t('description')}>
+          <Input value={nDesc} onChange={e => setNDesc(e.target.value)} placeholder={t('optional')} />
+        </ItemField>
+        <ItemField label={t('tags')}>
+          <TagPicker value={nTags} onChange={setNTags} />
+        </ItemField>
+      </ItemForm>
 
-      {/* 编辑文档（✅ 含“打开”按钮） */}
-      <Modal
+      {/* 编辑文档 */}
+      <ItemForm
         open={openEdit}
         onClose={() => setOpenEdit(false)}
         title={t('editDoc')}
-        footer={
-          <>
-          {edit?.path && (
+        onSave={async () => {
+          if (!edit) return
+          await update(edit.id, {
+            title: edit.title,
+            path: edit.path,
+            description: edit.description,
+            tags: edit.tags,
+            file: editFile || undefined,
+          })
+          setOpenEdit(false)
+          setEditFile(null)
+        }}
+        cancelLabel={t('cancel')}
+        saveLabel={t('save')}
+        extraButtons={
+          edit?.path ? (
             <Button variant="secondary" onClick={() => openFile(edit.path)} className="mr-auto">
               {t('open')}
             </Button>
-          )}
-          <Button variant="secondary" onClick={() => setOpenEdit(false)}>
-            {t('cancel')}
-          </Button>
-          <Button
-            onClick={async () => {
-              if (!edit) return
-              await update(edit.id, { title: edit.title, path: edit.path, description: edit.description, tags: edit.tags, file: editFile || undefined })
-              setOpenEdit(false); setEditFile(null)
+          ) : undefined
+        }
+      >
+        <ItemField label={t('title')}>
+          <Input value={edit?.title || ''} onChange={e => setEdit(p => (p ? { ...p, title: e.target.value } as DocItem : p))} />
+        </ItemField>
+        <ItemField label={t('pathOrSource')}>
+          <Input value={edit?.path || ''} onChange={e => setEdit(p => (p ? { ...p, path: e.target.value } as DocItem : p))} />
+        </ItemField>
+        <ItemField label={t('file')}>
+          <input
+            type="file"
+            onChange={e => {
+              const f = e.target.files?.[0]
+              if (f) {
+                setEditFile(f)
+                setEdit(p => (p ? { ...p, path: f.name } as DocItem : p))
+              }
             }}
-          >
-            {t('save')}
-          </Button>
-        </>
-      }>
-        <div className="grid gap-3">
-          <Field label={t('title')}><Input value={edit?.title || ''} onChange={e => setEdit(p => p ? { ...p, title: e.target.value } as DocItem : p)} /></Field>
-          <Field label={t('pathOrSource')}><Input value={edit?.path || ''} onChange={e => setEdit(p => p ? { ...p, path: e.target.value } as DocItem : p)} /></Field>
-          <Field label={t('file')}><input type="file" onChange={e => { const f = e.target.files?.[0]; if (f) { setEditFile(f); setEdit(p => p ? { ...p, path: f.name } as DocItem : p) } }} /></Field>
-          <Field label={t('description')}><Input value={edit?.description || ''} onChange={e => setEdit(p => p ? { ...p, description: e.target.value } as DocItem : p)} /></Field>
-          <Field label={t('tags')}><TagPicker value={edit?.tags || []} onChange={v => setEdit(p => p ? { ...p, tags: v } as DocItem : p)} /></Field>
-        </div>
-      </Modal>
+          />
+        </ItemField>
+        <ItemField label={t('description')}>
+          <Input
+            value={edit?.description || ''}
+            onChange={e => setEdit(p => (p ? { ...p, description: e.target.value } as DocItem : p))}
+          />
+        </ItemField>
+        <ItemField label={t('tags')}>
+          <TagPicker value={edit?.tags || []} onChange={v => setEdit(p => (p ? { ...p, tags: v } as DocItem : p))} />
+        </ItemField>
+      </ItemForm>
     </>
   )
 }

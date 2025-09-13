@@ -1,96 +1,47 @@
 import IconButton from '../components/ui/IconButton'
-import { useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useItems } from '../store/useItems'
 import type { SiteItem } from '../types'
 import Input from '../components/ui/Input'
 import Button from '../components/ui/Button'
-import Modal from '../components/ui/Modal'
 import Segmented from '../components/ui/Segmented'
 import TagRow from '../components/TagRow'
 import TagPicker from '../components/TagPicker'
 import { useSearchParams } from 'react-router-dom'
 import { ExternalLink, Trash2, XCircle } from 'lucide-react'
 import FixedUrl from '../components/FixedUrl'
-import { useSettings } from '../store/useSettings'
 import { useTranslation } from '../lib/i18n'
-
-function Field({ label, children }: { label: string; children: any }) {
-  return (
-    <div className="grid gap-1">
-      <label className="text-xs text-muted">{label}</label>
-      {children}
-    </div>
-  )
-}
+import ItemForm, { ItemField } from '../components/ItemForm'
+import { useItemList } from '../hooks/useItemList'
 
 export default function Sites() {
-  const { items, load, addSite, update, removeMany, selection, toggleSelect, clearSelection } = useItems()
+  const { addSite, update } = useItems()
   const [params] = useSearchParams()
   const activeTag = params.get('tag')
   const t = useTranslation()
 
-  const [q, setQ] = useState('')
-  const viewMode = useSettings(s => s.viewMode)
-  const [view, setView] = useState<'table' | 'card'>(viewMode === 'card' ? 'card' : 'table')
+  const {
+    q,
+    setQ,
+    view,
+    setView,
+    openNew,
+    setOpenNew,
+    openEdit,
+    setOpenEdit,
+    edit,
+    setEdit,
+    selection,
+    toggleSelect,
+    clearSelection,
+    removeMany,
+    filtered,
+  } = useItemList<SiteItem>('site', ['title', 'url', 'description'], activeTag)
 
-  // New site
-  const [openNew, setOpenNew] = useState(false)
   const [nTitle, setNTitle] = useState('')
   const [nUrl, setNUrl] = useState('')
   const [nDesc, setNDesc] = useState('')
   const [nTags, setNTags] = useState<string[]>([])
-
-  // Edit site
-  const [openEdit, setOpenEdit] = useState(false)
-  const [edit, setEdit] = useState<SiteItem | null>(null)
-
-  useEffect(() => { load() }, [])
-  useEffect(() => {
-    if (viewMode === 'card') setView('card')
-    else if (viewMode === 'list') setView('table')
-  }, [viewMode])
-
-  // Locate item from global search
-  useEffect(() => {
-    const handler = (e: any) => {
-      const { id, type } = e.detail || {}
-      if (type !== 'site') return
-      const el = document.querySelector(`[data-id="${id}"]`) as HTMLElement | null
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        el.classList.add('bg-blue-50')
-        setTimeout(() => el.classList.remove('bg-blue-50'), 1600)
-      }
-    }
-    window.addEventListener('locate-item', handler)
-    return () => window.removeEventListener('locate-item', handler)
-  }, [])
-
-  // Open edit from global search
-  useEffect(() => {
-    const handler = (e: any) => {
-      const { id, type } = e.detail || {}
-      if (type !== 'site') return
-      const it = (items as SiteItem[]).find(x => x.id === id)
-      if (it) { setEdit(it); setOpenEdit(true) }
-    }
-    window.addEventListener('open-edit', handler)
-    return () => window.removeEventListener('open-edit', handler)
-  }, [items])
-
-  const list = useMemo(() => items.filter(i => i.type === 'site') as SiteItem[], [items])
-
-  const filtered = useMemo(() => {
-    let arr = list
-    const s = q.trim().toLowerCase()
-    if (activeTag) arr = arr.filter(it => it.tags?.includes(activeTag))
-    if (s) arr = arr.filter(it => (`${it.title} ${it.url} ${it.description ?? ''}`).toLowerCase().includes(s))
-    return arr.slice().sort((a, b) =>
-      (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) ||
-      (a.order ?? 0) - (b.order ?? 0) ||
-      b.updatedAt - a.updatedAt
-    )
-  }, [list, q, activeTag])
 
   // Table view
   const tableView = (
@@ -194,63 +145,88 @@ export default function Sites() {
       {ui}
 
       {/* New site */}
-      <Modal
+      <ItemForm
         open={openNew}
         onClose={() => setOpenNew(false)}
         title={t('newSite')}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setOpenNew(false)}>{t('cancel')}</Button>
-            <Button
-              onClick={async () => {
-                if (!nTitle || !nUrl) { alert(t('enterTitleAndUrl')); return }
-                await addSite({ title: nTitle, url: nUrl, description: nDesc, tags: nTags })
-                setOpenNew(false); setNTitle(''); setNUrl(''); setNDesc(''); setNTags([])
-              }}
-            >
-              {t('save')}
-            </Button>
-          </>
-        }
+        onSave={async () => {
+          if (!nTitle || !nUrl) {
+            alert(t('enterTitleAndUrl'))
+            return
+          }
+          await addSite({ title: nTitle, url: nUrl, description: nDesc, tags: nTags })
+          setOpenNew(false)
+          setNTitle('')
+          setNUrl('')
+          setNDesc('')
+          setNTags([])
+        }}
+        cancelLabel={t('cancel')}
+        saveLabel={t('save')}
       >
-        <div className="grid gap-3">
-          <Field label={t('title')}><Input value={nTitle} onChange={e => setNTitle(e.target.value)} placeholder="Example" /></Field>
-          <Field label={t('url')}><Input value={nUrl} onChange={e => setNUrl(e.target.value)} placeholder="https://..." /></Field>
-          <Field label={t('description')}><Input value={nDesc} onChange={e => setNDesc(e.target.value)} placeholder={t('optional')} /></Field>
-          <Field label={t('tags')}><TagPicker value={nTags} onChange={setNTags} /></Field>
-        </div>
-      </Modal>
+        <ItemField label={t('title')}>
+          <Input value={nTitle} onChange={e => setNTitle(e.target.value)} placeholder="Example" />
+        </ItemField>
+        <ItemField label={t('url')}>
+          <Input value={nUrl} onChange={e => setNUrl(e.target.value)} placeholder="https://..." />
+        </ItemField>
+        <ItemField label={t('description')}>
+          <Input value={nDesc} onChange={e => setNDesc(e.target.value)} placeholder={t('optional')} />
+        </ItemField>
+        <ItemField label={t('tags')}>
+          <TagPicker value={nTags} onChange={setNTags} />
+        </ItemField>
+      </ItemForm>
 
       {/* Edit site */}
-      <Modal
+      <ItemForm
         open={openEdit}
         onClose={() => setOpenEdit(false)}
         title={t('editSite')}
-        footer={
-          <>
-            {edit?.url && /^https?:\/\//i.test(edit.url) && (
-              <a className="h-9 px-3 rounded-lg border border-border grid place-items-center mr-auto" href={edit.url} target="_blank" rel="noreferrer">{t('open')}</a>
-            )}
-            <Button variant="secondary" onClick={() => setOpenEdit(false)}>{t('cancel')}</Button>
-            <Button
-              onClick={async () => {
-                if (!edit) return
-                await update(edit.id, { title: edit.title, url: edit.url, description: edit.description, tags: edit.tags })
-                setOpenEdit(false)
-              }}
+        onSave={async () => {
+          if (!edit) return
+          await update(edit.id, {
+            title: edit.title,
+            url: edit.url,
+            description: edit.description,
+            tags: edit.tags,
+          })
+          setOpenEdit(false)
+        }}
+        cancelLabel={t('cancel')}
+        saveLabel={t('save')}
+        extraButtons={
+          edit?.url && /^https?:\/\//i.test(edit.url) ? (
+            <a
+              className="h-9 px-3 rounded-lg border border-border grid place-items-center mr-auto"
+              href={edit.url}
+              target="_blank"
+              rel="noreferrer"
             >
-              {t('save')}
-            </Button>
-          </>
+              {t('open')}
+            </a>
+          ) : undefined
         }
       >
-        <div className="grid gap-3">
-          <Field label={t('title')}><Input value={edit?.title || ''} onChange={e => setEdit(p => p ? { ...p, title: e.target.value } as SiteItem : p)} /></Field>
-          <Field label={t('url')}><Input value={edit?.url || ''} onChange={e => setEdit(p => p ? { ...p, url: e.target.value } as SiteItem : p)} /></Field>
-          <Field label={t('description')}><Input value={edit?.description || ''} onChange={e => setEdit(p => p ? { ...p, description: e.target.value } as SiteItem : p)} /></Field>
-          <Field label={t('tags')}><TagPicker value={edit?.tags || []} onChange={v => setEdit(p => p ? { ...p, tags: v } as SiteItem : p)} /></Field>
-        </div>
-      </Modal>
+        <ItemField label={t('title')}>
+          <Input value={edit?.title || ''} onChange={e => setEdit(p => (p ? { ...p, title: e.target.value } as SiteItem : p))} />
+        </ItemField>
+        <ItemField label={t('url')}>
+          <Input value={edit?.url || ''} onChange={e => setEdit(p => (p ? { ...p, url: e.target.value } as SiteItem : p))} />
+        </ItemField>
+        <ItemField label={t('description')}>
+          <Input
+            value={edit?.description || ''}
+            onChange={e => setEdit(p => (p ? { ...p, description: e.target.value } as SiteItem : p))}
+          />
+        </ItemField>
+        <ItemField label={t('tags')}>
+          <TagPicker
+            value={edit?.tags || []}
+            onChange={v => setEdit(p => (p ? { ...p, tags: v } as SiteItem : p))}
+          />
+        </ItemField>
+      </ItemForm>
     </>
   )
 }
