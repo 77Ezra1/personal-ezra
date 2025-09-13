@@ -1,10 +1,18 @@
 import { create } from 'zustand'
 import { WORDS } from '../lib/mnemonicWords'
-import { Stronghold } from '@tauri-apps/plugin-stronghold'
+import { isTauri } from '../lib/env'
 
 const SH_PATH = 'pms.stronghold'
 const SH_CLIENT = 'pms'
 const STORE_KEY = 'master_key'
+
+async function loadStronghold(pw: string) {
+  if (!isTauri()) {
+    throw new Error('Stronghold only available in Tauri runtime')
+  }
+  const { Stronghold } = await import('@tauri-apps/plugin-stronghold')
+  return Stronghold.load(SH_PATH, pw)
+}
 
 interface AuthState {
   unlocked: boolean
@@ -48,7 +56,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
   },
   async setMaster(pw: string) {
-    const stronghold = await Stronghold.load(SH_PATH, pw)
+    const stronghold = await loadStronghold(pw)
     const client = await stronghold.loadClient(SH_CLIENT)
     const store = client.getStore()
     let key = await store.get(STORE_KEY)
@@ -69,7 +77,7 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
   async unlock(pw: string) {
     try {
-      const stronghold = await Stronghold.load(SH_PATH, pw)
+      const stronghold = await loadStronghold(pw)
       const client = await stronghold.loadClient(SH_CLIENT)
       const store = client.getStore()
       const key = await store.get(STORE_KEY)
@@ -92,7 +100,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     return indices.every((idx, i) => mnemonic[idx] === (words[i] || '').trim())
   },
   async resetMaster(pw: string) {
-    const stronghold = await Stronghold.load(SH_PATH, pw)
+    const stronghold = await loadStronghold(pw)
     const client = await stronghold.loadClient(SH_CLIENT)
     const store = client.getStore()
     const key = crypto.getRandomValues(new Uint8Array(32))

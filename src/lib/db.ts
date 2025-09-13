@@ -1,14 +1,21 @@
-import Database from '@tauri-apps/plugin-sql';
 import schema from '../../src-tauri/sql/schema.sql?raw';
+import { isTauri } from './env';
+type DatabaseNS = any;
 import type { AnyItem, Tag } from '../types';
 
-let sqlDb: Database | null = null;
+let sqlDb: DatabaseNS | null = null;
 
 export async function initDb(appDataDir: string) {
-  if (sqlDb) return;
+  if (!isTauri() || sqlDb) return;
+  const { default: Database } = await import('@tauri-apps/plugin-sql');
   const conn = `sqlite:${appDataDir}pms.db`;
   sqlDb = await Database.load(conn);
   await sqlDb.execute(schema);
+}
+
+function getDb() {
+  if (!sqlDb) throw new Error('db not initialized');
+  return sqlDb;
 }
 
 export interface Site {
@@ -20,22 +27,22 @@ export interface Site {
 }
 
 export async function saveSite(item: Site) {
-  if (!sqlDb) throw new Error('db not initialized');
+  const db = getDb();
   if (item.id) {
-    await sqlDb.execute('UPDATE sites SET title=?, url=?, tags=? WHERE id=?', [item.title, item.url, item.tags ?? '', item.id]);
+    await db.execute('UPDATE sites SET title=?, url=?, tags=? WHERE id=?', [item.title, item.url, item.tags ?? '', item.id]);
   } else {
-    await sqlDb.execute('INSERT INTO sites (title, url, tags, created_at) VALUES (?,?,?,?)', [item.title, item.url, item.tags ?? '', item.created_at]);
+    await db.execute('INSERT INTO sites (title, url, tags, created_at) VALUES (?,?,?,?)', [item.title, item.url, item.tags ?? '', item.created_at]);
   }
 }
 
 export async function listSites(): Promise<Site[]> {
-  if (!sqlDb) throw new Error('db not initialized');
-  return await sqlDb.select<Site[]>('SELECT * FROM sites ORDER BY id DESC');
+  const db = getDb();
+  return await db.select<Site[]>('SELECT * FROM sites ORDER BY id DESC');
 }
 
 export async function deleteSite(id: number) {
-  if (!sqlDb) throw new Error('db not initialized');
-  await sqlDb.execute('DELETE FROM sites WHERE id = ?', [id]);
+  const db = getDb();
+  await db.execute('DELETE FROM sites WHERE id = ?', [id]);
 }
 
 export interface DocMeta {
@@ -47,22 +54,22 @@ export interface DocMeta {
 }
 
 export async function saveDoc(meta: DocMeta) {
-  if (!sqlDb) throw new Error('db not initialized');
+  const db = getDb();
   if (meta.id) {
-    await sqlDb.execute('UPDATE docs SET filename=?, size=?, mime=? WHERE id=?', [meta.filename, meta.size, meta.mime, meta.id]);
+    await db.execute('UPDATE docs SET filename=?, size=?, mime=? WHERE id=?', [meta.filename, meta.size, meta.mime, meta.id]);
   } else {
-    await sqlDb.execute('INSERT INTO docs (filename, size, mime, created_at) VALUES (?,?,?,?)', [meta.filename, meta.size, meta.mime, meta.created_at]);
+    await db.execute('INSERT INTO docs (filename, size, mime, created_at) VALUES (?,?,?,?)', [meta.filename, meta.size, meta.mime, meta.created_at]);
   }
 }
 
 export async function listDocs(): Promise<DocMeta[]> {
-  if (!sqlDb) throw new Error('db not initialized');
-  return await sqlDb.select<DocMeta[]>('SELECT * FROM docs ORDER BY id DESC');
+  const db = getDb();
+  return await db.select<DocMeta[]>('SELECT * FROM docs ORDER BY id DESC');
 }
 
 export async function deleteDoc(id: number) {
-  if (!sqlDb) throw new Error('db not initialized');
-  await sqlDb.execute('DELETE FROM docs WHERE id=?', [id]);
+  const db = getDb();
+  await db.execute('DELETE FROM docs WHERE id=?', [id]);
 }
 
 export interface PasswordRecord {
@@ -74,22 +81,22 @@ export interface PasswordRecord {
 }
 
 export async function savePassword(rec: PasswordRecord) {
-  if (!sqlDb) throw new Error('db not initialized');
+  const db = getDb();
   if (rec.id) {
-    await sqlDb.execute('UPDATE passwords SET title=?, username=?, enc_blob=? WHERE id=?', [rec.title, rec.username ?? null, rec.enc_blob, rec.id]);
+    await db.execute('UPDATE passwords SET title=?, username=?, enc_blob=? WHERE id=?', [rec.title, rec.username ?? null, rec.enc_blob, rec.id]);
   } else {
-    await sqlDb.execute('INSERT INTO passwords (title, username, enc_blob, created_at) VALUES (?,?,?,?)', [rec.title, rec.username ?? null, rec.enc_blob, rec.created_at]);
+    await db.execute('INSERT INTO passwords (title, username, enc_blob, created_at) VALUES (?,?,?,?)', [rec.title, rec.username ?? null, rec.enc_blob, rec.created_at]);
   }
 }
 
 export async function listPasswords(): Promise<PasswordRecord[]> {
-  if (!sqlDb) throw new Error('db not initialized');
-  return await sqlDb.select<PasswordRecord[]>('SELECT * FROM passwords ORDER BY id DESC');
+  const db = getDb();
+  return await db.select<PasswordRecord[]>('SELECT * FROM passwords ORDER BY id DESC');
 }
 
 export async function deletePassword(id: number) {
-  if (!sqlDb) throw new Error('db not initialized');
-  await sqlDb.execute('DELETE FROM passwords WHERE id=?', [id]);
+  const db = getDb();
+  await db.execute('DELETE FROM passwords WHERE id=?', [id]);
 }
 
 // ----- Legacy in-memory DB for tests -----

@@ -1,9 +1,9 @@
 {
   "build": {
-    "beforeBuildCommand": "pnpm build",
     "beforeDevCommand": "pnpm dev",
-    "distDir": "../dist",
-    "devPath": "http://localhost:5173"
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
   },
   "package": {
     "productName": "pms-web"
