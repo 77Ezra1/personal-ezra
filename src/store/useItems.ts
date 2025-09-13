@@ -9,6 +9,7 @@ import Papa from 'papaparse'
 import { encryptString, decryptString } from '../lib/crypto'
 import { saveFile, deleteFile } from '../lib/fs'
 import { useAuth } from './useAuth'
+import { getStrongholdKey } from '../lib/stronghold'
 
 function parseCsv(text: string) {
   return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
@@ -453,24 +454,27 @@ export const useItems = create<ItemState>((set, get) => ({
     const { items } = get()
     const key = useAuth.getState().key
     if (!key) throw new Error('Missing master key')
-    const updates = await Promise.all(
-      ids.map(async id => {
-        const item = items.find(i => i.id === id)
-        if (!item) return null
-        const updated: any = { ...item, ...patch, updatedAt: Date.now() }
-        if (item.type === 'password') {
-          if (updated.username !== undefined) updated.username = await encryptString(key, updated.username)
-          if (updated.url !== undefined) updated.url = await encryptString(key, updated.url)
-          if (updated.passwordCipher !== undefined) {
-            updated.password_cipher = await encryptString(key, updated.passwordCipher)
-            delete updated.passwordCipher
-          }
-        }
+    const updatesPlain: AnyItem[] = []
+    const updatesDb: any[] = []
+    for (const id of ids) {
+      const item = items.find(i => i.id === id)
+      if (!item) continue
+      const updated: any = { ...item, ...patch, updatedAt: Date.now() }
+      let toStore: any = updated
+      if (item.type === 'password') {
+        const username = updated.username !== undefined ? await encryptString(key, updated.username) : undefined
+        const url = updated.url !== undefined ? await encryptString(key, updated.url) : undefined
+        const password_cipher = updated.passwordCipher !== undefined ? await encryptString(key, updated.passwordCipher) : undefined
+        toStore = { ...updated, username, url, password_cipher }
+        delete toStore.passwordCipher
       }
+      updatesPlain.push(updated)
       updatesDb.push(toStore)
     }
-    await db.items.bulkPut(updatesDb)
-    updateItemsInState(set, get, updatesPlain)
+    if (updatesDb.length) {
+      await db.items.bulkPut(updatesDb)
+      updateItemsInState(set, get, updatesPlain)
+    }
   },
   async duplicate(id) {
     const it = get().items.find(i => i.id === id)

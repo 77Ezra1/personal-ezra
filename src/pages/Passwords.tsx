@@ -76,7 +76,7 @@ export default function Passwords() {
       setUnlockOpen(true)
     }
   }
-  async function openEdit(it: PasswordItem) {
+  async function onOpenEdit(it: PasswordItem) {
     if (!ensureUnlock()) return
     setEdit(it)
     setTitle(it.title)
@@ -87,7 +87,7 @@ export default function Passwords() {
     setOpenEdit(true)
   }
 
-  function openNew() {
+  function onOpenNew() {
     if (!ensureUnlock()) return
     setEdit(null)
     setTitle('')
@@ -161,7 +161,7 @@ export default function Passwords() {
             size="sm"
             variant="secondary"
             className="px-3"
-            onClick={() => openEdit(it)}
+          onClick={() => onOpenEdit(it)}
           >
             {t('edit')}
           </Button>
@@ -198,7 +198,7 @@ export default function Passwords() {
                 <button
                   className="hover:underline block truncate"
                   title={it.title}
-                  onClick={() => openEdit(it)}
+                  onClick={() => onOpenEdit(it)}
                 >
                   {it.title}
                 </button>
@@ -209,7 +209,7 @@ export default function Passwords() {
                   <IconButton size="sm" srLabel={t('copyPassword')} onClick={() => copyPwd(it)}>
                     <Copy className="w-4 h-4" />
                   </IconButton>
-                  <Button size="sm" variant="secondary" className="px-3" onClick={() => openEdit(it)}>
+                  <Button size="sm" variant="secondary" className="px-3" onClick={() => onOpenEdit(it)}>
                     {t('edit')}
                   </Button>
                 </div>
@@ -273,7 +273,7 @@ export default function Passwords() {
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-lg font-medium">{t('vault')}</h1>
           {unlocked ? (
-            <Button onClick={openNew}>{t('new')}</Button>
+            <Button onClick={onOpenNew}>{t('new')}</Button>
           ) : (
             <Button onClick={openUnlock}>{t('unlock')}</Button>
           )}
