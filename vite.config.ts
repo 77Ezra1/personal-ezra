@@ -30,6 +30,5 @@ export default defineConfig({
       '@tauri-apps/api/fs': path.resolve(__dirname, 'src/tauri-fs-impl.ts'),
       '@tauri-apps/plugin-stronghold': path.resolve(__dirname, 'src/tauri-stronghold-stub.ts')
     }
-  },
-  server: { port: 5173, strictPort: true }
+  }
 })
