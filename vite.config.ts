@@ -27,14 +27,8 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@tauri-apps/api/fs': process.env.VITEST
-        ? path.resolve(__dirname, 'src/tauri-fs-stub.ts')
-        : path.resolve(__dirname, 'src/tauri-fs-impl.ts'),
+      '@tauri-apps/api/fs': path.resolve(__dirname, 'src/tauri-fs-impl.ts'),
       '@tauri-apps/plugin-stronghold': path.resolve(__dirname, 'src/tauri-stronghold-stub.ts')
     }
-  },
-  test: {
-    environment: 'jsdom',
-    setupFiles: './vitest.setup.ts'
   }
 })
