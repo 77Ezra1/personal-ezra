@@ -4,7 +4,6 @@
   "version": "0.1.0",
   "identifier": "com.pms.web",
   "build": {
-    "beforeBuildCommand": "pnpm build",
     "beforeDevCommand": "pnpm dev",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173"
