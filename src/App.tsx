@@ -116,6 +116,51 @@ export default function App() {
     return <div className="min-h-screen bg-slate-950 px-6 py-10 text-slate-100">加载中...</div>
   }
 
+function AuthenticatedLayout() {
+  const email = useAuthStore(s => s.email)
+  const logout = useAuthStore(s => s.logout)
+
+function AppBackground({ children }: { children: ReactNode }) {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Navigate to={email ? '/dashboard' : '/login'} replace />} />
+        <Route
+          path="/login"
+          element={email ? <Navigate to="/dashboard" replace /> : <GuestLayout><Login /></GuestLayout>}
+        />
+        <Route
+          path="/register"
+          element={email ? <Navigate to="/dashboard" replace /> : <GuestLayout><Register /></GuestLayout>}
+        />
+        <Route
+          path="/dashboard/*"
+          element={email ? <AuthenticatedLayout /> : <Navigate to="/login" replace />}
+        >
+          <Route index element={<Dashboard />} />
+          <Route path="passwords" element={<Passwords />} />
+          <Route path="sites" element={<Sites />} />
+          <Route path="docs" element={<Docs />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  )
+}
+
+export default function App() {
+  const email = useAuthStore(s => s.email)
+  const init = useAuthStore(s => s.init)
+  const initialized = useAuthStore(s => s.initialized)
+
+  useEffect(() => {
+    void init()
+  }, [init])
+
+  if (!initialized) {
+    return <div className="min-h-screen bg-slate-950 px-6 py-10 text-slate-100">加载中...</div>
+  }
+
   return (
     <BrowserRouter>
       <Routes>
