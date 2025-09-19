@@ -8,10 +8,22 @@ import Input from './ui/Input'
 import { useAuth } from '../store/useAuth'
 import { useClickOutside } from '../hooks/useClickOutside'
 import { useTranslation } from '../lib/i18n'
+import { shallow } from 'zustand/shallow'
 
 export default function UserMenu() {
   const navigate = useNavigate()
-  const { unlocked, unlock, lock, username, avatar, logout, hasMaster } = useAuth()
+  const { unlocked, unlock, lock, username, avatar, logout, hasMaster } = useAuth(
+    s => ({
+      unlocked: s.unlocked,
+      unlock: s.unlock,
+      lock: s.lock,
+      username: s.username,
+      avatar: s.avatar,
+      logout: s.logout,
+      hasMaster: s.hasMaster,
+    }),
+    shallow,
+  )
   const [openUnlock, setOpenUnlock] = useState(false)
   const [mpw, setMpw] = useState('')
   const [openImport, setOpenImport] = useState(false)

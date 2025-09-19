@@ -5,6 +5,9 @@ import { isTauri } from '../lib/env'
 const SH_PATH = 'pms.stronghold'
 const SH_CLIENT = 'pms'
 const STORE_KEY = 'master_key'
+const IDLE_TIMEOUT_KEY = 'idleTimeoutMinutes'
+const DEFAULT_IDLE_TIMEOUT = 15
+const MINUTE_MS = 60_000
 
 async function loadStronghold(pw: string) {
   if (!isTauri()) {
@@ -21,10 +24,14 @@ interface AuthState {
   mnemonic?: string[]
   username?: string
   avatar?: string
+  idleTimeoutMinutes: number
+  lastActivity?: number
   load: () => Promise<void>
   setMaster: (pw: string) => Promise<void>
   unlock: (pw: string) => Promise<boolean>
   lock: () => void
+  resetActivity: () => void
+  setIdleTimeout: (minutes: number) => void
   verifyMnemonic: (indices: number[], words: string[]) => boolean
   resetMaster: (pw: string) => Promise<void>
   setUser: (username: string, avatar: string) => void
@@ -36,25 +43,66 @@ function generateMnemonic(): string[] {
   crypto.getRandomValues(arr)
   return Array.from(arr).map(v => WORDS[v % WORDS.length])
 }
+export const useAuth = create<AuthState>((set, get) => {
+  let idleTimer: ReturnType<typeof setTimeout> | undefined
 
-export const useAuth = create<AuthState>((set, get) => ({
-  unlocked: false,
-  key: undefined,
-  hasMaster: false,
-  username: undefined,
-  avatar: undefined,
-  async load() {
-    try {
-      const username = localStorage.getItem('username') || undefined
-      const avatar = localStorage.getItem('avatar') || undefined
-      const mnemonicStr = localStorage.getItem('mnemonic') || undefined
-      const mnemonic = mnemonicStr ? mnemonicStr.split(' ') : undefined
-      const hasMaster = localStorage.getItem('hasMaster') === 'true'
-      set({ hasMaster, unlocked: false, key: undefined, username, avatar, mnemonic })
-    } catch {
-      /* noop */
+  function clearIdleTimer() {
+    if (idleTimer) {
+      clearTimeout(idleTimer)
+      idleTimer = undefined
     }
-  },
+  }
+
+  function scheduleIdleLock() {
+    clearIdleTimer()
+    const { unlocked, idleTimeoutMinutes, lastActivity } = get()
+    if (!unlocked || idleTimeoutMinutes <= 0) return
+    const now = Date.now()
+    const activity = lastActivity ?? now
+    const elapsed = now - activity
+    const remaining = idleTimeoutMinutes * MINUTE_MS - elapsed
+    if (remaining <= 0) {
+      get().lock()
+      return
+    }
+    idleTimer = setTimeout(() => {
+      get().lock()
+    }, remaining)
+  }
+
+  return {
+    unlocked: false,
+    key: undefined,
+    hasMaster: false,
+    username: undefined,
+    avatar: undefined,
+    mnemonic: undefined,
+    idleTimeoutMinutes: DEFAULT_IDLE_TIMEOUT,
+    lastActivity: undefined,
+    async load() {
+      try {
+        const username = localStorage.getItem('username') || undefined
+        const avatar = localStorage.getItem('avatar') || undefined
+        const mnemonicStr = localStorage.getItem('mnemonic') || undefined
+        const mnemonic = mnemonicStr ? mnemonicStr.split(' ') : undefined
+        const hasMaster = localStorage.getItem('hasMaster') === 'true'
+        const idleStr = localStorage.getItem(IDLE_TIMEOUT_KEY)
+        const parsed = idleStr ? Number.parseInt(idleStr, 10) : NaN
+        const idleTimeoutMinutes = Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_IDLE_TIMEOUT
+        set({
+          hasMaster,
+          unlocked: false,
+          key: undefined,
+          username,
+          avatar,
+          mnemonic,
+          idleTimeoutMinutes,
+          lastActivity: undefined,
+        })
+      } catch {
+        /* noop */
+      }
+    },
   async setMaster(pw: string) {
     const stronghold = await loadStronghold(pw)
     const client = await stronghold.loadClient(SH_CLIENT)
@@ -73,7 +121,9 @@ export const useAuth = create<AuthState>((set, get) => ({
       try { localStorage.setItem('mnemonic', m.join(' ')) } catch { /* noop */ }
       set({ mnemonic: m })
     }
-    set({ key, unlocked: true, hasMaster: true })
+    const now = Date.now()
+    set({ key, unlocked: true, hasMaster: true, lastActivity: now })
+    scheduleIdleLock()
   },
   async unlock(pw: string) {
     try {
@@ -83,7 +133,9 @@ export const useAuth = create<AuthState>((set, get) => ({
       const key = await store.get(STORE_KEY)
       await stronghold.unload()
       if (key) {
-        set({ unlocked: true, key })
+        const now = Date.now()
+        set({ unlocked: true, key, lastActivity: now })
+        scheduleIdleLock()
         return true
       }
     } catch {
@@ -92,7 +144,24 @@ export const useAuth = create<AuthState>((set, get) => ({
     return false
   },
   lock() {
-    set({ unlocked: false, key: undefined })
+    clearIdleTimer()
+    set({ unlocked: false, key: undefined, lastActivity: undefined })
+  },
+  resetActivity() {
+    const { unlocked } = get()
+    if (!unlocked) return
+    const now = Date.now()
+    set({ lastActivity: now })
+    scheduleIdleLock()
+  },
+  setIdleTimeout(minutes: number) {
+    try {
+      localStorage.setItem(IDLE_TIMEOUT_KEY, String(minutes))
+    } catch {
+      /* noop */
+    }
+    set({ idleTimeoutMinutes: minutes })
+    scheduleIdleLock()
   },
   verifyMnemonic(indices: number[], words: string[]) {
     const { mnemonic } = get()
@@ -107,7 +176,9 @@ export const useAuth = create<AuthState>((set, get) => ({
     await store.insert(STORE_KEY, Array.from(key))
     await stronghold.save()
     await stronghold.unload()
-    set({ key, unlocked: true, hasMaster: true })
+    const now = Date.now()
+    set({ key, unlocked: true, hasMaster: true, lastActivity: now })
+    scheduleIdleLock()
   },
   setUser(username: string, avatar: string) {
     try {
@@ -126,5 +197,6 @@ export const useAuth = create<AuthState>((set, get) => ({
       /* noop */
     }
     set({ username: undefined, avatar: undefined })
-  }
-}))
+  },
+}
+})

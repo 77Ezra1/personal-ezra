@@ -9,13 +9,33 @@ import { useAuth } from '../store/useAuth'
 import Modal from '../components/ui/Modal'
 import IconButton from '../components/ui/IconButton'
 import copyWithTimeout from '../lib/clipboard'
+import { shallow } from 'zustand/shallow'
 
 export default function Settings() {
   const { language, setLanguage } = useSettings()
   const t = useTranslation()
   const { exportSites, exportDocs, tags, removeTag } = useItems()
   const [importType, setImportType] = useState<'site' | 'doc' | null>(null)
-  const { hasMaster, setMaster, mnemonic, verifyMnemonic, resetMaster } = useAuth()
+  const {
+    hasMaster,
+    setMaster,
+    mnemonic,
+    verifyMnemonic,
+    resetMaster,
+    idleTimeoutMinutes,
+    setIdleTimeout,
+  } = useAuth(
+    s => ({
+      hasMaster: s.hasMaster,
+      setMaster: s.setMaster,
+      mnemonic: s.mnemonic,
+      verifyMnemonic: s.verifyMnemonic,
+      resetMaster: s.resetMaster,
+      idleTimeoutMinutes: s.idleTimeoutMinutes,
+      setIdleTimeout: s.setIdleTimeout,
+    }),
+    shallow,
+  )
   const [pw1, setPw1] = useState('')
   const [pw2, setPw2] = useState('')
   const [captcha, setCaptcha] = useState('')
@@ -35,6 +55,14 @@ export default function Settings() {
   const [resetCaptchaError, setResetCaptchaError] = useState(false)
   const [resetSaving, setResetSaving] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  const idleOptions = [0, 1, 5, 10, 15, 30, 60]
+
+  const formatIdleLabel = (value: number) => {
+    if (value === 0) return t('never')
+    const unit = value === 1 ? t('minute') : t('minutes')
+    return language === 'zh' ? `${value}${unit}` : `${value} ${unit}`
+  }
 
   useEffect(() => {
     if (pw1 && pw2 && pw1 === pw2) {
@@ -102,6 +130,23 @@ export default function Settings() {
           <option value="zh">{t('chinese')}</option>
           <option value="en">{t('english')}</option>
         </select>
+      </section>
+      <section>
+        <h2 className="text-lg font-medium mb-2">{t('idleTimeout')}</h2>
+        <div className="space-y-2 max-w-xs">
+          <select
+            className="rounded px-2 py-1 border border-border bg-surface"
+            value={String(idleTimeoutMinutes)}
+            onChange={e => setIdleTimeout(Number.parseInt(e.target.value, 10))}
+          >
+            {idleOptions.map(opt => (
+              <option key={opt} value={opt}>
+                {formatIdleLabel(opt)}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-500">{t('idleTimeoutHint')}</p>
+        </div>
       </section>
       <section>
         <h2 className="text-lg font-medium mb-2">{t('master')}</h2>
