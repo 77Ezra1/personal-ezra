@@ -1,6 +1,9 @@
 import IconButton from '../components/ui/IconButton'
 import { useState } from 'react'
-import { useItems } from '../store/useItems'
+import {
+  useAddDocMutation,
+  useUpdateItemMutation,
+} from '../store/useItems'
 import type { DocItem } from '../types'
 import Input from '../components/ui/Input'
 import Button from '../components/ui/Button'
@@ -24,7 +27,8 @@ function fmt(size?: number) {
 }
 
 export default function Docs() {
-  const { addDoc, update } = useItems()
+  const addDocMutation = useAddDocMutation()
+  const updateItemMutation = useUpdateItemMutation()
   const [params] = useSearchParams()
   const activeTag = params.get('tag')
   const t = useTranslation()
@@ -176,7 +180,7 @@ export default function Docs() {
             alert(t('enterTitleAndUrl'))
             return
           }
-          await addDoc({
+          await addDocMutation.mutateAsync({
             title: nTitle,
             path: nPath,
             source: 'local',
@@ -227,12 +231,15 @@ export default function Docs() {
         title={t('editDoc')}
         onSave={async () => {
           if (!edit) return
-          await update(edit.id, {
-            title: edit.title,
-            path: edit.path,
-            description: edit.description,
-            tags: edit.tags,
-            file: editFile || undefined,
+          await updateItemMutation.mutateAsync({
+            id: edit.id,
+            patch: {
+              title: edit.title,
+              path: edit.path,
+              description: edit.description,
+              tags: edit.tags,
+              file: editFile || undefined,
+            },
           })
           setOpenEdit(false)
           setEditFile(null)

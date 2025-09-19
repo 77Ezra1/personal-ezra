@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react'
 import ImportExportModal from '../components/ImportExportModal'
-import { useItems } from '../store/useItems'
+import {
+  useExportItems,
+  useTagsQuery,
+  useRemoveTagMutation,
+} from '../store/useItems'
 import { useSettings, Theme, Language } from '../store/useSettings'
 import { useTranslation } from '../lib/i18n'
 import { X, Copy } from 'lucide-react'
@@ -14,7 +18,10 @@ import { shallow } from 'zustand/shallow'
 export default function Settings() {
   const { language, setLanguage, theme, setTheme } = useSettings()
   const t = useTranslation()
-  const { exportSites, exportDocs, tags, removeTag } = useItems()
+  const exportSites = useExportItems('site')
+  const exportDocs = useExportItems('doc')
+  const { data: tags = [] } = useTagsQuery()
+  const removeTagMutation = useRemoveTagMutation()
   const [importType, setImportType] = useState<'site' | 'doc' | null>(null)
   const {
     hasMaster,
@@ -258,7 +265,7 @@ export default function Settings() {
                 className="w-4 h-4 flex items-center justify-center text-gray-400 hover:text-red-600"
                 onClick={async () => {
                   if (confirm(`确认删除标签 "${t.name}"?`)) {
-                    await removeTag(t.id)
+                    await removeTagMutation.mutateAsync(t.id)
                   }
                 }}
               >

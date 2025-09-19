@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { useItems } from '../store/useItems'
+import { useItemsQuery } from '../store/useItems'
 import type { AnyItem } from '../types'
 
 function Section({ title, children }: React.PropsWithChildren<{ title: string }>) {
@@ -15,7 +15,7 @@ export default function CommandK() {
   const [open, setOpen] = React.useState(false)
   const [q, setQ] = React.useState('')
   const [idx, setIdx] = React.useState(0)
-  const items = useItems(s => s.items)
+  const { data: items = [] } = useItemsQuery()
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

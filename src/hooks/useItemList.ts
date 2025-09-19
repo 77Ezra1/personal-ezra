@@ -1,5 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useItems } from '../store/useItems'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  useItemsQuery,
+  useItemsStore,
+  useRemoveManyItemsMutation,
+} from '../store/useItems'
 import { useSettings } from '../store/useSettings'
 import type { AnyItem, ItemType } from '../types'
 
@@ -8,15 +12,12 @@ export function useItemList<T extends AnyItem>(
   searchFields: (keyof T)[],
   tag?: string | null,
 ) {
-  const {
-    items,
-    load,
-    selection,
-    toggleSelect,
-    clearSelection,
-    removeMany,
-    setFilters,
-  } = useItems()
+  const { data: itemsData = [] } = useItemsQuery()
+  const selection = useItemsStore(s => s.selection)
+  const setFilters = useItemsStore(s => s.setFilters)
+  const clearSelection = useItemsStore(s => s.clearSelection)
+  const toggleSelectRaw = useItemsStore(s => s.toggleSelect)
+  const removeManyMutation = useRemoveManyItemsMutation()
 
   const [q, setQ] = useState('')
   const viewMode = useSettings(s => s.viewMode)
@@ -24,10 +25,6 @@ export function useItemList<T extends AnyItem>(
   const [openNew, setOpenNew] = useState(false)
   const [openEdit, setOpenEdit] = useState(false)
   const [edit, setEdit] = useState<T | null>(null)
-
-  useEffect(() => {
-    load()
-  }, [load])
 
   useEffect(() => {
     if (viewMode === 'card') setView('card')
@@ -57,7 +54,7 @@ export function useItemList<T extends AnyItem>(
     const handler = (e: any) => {
       const { id, type: t } = e.detail || {}
       if (t !== type) return
-      const it = (items as T[]).find(x => x.id === id)
+      const it = (itemsData as T[]).find(x => x.id === id)
       if (it) {
         setEdit(it)
         setOpenEdit(true)
@@ -65,9 +62,12 @@ export function useItemList<T extends AnyItem>(
     }
     window.addEventListener('open-edit', handler)
     return () => window.removeEventListener('open-edit', handler)
-  }, [items, type])
+  }, [itemsData, type])
 
-  const list = useMemo(() => items.filter(i => i.type === type) as T[], [items, type])
+  const list = useMemo(
+    () => itemsData.filter(i => i.type === type) as T[],
+    [itemsData, type],
+  )
 
   const filtered = useMemo(() => {
     let arr = list
@@ -86,6 +86,21 @@ export function useItemList<T extends AnyItem>(
           b.updatedAt - a.updatedAt,
       )
   }, [list, q, tag, searchFields])
+
+  const toggleSelect = useCallback(
+    (id: string, rangeWith?: string | null) => {
+      toggleSelectRaw(itemsData, id, rangeWith)
+    },
+    [toggleSelectRaw, itemsData],
+  )
+
+  const removeMany = useCallback(
+    async (ids: string[]) => {
+      if (!ids.length) return
+      await removeManyMutation.mutateAsync(ids)
+    },
+    [removeManyMutation],
+  )
 
   return {
     q,

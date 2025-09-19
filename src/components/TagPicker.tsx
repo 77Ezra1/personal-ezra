@@ -1,11 +1,17 @@
 import IconButton from './ui/IconButton'
 import { useState } from 'react'
-import { useItems } from '../store/useItems'
+import {
+  useTagsQuery,
+  useAddTagMutation,
+  useRemoveTagMutation,
+} from '../store/useItems'
 import Input from './ui/Input'
 import { X, Tag as TagIcon } from 'lucide-react'
 
 export default function TagPicker({ value, onChange }: { value: string[]; onChange: (tags: string[]) => void }) {
-  const { tags, addTag, removeTag } = useItems()
+  const { data: tags = [] } = useTagsQuery()
+  const addTagMutation = useAddTagMutation()
+  const removeTagMutation = useRemoveTagMutation()
   const [name, setName] = useState('')
 
   return (
@@ -32,7 +38,7 @@ export default function TagPicker({ value, onChange }: { value: string[]; onChan
               className="w-4 h-4 flex items-center justify-center text-gray-400 hover:text-red-600"
               onClick={async () => {
                 if (confirm(`确认删除标签 "${t.name}"?`)) {
-                  await removeTag(t.id)
+                  await removeTagMutation.mutateAsync(t.id)
                   if (value.includes(t.id)) onChange(value.filter(x => x !== t.id))
                 }
               }}
@@ -54,9 +60,9 @@ export default function TagPicker({ value, onChange }: { value: string[]; onChan
         <IconButton
           size="sm"
           srLabel="新建标签"
-          onClick={() => {
+          onClick={async () => {
             if (!name.trim()) return
-            addTag({ name })
+            await addTagMutation.mutateAsync({ name })
             setName('')
           }}
         >

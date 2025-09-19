@@ -1,12 +1,18 @@
 import React from 'react'
-import { useItems } from '../store/useItems'
+import {
+  useItemsQuery,
+  useTagsQuery,
+  useRemoveTagMutation,
+} from '../store/useItems'
 import clsx from 'clsx'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { TAG_COLORS, type TagColor } from '../types'
 
 export default function TagRow() {
-  const { items, tags, removeTag } = useItems()
+  const { data: items = [] } = useItemsQuery()
+  const { data: tags = [] } = useTagsQuery()
+  const removeTagMutation = useRemoveTagMutation()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const active = params.get('tag') || 'all'
@@ -43,7 +49,7 @@ export default function TagRow() {
           active={active === t.id}
           count={counts[t.id] || 0}
           onClick={() => goto(t.id)}
-          onDelete={() => removeTag(t.id)}
+          onDelete={() => void removeTagMutation.mutateAsync(t.id)}
         />
       ))}
     </div>

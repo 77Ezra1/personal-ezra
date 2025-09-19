@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { useRef } from 'react'
+import { act, useRef } from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { useClickOutside } from './useClickOutside'
@@ -26,12 +26,16 @@ describe('useClickOutside', () => {
     })
 
     const outside = container.querySelector('#outside') as HTMLElement
-    outside.dispatchEvent(new Event('touchstart', { bubbles: true }))
+    act(() => {
+      outside.dispatchEvent(new Event('touchstart', { bubbles: true }))
+    })
     expect(onClose).toHaveBeenCalledTimes(1)
     root.unmount()
 
     // event after unmount should not trigger
-    outside.dispatchEvent(new Event('touchstart', { bubbles: true }))
+    act(() => {
+      outside.dispatchEvent(new Event('touchstart', { bubbles: true }))
+    })
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
