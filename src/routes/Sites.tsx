@@ -1,7 +1,9 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { db, type SiteRecord } from '../stores/database'
+import { useAuthStore } from '../stores/auth'
 
 export default function Sites() {
+  const email = useAuthStore(s => s.email)
   const [items, setItems] = useState<SiteRecord[]>([])
   const [title, setTitle] = useState('')
   const [url, setUrl] = useState('')
@@ -9,22 +11,32 @@ export default function Sites() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    void load()
-  }, [])
+    if (!email) {
+      setItems([])
+      return
+    }
+    void load(email)
+  }, [email])
 
-  async function load() {
-    const rows = await db.sites.orderBy('updatedAt').reverse().toArray()
+  async function load(currentEmail: string) {
+    const rows = await db.sites.where('ownerEmail').equals(currentEmail).toArray()
+    rows.sort((a, b) => b.updatedAt - a.updatedAt)
     setItems(rows)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!email) {
+      setError('登录信息失效，请重新登录后再试。')
+      return
+    }
     if (!title.trim() || !url.trim()) {
       setError('请填写网站名称和链接')
       return
     }
     const now = Date.now()
     await db.sites.add({
+      ownerEmail: email,
       title: title.trim(),
       url: url.trim(),
       description: description.trim() || undefined,
@@ -35,13 +47,13 @@ export default function Sites() {
     setUrl('')
     setDescription('')
     setError(null)
-    await load()
+    await load(email)
   }
 
   async function handleDelete(id?: number) {
-    if (typeof id !== 'number') return
+    if (typeof id !== 'number' || !email) return
     await db.sites.delete(id)
-    await load()
+    await load(email)
   }
 
   return (

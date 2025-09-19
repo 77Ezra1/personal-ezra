@@ -4,6 +4,7 @@ import { useAuthStore } from '../stores/auth'
 import { decryptString, encryptString } from '../lib/crypto'
 
 export default function Passwords() {
+  const email = useAuthStore(s => s.email)
   const encryptionKey = useAuthStore(s => s.encryptionKey)
   const [items, setItems] = useState<PasswordRecord[]>([])
   const [title, setTitle] = useState('')
@@ -13,17 +14,22 @@ export default function Passwords() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    void load()
-  }, [])
+    if (!email) {
+      setItems([])
+      return
+    }
+    void load(email)
+  }, [email])
 
-  async function load() {
-    const rows = await db.passwords.orderBy('updatedAt').reverse().toArray()
+  async function load(currentEmail: string) {
+    const rows = await db.passwords.where('ownerEmail').equals(currentEmail).toArray()
+    rows.sort((a, b) => b.updatedAt - a.updatedAt)
     setItems(rows)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!encryptionKey) {
+    if (!email || !encryptionKey) {
       setError('登录信息失效，请重新登录后再试。')
       return
     }
@@ -34,6 +40,7 @@ export default function Passwords() {
     const now = Date.now()
     const cipher = await encryptString(encryptionKey, password)
     await db.passwords.add({
+      ownerEmail: email,
       title: title.trim(),
       username: username.trim(),
       passwordCipher: cipher,
@@ -46,7 +53,7 @@ export default function Passwords() {
     setPassword('')
     setUrl('')
     setError(null)
-    await load()
+    await load(email)
   }
 
   async function handleReveal(item: PasswordRecord) {
@@ -64,9 +71,9 @@ export default function Passwords() {
   }
 
   async function handleDelete(id?: number) {
-    if (typeof id !== 'number') return
+    if (typeof id !== 'number' || !email) return
     await db.passwords.delete(id)
-    await load()
+    await load(email)
   }
 
   return (

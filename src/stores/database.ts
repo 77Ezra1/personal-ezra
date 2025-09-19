@@ -10,6 +10,7 @@ export interface UserRecord {
 
 export interface PasswordRecord {
   id?: number
+  ownerEmail: string
   title: string
   username: string
   passwordCipher: string
@@ -20,6 +21,7 @@ export interface PasswordRecord {
 
 export interface SiteRecord {
   id?: number
+  ownerEmail: string
   title: string
   url: string
   description?: string
@@ -29,6 +31,7 @@ export interface SiteRecord {
 
 export interface DocRecord {
   id?: number
+  ownerEmail: string
   title: string
   description?: string
   url?: string
@@ -53,6 +56,20 @@ class AppDatabase extends Dexie {
       sites: '++id, title, createdAt',
       docs: '++id, title, createdAt',
     })
+    this.version(2)
+      .stores({
+        users: '&email',
+        passwords: '++id, ownerEmail, updatedAt',
+        sites: '++id, ownerEmail, updatedAt',
+        docs: '++id, ownerEmail, updatedAt',
+      })
+      .upgrade(async tx => {
+        await Promise.all([
+          tx.table('passwords').clear(),
+          tx.table('sites').clear(),
+          tx.table('docs').clear(),
+        ])
+      })
   }
 }
 

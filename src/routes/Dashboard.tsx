@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuthStore } from '../stores/auth'
 import { db, type DocRecord, type PasswordRecord, type SiteRecord } from '../stores/database'
 
 type RecentEntry = {
@@ -14,17 +15,26 @@ export default function Dashboard() {
   const [siteCount, setSiteCount] = useState(0)
   const [docCount, setDocCount] = useState(0)
   const [recent, setRecent] = useState<RecentEntry[]>([])
+  const email = useAuthStore(s => s.email)
 
   useEffect(() => {
-    async function load() {
+    if (!email) {
+      setPasswordCount(0)
+      setSiteCount(0)
+      setDocCount(0)
+      setRecent([])
+      return
+    }
+
+    async function load(currentEmail: string) {
       const [passwords, sites, docs] = await Promise.all([
-        db.passwords.orderBy('updatedAt').reverse().limit(5).toArray(),
-        db.sites.orderBy('updatedAt').reverse().limit(5).toArray(),
-        db.docs.orderBy('updatedAt').reverse().limit(5).toArray(),
+        db.passwords.where('ownerEmail').equals(currentEmail).toArray(),
+        db.sites.where('ownerEmail').equals(currentEmail).toArray(),
+        db.docs.where('ownerEmail').equals(currentEmail).toArray(),
       ])
-      setPasswordCount(passwords.length === 5 ? await db.passwords.count() : passwords.length)
-      setSiteCount(sites.length === 5 ? await db.sites.count() : sites.length)
-      setDocCount(docs.length === 5 ? await db.docs.count() : docs.length)
+      setPasswordCount(passwords.length)
+      setSiteCount(sites.length)
+      setDocCount(docs.length)
       const merged: RecentEntry[] = [
         ...passwords.map((item: PasswordRecord) => ({
           key: `password-${item.id}`,
@@ -51,8 +61,8 @@ export default function Dashboard() {
       setRecent(merged)
     }
 
-    void load()
-  }, [])
+    void load(email)
+  }, [email])
 
   return (
     <div className="space-y-10">
@@ -110,20 +120,20 @@ export default function Dashboard() {
                     {new Date(entry.updatedAt).toLocaleString()}
                   </p>
                 </div>
-                  <Link
-                    to={
-                      entry.type === 'password'
-                        ? '/dashboard/passwords'
-                        : entry.type === 'site'
-                        ? '/dashboard/sites'
-                        : '/dashboard/docs'
-                    }
-                    className="text-xs font-medium text-sky-300 hover:text-sky-200"
-                  >
-                    查看
-                  </Link>
-                </li>
-              ))}
+                <Link
+                  to={
+                    entry.type === 'password'
+                      ? '/dashboard/passwords'
+                      : entry.type === 'site'
+                      ? '/dashboard/sites'
+                      : '/dashboard/docs'
+                  }
+                  className="text-xs font-medium text-sky-300 hover:text-sky-200"
+                >
+                  查看
+                </Link>
+              </li>
+            ))}
             </ul>
           )}
       </section>

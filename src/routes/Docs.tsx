@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { db, type DocRecord } from '../stores/database'
+import { useAuthStore } from '../stores/auth'
 
 function formatSize(bytes: number) {
   if (!bytes) return '0 B'
@@ -14,6 +15,7 @@ function formatSize(bytes: number) {
 }
 
 export default function Docs() {
+  const email = useAuthStore(s => s.email)
   const [items, setItems] = useState<DocRecord[]>([])
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -22,16 +24,25 @@ export default function Docs() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    void load()
-  }, [])
+    if (!email) {
+      setItems([])
+      return
+    }
+    void load(email)
+  }, [email])
 
-  async function load() {
-    const rows = await db.docs.orderBy('updatedAt').reverse().toArray()
+  async function load(currentEmail: string) {
+    const rows = await db.docs.where('ownerEmail').equals(currentEmail).toArray()
+    rows.sort((a, b) => b.updatedAt - a.updatedAt)
     setItems(rows)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!email) {
+      setError('登录信息失效，请重新登录后再试。')
+      return
+    }
     if (!title.trim()) {
       setError('请填写文档标题')
       return
@@ -50,6 +61,7 @@ export default function Docs() {
       fileType = file.type
     }
     await db.docs.add({
+      ownerEmail: email,
       title: title.trim(),
       description: description.trim() || undefined,
       url: url.trim() || undefined,
@@ -64,13 +76,13 @@ export default function Docs() {
     setUrl('')
     setFile(null)
     setError(null)
-    await load()
+    await load(email)
   }
 
   async function handleDelete(id?: number) {
-    if (typeof id !== 'number') return
+    if (typeof id !== 'number' || !email) return
     await db.docs.delete(id)
-    await load()
+    await load(email)
   }
 
   function handleDownload(item: DocRecord) {
