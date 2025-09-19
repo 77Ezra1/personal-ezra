@@ -11,6 +11,10 @@ import { useAuth } from './store/useAuth'
 import { migrateIfNeeded } from './lib/migrate'
 import { bootstrap } from './lib/bootstrap'
 
+function LoadingMessage() {
+  return <div style={{ padding: 16 }}>Loading…</div>
+}
+
 function BootGate() {
   const [ready, setReady] = React.useState(false)
 
@@ -50,7 +54,9 @@ function BootGate() {
   if (!ready) return <div style={{ padding: 16 }}>Loading…</div>
   return (
     <React.StrictMode>
-      <RouterProvider router={router} />
+      <React.Suspense fallback={<LoadingMessage />}>
+        <RouterProvider router={router} />
+      </React.Suspense>
       <ToastHub />
     </React.StrictMode>
   )

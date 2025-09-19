@@ -33,6 +33,7 @@ export default function Sidebar() {
         <NavLink to="/sites" className={linkClass}>{t('sites')}</NavLink>
         <NavLink to="/passwords" className={linkClass}>{t('vault')}</NavLink>
         <NavLink to="/docs" className={linkClass}>{t('docs')}</NavLink>
+        <NavLink to="/notes" className={linkClass}>{t('notes')}</NavLink>
         <NavLink to="/settings" className={linkClass}>{t('settings')}</NavLink>
       </nav>
 
