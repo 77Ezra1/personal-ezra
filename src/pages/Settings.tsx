@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import ImportExportModal from '../components/ImportExportModal'
 import { useItems } from '../store/useItems'
-import { useSettings } from '../store/useSettings'
+import { useSettings, Theme, Language } from '../store/useSettings'
 import { useTranslation } from '../lib/i18n'
 import { X, Copy } from 'lucide-react'
 import Input from '../components/ui/Input'
@@ -11,7 +11,7 @@ import IconButton from '../components/ui/IconButton'
 import copyWithTimeout from '../lib/clipboard'
 
 export default function Settings() {
-  const { language, setLanguage } = useSettings()
+  const { language, setLanguage, theme, setTheme } = useSettings()
   const t = useTranslation()
   const { exportSites, exportDocs, tags, removeTag } = useItems()
   const [importType, setImportType] = useState<'site' | 'doc' | null>(null)
@@ -97,10 +97,21 @@ export default function Settings() {
         <select
           className="rounded px-2 py-1 border border-border bg-surface"
           value={language}
-          onChange={e => setLanguage(e.target.value as any)}
+          onChange={e => setLanguage(e.target.value as Language)}
         >
           <option value="zh">{t('chinese')}</option>
           <option value="en">{t('english')}</option>
+        </select>
+      </section>
+      <section>
+        <h2 className="text-lg font-medium mb-2">{t('theme')}</h2>
+        <select
+          className="rounded px-2 py-1 border border-border bg-surface"
+          value={theme}
+          onChange={e => setTheme(e.target.value as Theme)}
+        >
+          <option value="light">{t('lightTheme')}</option>
+          <option value="dark">{t('darkTheme')}</option>
         </select>
       </section>
       <section>
