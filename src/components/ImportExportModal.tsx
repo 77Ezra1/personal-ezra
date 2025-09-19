@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react'
 import Modal from './ui/Modal'
-import { useItems } from '../store/useItems'
+import {
+  useExportItems,
+  useImportSitesMutation,
+  useImportDocsMutation,
+} from '../store/useItems'
 import { useAuth } from '../store/useAuth'
 import { createBackup, restoreBackup } from '../lib/backup'
 
 export default function ImportExportModal({ open, onClose, initialType = 'site' }: { open: boolean; onClose: () => void; initialType?: 'site' | 'doc' }) {
-  const { exportSites, exportDocs, importSites, importDocs } = useItems()
+  const exportSites = useExportItems('site')
+  const exportDocs = useExportItems('doc')
+  const importSitesMutation = useImportSitesMutation()
+  const importDocsMutation = useImportDocsMutation()
   const unlocked = useAuth(s => s.unlocked)
   const [type, setType] = useState<'site' | 'doc'>(initialType)
   const [file, setFile] = useState<File | null>(null)
@@ -33,14 +40,20 @@ export default function ImportExportModal({ open, onClose, initialType = 'site' 
     const f = e.target.files?.[0]
     if (!f) return
     setFile(f)
-    const res = type === 'site' ? await importSites(f, true) : await importDocs(f, true)
+    const res =
+      type === 'site'
+        ? await importSitesMutation.mutateAsync({ file: f, dryRun: true })
+        : await importDocsMutation.mutateAsync({ file: f, dryRun: true })
     setPreview(res.items)
     setErrors(res.errors)
   }
 
   async function onImport() {
     if (!file) return
-    const res = type === 'site' ? await importSites(file) : await importDocs(file)
+    const res =
+      type === 'site'
+        ? await importSitesMutation.mutateAsync({ file })
+        : await importDocsMutation.mutateAsync({ file })
     setErrors(res.errors)
     if (res.errors.length === 0) {
       setFile(null)

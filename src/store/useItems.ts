@@ -1,15 +1,107 @@
+import { useCallback } from 'react'
 import { create } from 'zustand'
-import { exec, query, db, dbAddItem, dbPutTag, dbDeleteTag, dbBulkPut } from '../lib/db'
-import type { AnyItem, SiteItem, PasswordItem, DocItem, Tag, TagColor, ItemType } from '../types'
-import { TAG_COLORS } from '../types'
-import { nanoid } from 'nanoid'
-import { translate } from '../lib/i18n'
-import { useSettings } from './useSettings'
+import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Papa from 'papaparse'
+import { nanoid } from 'nanoid'
+
+import type {
+  AnyItem,
+  DocItem,
+  ItemType,
+  PasswordItem,
+  SiteItem,
+  Tag,
+  TagColor,
+} from '../types'
+import { TAG_COLORS } from '../types'
+import {
+  db,
+  dbAddItem,
+  dbBulkPut,
+  dbDeleteTag,
+  dbPutTag,
+} from '../lib/db'
 import { encryptString, decryptString } from '../lib/crypto'
 import { saveFile, deleteFile } from '../lib/fs'
 import { useAuth } from './useAuth'
+import { useSettings } from './useSettings'
+import { translate } from '../lib/i18n'
 import { getStrongholdKey } from '../lib/stronghold'
+
+export const ITEMS_QUERY_KEY = ['items'] as const
+export const TAGS_QUERY_KEY = ['tags'] as const
+
+export type Filters = { type?: ItemType; tags?: string[] }
+
+interface ItemUiState {
+  filters: Filters
+  selection: Set<string>
+  setFilters: (filters: Partial<Filters>) => void
+  clearSelection: () => void
+  toggleSelect: (items: AnyItem[], id: string, rangeWith?: string | null) => void
+  removeFromSelection: (ids: string[]) => void
+}
+
+export const useItemsStore = create<ItemUiState>((set) => ({
+  filters: {},
+  selection: new Set<string>(),
+  setFilters(filters) {
+    set(state => ({ filters: { ...state.filters, ...filters } }))
+  },
+  clearSelection() {
+    set({ selection: new Set<string>() })
+  },
+  removeFromSelection(ids) {
+    if (!ids.length) return
+    set(state => {
+      const sel = new Set(state.selection)
+      ids.forEach(id => sel.delete(id))
+      return { selection: sel }
+    })
+  },
+  toggleSelect(items, id, rangeWith = null) {
+    set(state => {
+      const sel = new Set(state.selection)
+      if (rangeWith && sel.size) {
+        const indexMap = new Map(items.map((item, index) => [item.id, index]))
+        const start = indexMap.get(rangeWith)
+        const end = indexMap.get(id)
+        if (start !== undefined && end !== undefined) {
+          const [from, to] = start < end ? [start, end] : [end, start]
+          for (let i = from; i <= to; i++) {
+            const item = items[i]
+            if (!item) continue
+            if (item.type === (state.filters.type ?? item.type)) {
+              sel.add(item.id)
+            }
+          }
+        }
+      } else {
+        if (sel.has(id)) sel.delete(id)
+        else sel.add(id)
+      }
+      return { selection: sel }
+    })
+  },
+}))
+
+function ensureKey(): Uint8Array {
+  const key = useAuth.getState().key
+  if (!key) throw new Error('Missing master key')
+  return key
+}
+
+function sortItems(items: AnyItem[]) {
+  return items
+    .slice()
+    .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+}
+
+async function getNextOrder(type: ItemType) {
+  const existing = await db.items.where('type').equals(type).toArray()
+  const max = existing.reduce((acc, item) => Math.max(acc, item.order ?? 0), 0)
+  return max + 1
+}
 
 function parseCsv(text: string) {
   return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true })
@@ -101,7 +193,7 @@ function mapFields(row: Record<string, unknown>, type: 'site' | 'doc' | 'passwor
       ? lc['source']
       : typeof lc['origin'] === 'string'
       ? lc['origin']
-      : ''
+      : 'local'
   return { title, path, source, tags }
 }
 
@@ -152,102 +244,66 @@ function buildItem(type: ItemType, m: any, order: number): AnyItem {
   }
 }
 
-async function serializeItems(type: ItemType): Promise<Blob> {
+async function serializeItems(type: ItemType) {
   const items = await db.items.where('type').equals(type).toArray()
   return new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' })
 }
 
-function computeState(items: AnyItem[]) {
-  items.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-  const nextOrder: Record<ItemType, number> = { site: 1, password: 1, doc: 1 }
-  const indexMap: Record<string, number> = {}
-  items.forEach((it, idx) => {
-    indexMap[it.id] = idx
-    const ord = it.order ?? 0
-    if (ord >= nextOrder[it.type]) nextOrder[it.type] = ord + 1
-  })
-  return { items, nextOrder, indexMap }
+async function toDbRepresentation(item: AnyItem, key?: Uint8Array) {
+  if (item.type !== 'password') return item
+  const encKey = key ?? ensureKey()
+  const username = await encryptString(encKey, item.username)
+  const url = item.url ? await encryptString(encKey, item.url) : undefined
+  const password_cipher = await encryptString(encKey, item.passwordCipher)
+  const stored: any = { ...item, username, url, password_cipher }
+  delete stored.passwordCipher
+  return stored
 }
 
-function insertItemsToState(set: any, get: () => ItemState, newItems: AnyItem[]) {
-  const items = [...newItems, ...get().items]
-  const { items: arr, nextOrder, indexMap } = computeState(items)
-  set({ items: arr, nextOrder, indexMap })
+async function fetchItemsData(key: Uint8Array) {
+  const rawItems = await db.items.orderBy('updatedAt').reverse().toArray()
+  const items = await Promise.all(
+    rawItems.map(async it => {
+      if (it.type === 'password') {
+        const dbIt: any = it
+        const username = dbIt.username ? await decryptString(key, dbIt.username) : ''
+        const url = dbIt.url ? await decryptString(key, dbIt.url) : undefined
+        const passwordCipher = dbIt.password_cipher
+          ? await decryptString(key, dbIt.password_cipher)
+          : ''
+        const cleaned: PasswordItem = {
+          ...it,
+          username,
+          url,
+          passwordCipher,
+        }
+        delete (cleaned as any).password_cipher
+        return cleaned
+      }
+      return it as AnyItem
+    })
+  )
+  return sortItems(items as AnyItem[])
 }
 
-function updateItemsInState(set: any, get: () => ItemState, updates: AnyItem[]) {
-  const map = new Map(updates.map(u => [u.id, u]))
-  const items = get().items.map(it => map.get(it.id) ?? it)
-  const { items: arr, nextOrder, indexMap } = computeState(items)
-  set({ items: arr, nextOrder, indexMap })
+async function fetchTags() {
+  return db.tags.toArray()
 }
 
-function removeItemsFromState(set: any, get: () => ItemState, ids: string[]) {
-  const idSet = new Set(ids)
-  const items = get().items.filter(it => !idSet.has(it.id))
-  const { items: arr, nextOrder, indexMap } = computeState(items)
-  set({ items: arr, nextOrder, indexMap })
-}
+type ImportResult<T extends AnyItem> = { items: T[]; errors: string[] }
 
-type Filters = { type?: 'site' | 'password' | 'doc'; tags?: string[] }
-
-interface ItemState {
-  items: AnyItem[]
-  tags: Tag[]
-  filters: Filters
-  selection: Set<string>
-  nextOrder: Record<ItemType, number>
-  indexMap: Record<string, number>
-
-  load: () => Promise<void>
-  addSite: (p: Omit<SiteItem, 'id' | 'createdAt' | 'updatedAt' | 'type'>) => Promise<string>
-  addPassword: (
-    p: Omit<PasswordItem, 'id' | 'createdAt' | 'updatedAt' | 'type'>
-  ) => Promise<string>
-  addDoc: (p: Omit<DocItem, 'id' | 'createdAt' | 'updatedAt' | 'type'> & { file?: File }) => Promise<string>
-  update: (id: string, patch: Partial<AnyItem & { file?: File }>) => Promise<void>
-  updateMany: (ids: string[], patch: Partial<AnyItem>) => Promise<void>
-  duplicate: (id: string) => Promise<string | undefined>
-  remove: (id: string) => Promise<void>
-  removeMany: (ids: string[]) => Promise<void>
-
-  addTag: (p: { name: string; parentId?: string }) => Promise<string>
-  removeTag: (id: string) => Promise<void>
-  setFilters: (f: Partial<Filters>) => void
-  clearSelection: () => void
-  toggleSelect: (id: string, rangeWith?: string | null) => void
-
-  exportSites: () => Promise<Blob>
-  importSites: (
-    file: File,
-    dryRun?: boolean
-  ) => Promise<{ items: SiteItem[]; errors: string[] }>
-  exportPasswords: () => Promise<Blob>
-  importPasswords: (
-    file: File,
-    dryRun?: boolean
-  ) => Promise<{ items: PasswordItem[]; errors: string[] }>
-  exportDocs: () => Promise<Blob>
-  importDocs: (
-    file: File,
-    dryRun?: boolean
-  ) => Promise<{ items: DocItem[]; errors: string[] }>
-}
-
-async function importItems<T extends AnyItem>(
+async function importItemsFromFile<T extends AnyItem>(
   type: ItemType,
   file: File,
   dryRun: boolean,
-  get: () => ItemState,
-  set: any
-): Promise<{ items: T[]; errors: string[] }> {
+): Promise<ImportResult<T>> {
   const text = await file.text()
-  const { items } = get()
-  const existingCount = items.filter(i => i.type === type).length
+  const existing = await db.items.where('type').equals(type).toArray()
+  const existingCount = existing.length
   const res: T[] = []
   const errors: string[] = []
   try {
-      if (/^\s*[\[{]/.test(text)) {
+    if (/^\s*[\[{]/.test(text)) {
       const data = JSON.parse(text)
       if (Array.isArray(data)) {
         data.forEach((d: any, idx: number) => {
@@ -266,7 +322,9 @@ async function importItems<T extends AnyItem>(
         const header = rows[0].map(h => h.toLowerCase())
         for (let i = 1; i < rows.length; i++) {
           const row: Record<string, string> = {}
-          header.forEach((h, idx) => { row[h] = rows[i][idx] })
+          header.forEach((h, idx) => {
+            row[h] = rows[i][idx]
+          })
           const m = mapFields(row, type)
           res.push(buildItem(type, m, existingCount + i) as T)
         }
@@ -275,296 +333,376 @@ async function importItems<T extends AnyItem>(
   } catch (e: any) {
     errors.push(e.message)
   }
+
   if (!dryRun && res.length) {
-    let toStore: any[] = res
     if (type === 'password') {
-      const key = useAuth.getState().key
-      if (!key) throw new Error('Missing master key')
-      toStore = await Promise.all(
-        res.map(async (it: any) => {
-          const username = await encryptString(key, it.username)
-          const url = it.url ? await encryptString(key, it.url) : undefined
-          const password_cipher = await encryptString(key, it.passwordCipher)
+      const key = ensureKey()
+      const toStore = await Promise.all(
+        res.map(async (item: any) => {
+          const username = await encryptString(key, item.username)
+          const url = item.url ? await encryptString(key, item.url) : undefined
+          const password_cipher = await encryptString(key, item.passwordCipher)
           return {
-            ...it,
+            ...item,
             username,
             url,
             password_cipher,
           }
-        })
+        }),
       )
-      toStore.forEach(it => { delete (it as any).passwordCipher })
+      toStore.forEach(it => delete (it as any).passwordCipher)
+      await db.items.bulkPut(toStore)
+    } else {
+      await db.items.bulkPut(res as AnyItem[])
     }
-    await db.items.bulkPut(toStore)
-    insertItemsToState(set, get, res as AnyItem[])
   }
+
   return { items: res, errors }
 }
 
-export const useItems = create<ItemState>((set, get) => ({
-  items: [],
-  tags: [],
-  filters: {},
-  selection: new Set<string>(),
-  nextOrder: { site: 1, password: 1, doc: 1 },
-  indexMap: {},
+export function useItemsQuery() {
+  const key = useAuth(s => s.key)
+  return useQuery({
+    queryKey: ITEMS_QUERY_KEY,
+    queryFn: () => fetchItemsData(ensureKey()),
+    enabled: Boolean(key),
+  })
+}
 
-  async load() {
-    const key = useAuth.getState().key
-    if (!key) throw new Error('Missing master key')
-    const [rawItems, tags] = await Promise.all([
-      db.items.orderBy('updatedAt').reverse().toArray(),
-      db.tags.toArray(),
-    ])
-    const items = await Promise.all(
-      rawItems.map(async it => {
-        if (it.type === 'password') {
-          const dbIt: any = it
-          const username = dbIt.username ? await decryptString(key, dbIt.username) : ''
-          const url = dbIt.url ? await decryptString(key, dbIt.url) : undefined
-          const pwd = dbIt.password_cipher ? await decryptString(key, dbIt.password_cipher) : ''
-          const cleaned: PasswordItem = { ...it, username, url, passwordCipher: pwd }
-          delete (cleaned as any).password_cipher
-          return cleaned
-        }
-        return it
-      })
-    )
-    const { nextOrder, indexMap, items: arr } = computeState(items)
-    set({ items: arr, tags, nextOrder, indexMap })
-  },
+export function useTagsQuery() {
+  return useQuery({
+    queryKey: TAGS_QUERY_KEY,
+    queryFn: fetchTags,
+  })
+}
 
-  async addSite(p) {
-    const id = nanoid()
-    const now = Date.now()
-    const order = get().nextOrder.site
-    const item: SiteItem = { id, type: 'site', createdAt: now, updatedAt: now, order, ...p, tags: p.tags ?? [] }
-    await dbAddItem(item)
-    insertItemsToState(set, get, [item])
-    return id
-  },
-  async addPassword(p) {
-    const id = nanoid()
-    const now = Date.now()
-    const order = get().nextOrder.password
-    const key = useAuth.getState().key
-    if (!key) throw new Error('Missing master key')
-    const username = await encryptString(key, p.username)
-    const url = p.url ? await encryptString(key, p.url) : undefined
-    const password_cipher = await encryptString(key, p.passwordCipher)
-    const toStore: any = {
-      id,
-      type: 'password',
-      createdAt: now,
-      updatedAt: now,
-      order,
-      title: p.title,
-      username,
-      url,
-      password_cipher,
-      tags: p.tags ?? [],
-      description: p.description ?? '',
-      favorite: p.favorite,
-      totpCipher: p.totpCipher,
-    }
-    await db.items.put(toStore)
-    const plain: PasswordItem = {
-      id,
-      type: 'password',
-      createdAt: now,
-      updatedAt: now,
-      order,
-      title: p.title,
-      username: p.username,
-      url: p.url,
-      passwordCipher: p.passwordCipher,
-      tags: p.tags ?? [],
-      description: p.description ?? '',
-      favorite: p.favorite,
-      totpCipher: p.totpCipher,
-    }
-    insertItemsToState(set, get, [plain])
-    return id
-  },
-  async addDoc(p) {
-    const { file, ...rest } = p as any
-    let path = rest.path || ''
-    let fileSize: number | undefined
-    let fileUpdatedAt: number | undefined
-    if (file) {
-      const meta = await saveFile(file, 'docs')
-      path = meta.path
-      fileSize = meta.size
-      fileUpdatedAt = meta.mtime
-    }
-    const id = nanoid()
-    const now = Date.now()
-    const order = get().nextOrder.doc
-    const item: DocItem = {
-      id,
-      type: 'doc',
-      createdAt: now,
-      updatedAt: now,
-      order,
-      ...rest,
-      path,
-      fileSize,
-      fileUpdatedAt,
-      tags: rest.tags ?? []
-    }
-    await db.items.put(item)
-    insertItemsToState(set, get, [item])
-    return id
-  },
-
-  async update(id, patch) {
-    const item = get().items.find(i => i.id === id)
-    if (!item) return
-    const { file, ...rest } = patch as any
-    let path = rest.path
-    let fileSize = rest.fileSize
-    let fileUpdatedAt = rest.fileUpdatedAt
-    if (file) {
-      const meta = await saveFile(file, 'docs')
-      path = meta.path
-      fileSize = meta.size
-      fileUpdatedAt = meta.mtime
-    }
-    const updated = {
-      ...item,
-      ...rest,
-      path,
-      fileSize,
-      fileUpdatedAt,
-      updatedAt: Date.now(),
-    } as AnyItem
-    let toStore: any = updated
-    if (updated.type === 'password') {
-      const key = await getStrongholdKey()
-      const username = await encryptString(key, updated.username)
-      const url = updated.url ? await encryptString(key, updated.url) : undefined
-      const password_cipher = await encryptString(key, updated.passwordCipher)
-      toStore = { ...updated, username, url, password_cipher }
-      delete (toStore as any).passwordCipher
-    }
-    await db.items.put(toStore)
-    updateItemsInState(set, get, [updated])
-  },
-  async updateMany(ids, patch) {
-    const { items } = get()
-    const key = useAuth.getState().key
-    if (!key) throw new Error('Missing master key')
-    const updatesPlain: AnyItem[] = []
-    const updatesDb: any[] = []
-    for (const id of ids) {
-      const item = items.find(i => i.id === id)
-      if (!item) continue
-      const updated: any = { ...item, ...patch, updatedAt: Date.now() }
-      let toStore: any = updated
-      if (item.type === 'password') {
-        const username = updated.username !== undefined ? await encryptString(key, updated.username) : undefined
-        const url = updated.url !== undefined ? await encryptString(key, updated.url) : undefined
-        const password_cipher = updated.passwordCipher !== undefined ? await encryptString(key, updated.passwordCipher) : undefined
-        toStore = { ...updated, username, url, password_cipher }
-        delete toStore.passwordCipher
-      }
-      updatesPlain.push(updated)
-      updatesDb.push(toStore)
-    }
-    if (updatesDb.length) {
-      await db.items.bulkPut(updatesDb)
-      updateItemsInState(set, get, updatesPlain)
-    }
-  },
-  async duplicate(id) {
-    const it = get().items.find(i => i.id === id)
-    if (!it) return
-    const lang = useSettings.getState().language
-    const suffix = translate(lang, 'copySuffix')
-    const copy = { ...it, id: nanoid(), title: it.title + suffix, createdAt: Date.now(), updatedAt: Date.now() } as AnyItem
-    let toStore: any = copy
-    if (copy.type === 'password') {
-      const key = await getStrongholdKey()
-      const username = await encryptString(key, copy.username)
-      const url = copy.url ? await encryptString(key, copy.url) : undefined
-      const password_cipher = await encryptString(key, copy.passwordCipher)
-      toStore = { ...copy, username, url, password_cipher }
-      delete (toStore as any).passwordCipher
-    }
-    await dbAddItem(toStore as AnyItem)
-    insertItemsToState(set, get, [copy])
-    return copy.id
-  },
-  async remove(id) {
-    const it = get().items.find(i => i.id === id)
-    if (it && it.type === 'doc' && it.source === 'local') {
-      await deleteFile(it.path)
-    }
-    await db.items.delete(id)
-    removeItemsFromState(set, get, [id])
-  },
-  async removeMany(ids) {
-    const { items } = get()
-    for (const id of ids) {
-      const it = items.find(i => i.id === id)
-      if (it && it.type === 'doc' && it.source === 'local') {
-        await deleteFile(it.path)
-      }
-    }
-    await db.items.bulkDelete(ids)
-    removeItemsFromState(set, get, ids)
-  },
-
-  async addTag(p) {
-    const id = nanoid()
-    const { tags } = get()
-    const color = TAG_COLORS[tags.length % TAG_COLORS.length] as TagColor
-    const tag = { id, ...p, color }
-    await dbPutTag(tag)
-    set(s => ({ tags: [...s.tags, tag] }))
-    return id
-  },
-  async removeTag(id) {
-    await dbDeleteTag(id)
-    const { items } = get()
-    const updates = items
-      .filter(it => it.tags.includes(id))
-      .map(it => ({ ...it, tags: it.tags.filter(t => t !== id) })) as AnyItem[]
-    if (updates.length) {
-      await dbBulkPut(updates)
-      updateItemsInState(set, get, updates)
-    }
-    set(s => ({ tags: s.tags.filter(t => t.id !== id) }))
-  },
-
-  setFilters(f) { set(s => ({ filters: { ...s.filters, ...f } })) },
-  clearSelection() { set({ selection: new Set() }) },
-  toggleSelect(id, rangeWith = null) {
-    set(s => {
-      const sel = new Set(s.selection)
-      if (rangeWith && sel.size) {
-        const a = s.indexMap[rangeWith]
-        const b = s.indexMap[id]
-        if (a !== undefined && b !== undefined) {
-          const [start, end] = a < b ? [a, b] : [b, a]
-          for (let i = start; i <= end; i++) {
-            const item = s.items[i]
-            if (item.type === (s.filters.type ?? item.type)) {
-              sel.add(item.id)
-            }
-          }
-        }
-      } else {
-        if (sel.has(id)) sel.delete(id); else sel.add(id)
-      }
-      return { selection: sel }
+async function getItemsSnapshot(queryClient: QueryClient) {
+  const cached = queryClient.getQueryData<AnyItem[]>(ITEMS_QUERY_KEY)
+  if (cached) return cached
+  try {
+    return await queryClient.fetchQuery({
+      queryKey: ITEMS_QUERY_KEY,
+      queryFn: () => fetchItemsData(ensureKey()),
     })
-  },
+  } catch {
+    return []
+  }
+}
 
-  exportSites: () => serializeItems('site'),
-  importSites: (file, dryRun) => importItems<SiteItem>('site', file, dryRun ?? false, get, set),
-  exportPasswords: () => serializeItems('password'),
-  importPasswords: (file, dryRun) => importItems<PasswordItem>('password', file, dryRun ?? false, get, set),
-  exportDocs: () => serializeItems('doc'),
-  importDocs: (file, dryRun) => importItems<DocItem>('doc', file, dryRun ?? false, get, set),
-}))
+export function useAddSiteMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (
+      payload: Omit<SiteItem, 'id' | 'type' | 'createdAt' | 'updatedAt'>,
+    ) => {
+      const now = Date.now()
+      const order = await getNextOrder('site')
+      const item: SiteItem = {
+        id: nanoid(),
+        type: 'site',
+        createdAt: now,
+        updatedAt: now,
+        order,
+        ...payload,
+        tags: payload.tags ?? [],
+      }
+      await dbAddItem(item)
+      return item
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ITEMS_QUERY_KEY })
+    },
+  })
+}
+
+export function useAddPasswordMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (
+      payload: Omit<PasswordItem, 'id' | 'type' | 'createdAt' | 'updatedAt'>,
+    ) => {
+      const key = ensureKey()
+      const now = Date.now()
+      const order = await getNextOrder('password')
+      const item: PasswordItem = {
+        id: nanoid(),
+        type: 'password',
+        createdAt: now,
+        updatedAt: now,
+        order,
+        ...payload,
+        tags: payload.tags ?? [],
+      }
+      const toStore = await toDbRepresentation(item, key)
+      await db.items.put(toStore)
+      return item
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ITEMS_QUERY_KEY })
+    },
+  })
+}
+
+export function useAddDocMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (
+      payload: Omit<DocItem, 'id' | 'type' | 'createdAt' | 'updatedAt'> & { file?: File },
+    ) => {
+      const { file, ...rest } = payload as any
+      let path = rest.path || ''
+      let fileSize: number | undefined = rest.fileSize
+      let fileUpdatedAt: number | undefined = rest.fileUpdatedAt
+      if (file) {
+        const meta = await saveFile(file, 'docs')
+        path = meta.path
+        fileSize = meta.size
+        fileUpdatedAt = meta.mtime
+      }
+      const now = Date.now()
+      const order = await getNextOrder('doc')
+      const item: DocItem = {
+        id: nanoid(),
+        type: 'doc',
+        createdAt: now,
+        updatedAt: now,
+        order,
+        ...rest,
+        path,
+        fileSize,
+        fileUpdatedAt,
+        tags: rest.tags ?? [],
+      }
+      await db.items.put(item)
+      return item
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ITEMS_QUERY_KEY })
+    },
+  })
+}
+
+export function useUpdateItemMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      id,
+      patch,
+    }: {
+      id: string
+      patch: Partial<AnyItem & { file?: File }>
+    }) => {
+      const items = (await getItemsSnapshot(queryClient)) ?? []
+      const existing = items.find(it => it.id === id)
+      if (!existing) throw new Error('Item not found')
+      const { file, ...rest } = patch as any
+      let next: AnyItem = {
+        ...existing,
+        ...rest,
+        updatedAt: Date.now(),
+      }
+      if (existing.type === 'doc') {
+        let path = rest.path ?? existing.path
+        let fileSize = rest.fileSize ?? existing.fileSize
+        let fileUpdatedAt = rest.fileUpdatedAt ?? existing.fileUpdatedAt
+        if (file) {
+          const meta = await saveFile(file, 'docs')
+          path = meta.path
+          fileSize = meta.size
+          fileUpdatedAt = meta.mtime
+        }
+        next = {
+          ...(next as DocItem),
+          path,
+          fileSize,
+          fileUpdatedAt,
+        }
+      }
+      let toStore: any = next
+      if (next.type === 'password') {
+        const key = await getStrongholdKey()
+        toStore = await toDbRepresentation(next, key)
+      }
+      await db.items.put(toStore)
+      return next
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ITEMS_QUERY_KEY })
+    },
+  })
+}
+
+export function useUpdateManyItemsMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      ids,
+      patch,
+    }: {
+      ids: string[]
+      patch: Partial<AnyItem>
+    }) => {
+      const items = (await getItemsSnapshot(queryClient)) ?? []
+      const key = ensureKey()
+      const updatesPlain: AnyItem[] = []
+      const updatesDb: any[] = []
+      for (const id of ids) {
+        const existing = items.find(it => it.id === id)
+        if (!existing) continue
+        const updated: AnyItem = { ...existing, ...patch, updatedAt: Date.now() }
+        updatesPlain.push(updated)
+        updatesDb.push(await toDbRepresentation(updated, key))
+      }
+      if (updatesDb.length) {
+        await db.items.bulkPut(updatesDb)
+      }
+      return updatesPlain
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ITEMS_QUERY_KEY })
+    },
+  })
+}
+
+export function useDuplicateItemMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const items = (await getItemsSnapshot(queryClient)) ?? []
+      const existing = items.find(it => it.id === id)
+      if (!existing) return
+      const lang = useSettings.getState().language
+      const suffix = translate(lang, 'copySuffix')
+      const now = Date.now()
+      const copy: AnyItem = {
+        ...existing,
+        id: nanoid(),
+        title: existing.title + suffix,
+        createdAt: now,
+        updatedAt: now,
+      }
+      const key = await getStrongholdKey()
+      const toStore = await toDbRepresentation(copy, key)
+      await dbAddItem(toStore as AnyItem)
+      return copy.id
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ITEMS_QUERY_KEY })
+    },
+  })
+}
+
+export function useRemoveItemMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const items = (await getItemsSnapshot(queryClient)) ?? []
+      const existing = items.find(it => it.id === id)
+      if (existing && existing.type === 'doc' && existing.source === 'local') {
+        await deleteFile(existing.path)
+      }
+      await db.items.delete(id)
+      return id
+    },
+    onSuccess: id => {
+      useItemsStore.getState().removeFromSelection([id])
+      queryClient.invalidateQueries({ queryKey: ITEMS_QUERY_KEY })
+    },
+  })
+}
+
+export function useRemoveManyItemsMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      if (!ids.length) return ids
+      const items = (await getItemsSnapshot(queryClient)) ?? []
+      for (const id of ids) {
+        const existing = items.find(it => it.id === id)
+        if (existing && existing.type === 'doc' && existing.source === 'local') {
+          await deleteFile(existing.path)
+        }
+      }
+      await db.items.bulkDelete(ids)
+      return ids
+    },
+    onSuccess: ids => {
+      useItemsStore.getState().removeFromSelection(ids)
+      queryClient.invalidateQueries({ queryKey: ITEMS_QUERY_KEY })
+    },
+  })
+}
+
+export function useAddTagMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: { name: string; parentId?: string }) => {
+      const cached = queryClient.getQueryData<Tag[]>(TAGS_QUERY_KEY)
+      const tags =
+        cached ?? (await queryClient.fetchQuery({ queryKey: TAGS_QUERY_KEY, queryFn: fetchTags }).catch(() => [])) ?? []
+      const color = TAG_COLORS[tags.length % TAG_COLORS.length] as TagColor
+      const tag: Tag = { id: nanoid(), ...payload, color }
+      await dbPutTag(tag)
+      return tag
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: TAGS_QUERY_KEY })
+    },
+  })
+}
+
+export function useRemoveTagMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await dbDeleteTag(id)
+      const items = await db.items.toArray()
+      const key = ensureKey()
+      const updates = await Promise.all(
+        items
+          .filter(it => it.tags?.includes(id))
+          .map(async it => {
+            const cleaned = { ...it, tags: it.tags.filter(t => t !== id) } as AnyItem
+            return toDbRepresentation(cleaned, key)
+          }),
+      )
+      if (updates.length) {
+        await dbBulkPut(updates as any[])
+      }
+      return id
+    },
+    onSuccess: id => {
+      queryClient.invalidateQueries({ queryKey: TAGS_QUERY_KEY })
+      queryClient.invalidateQueries({ queryKey: ITEMS_QUERY_KEY })
+    },
+  })
+}
+
+export function useExportItems(type: ItemType) {
+  return useCallback(() => serializeItems(type), [type])
+}
+
+function useImportItemsMutationInternal<T extends AnyItem>(type: ItemType) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (params: { file: File; dryRun?: boolean }) => {
+      const res = await importItemsFromFile<T>(type, params.file, params.dryRun ?? false)
+      if (!params.dryRun) {
+        queryClient.invalidateQueries({ queryKey: ITEMS_QUERY_KEY })
+      }
+      return res
+    },
+  })
+}
+
+export function useImportSitesMutation() {
+  return useImportItemsMutationInternal<SiteItem>('site')
+}
+
+export function useImportDocsMutation() {
+  return useImportItemsMutationInternal<DocItem>('doc')
+}
+
+export function useImportPasswordsMutation() {
+  return useImportItemsMutationInternal<PasswordItem>('password')
+}

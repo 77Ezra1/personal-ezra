@@ -8,7 +8,10 @@ import IconButton from '../components/ui/IconButton'
 import Segmented from '../components/ui/Segmented'
 import Modal from '../components/ui/Modal'
 import { Trash2, XCircle, Copy } from 'lucide-react'
-import { useItems } from '../store/useItems'
+import {
+  useAddPasswordMutation,
+  useUpdateItemMutation,
+} from '../store/useItems'
 import type { PasswordItem } from '../types'
 import { useTranslation } from '../lib/i18n'
 import { copyWithTimeout } from '../lib/clipboard'
@@ -19,7 +22,8 @@ import { shallow } from 'zustand/shallow'
 
 export default function Passwords() {
   const t = useTranslation()
-  const { update, addPassword } = useItems()
+  const addPasswordMutation = useAddPasswordMutation()
+  const updateItemMutation = useUpdateItemMutation()
   const [params] = useSearchParams()
   const tag = params.get('tag') || 'all'
 
@@ -111,9 +115,18 @@ export default function Passwords() {
     if (!ensureUnlock()) return
     if (!title.trim() || !password) return
     if (edit) {
-      await update(edit.id, { title, username, passwordCipher: password, url, tags })
+      await updateItemMutation.mutateAsync({
+        id: edit.id,
+        patch: { title, username, passwordCipher: password, url, tags },
+      })
     } else {
-      await addPassword({ title, username, passwordCipher: password, url, tags })
+      await addPasswordMutation.mutateAsync({
+        title,
+        username,
+        passwordCipher: password,
+        url,
+        tags,
+      })
     }
     setOpenNew(false)
     setOpenEdit(false)

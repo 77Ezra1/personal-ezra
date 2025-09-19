@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useItems } from '../store/useItems'
+import { useMemo, useState } from 'react'
+import { useItemsQuery } from '../store/useItems'
 import type { SiteItem, PasswordItem, DocItem } from '../types'
 import Segmented from '../components/ui/Segmented'
 import Button from '../components/ui/Button'
@@ -7,10 +7,9 @@ import { useTranslation } from '../lib/i18n'
 import { useNavigate } from 'react-router-dom'
 
 export default function Dashboard() {
-  const { items, load } = useItems()
+  const { data: items = [] } = useItemsQuery()
   const t = useTranslation()
   const navigate = useNavigate()
-  useEffect(() => { load() }, [])
   const recent = useMemo(() => items.slice(0, 10), [items])
   const sites = items.filter(i => i.type === 'site') as SiteItem[]
   const passwords = items.filter(i => i.type === 'password') as PasswordItem[]

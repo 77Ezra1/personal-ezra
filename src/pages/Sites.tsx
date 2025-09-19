@@ -1,6 +1,9 @@
 import IconButton from '../components/ui/IconButton'
 import { useState } from 'react'
-import { useItems } from '../store/useItems'
+import {
+  useAddSiteMutation,
+  useUpdateItemMutation,
+} from '../store/useItems'
 import type { SiteItem } from '../types'
 import Input from '../components/ui/Input'
 import Button from '../components/ui/Button'
@@ -15,7 +18,8 @@ import ItemForm, { ItemField } from '../components/ItemForm'
 import { useItemList } from '../hooks/useItemList'
 
 export default function Sites() {
-  const { addSite, update } = useItems()
+  const addSiteMutation = useAddSiteMutation()
+  const updateItemMutation = useUpdateItemMutation()
   const [params] = useSearchParams()
   const activeTag = params.get('tag')
   const t = useTranslation()
@@ -154,7 +158,12 @@ export default function Sites() {
             alert(t('enterTitleAndUrl'))
             return
           }
-          await addSite({ title: nTitle, url: nUrl, description: nDesc, tags: nTags })
+          await addSiteMutation.mutateAsync({
+            title: nTitle,
+            url: nUrl,
+            description: nDesc,
+            tags: nTags,
+          })
           setOpenNew(false)
           setNTitle('')
           setNUrl('')
@@ -185,11 +194,14 @@ export default function Sites() {
         title={t('editSite')}
         onSave={async () => {
           if (!edit) return
-          await update(edit.id, {
-            title: edit.title,
-            url: edit.url,
-            description: edit.description,
-            tags: edit.tags,
+          await updateItemMutation.mutateAsync({
+            id: edit.id,
+            patch: {
+              title: edit.title,
+              url: edit.url,
+              description: edit.description,
+              tags: edit.tags,
+            },
           })
           setOpenEdit(false)
         }}

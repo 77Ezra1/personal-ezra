@@ -2,6 +2,7 @@ import ToastHub from './components/ToastHub'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { router } from './routes'
 import './index.css'
 
@@ -10,6 +11,8 @@ import { useSettings, Theme } from './store/useSettings'
 import { useAuth } from './store/useAuth'
 import { migrateIfNeeded } from './lib/migrate'
 import { bootstrap } from './lib/bootstrap'
+
+const queryClient = new QueryClient()
 
 function LoadingMessage() {
   return <div style={{ padding: 16 }}>Loading…</div>
@@ -53,12 +56,14 @@ function BootGate() {
 
   if (!ready) return <div style={{ padding: 16 }}>Loading…</div>
   return (
-    <React.StrictMode>
-      <React.Suspense fallback={<LoadingMessage />}>
-        <RouterProvider router={router} />
-      </React.Suspense>
-      <ToastHub />
-    </React.StrictMode>
+    <QueryClientProvider client={queryClient}>
+      <React.StrictMode>
+        <React.Suspense fallback={<LoadingMessage />}>
+          <RouterProvider router={router} />
+        </React.Suspense>
+        <ToastHub />
+      </React.StrictMode>
+    </QueryClientProvider>
   )
 }
 

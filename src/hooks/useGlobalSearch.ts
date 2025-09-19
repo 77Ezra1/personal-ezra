@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useItems } from '../store/useItems'
+import { useItemsQuery } from '../store/useItems'
 import { parseTokens } from '../components/TokenFilter'
 import { useClickOutside } from './useClickOutside'
 
@@ -16,7 +16,7 @@ export interface Row {
 
 export function useGlobalSearch() {
   const navigate = useNavigate()
-  const items = useItems(s => s.items)
+  const { data: items = [] } = useItemsQuery()
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(0)
