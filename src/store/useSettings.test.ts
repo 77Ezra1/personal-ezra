@@ -12,3 +12,13 @@ describe('language switching', () => {
     expect(translate('zh', 'new')).toBe('新建')
   })
 })
+
+describe('theme switching', () => {
+  it('changes theme state', () => {
+    const { setTheme } = useSettings.getState()
+    setTheme('dark')
+    expect(useSettings.getState().theme).toBe('dark')
+    setTheme('light')
+    expect(useSettings.getState().theme).toBe('light')
+  })
+})
