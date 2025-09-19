@@ -12,6 +12,41 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest,woff2}'],
+        navigateFallback: '/index.html',
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-cache',
+              networkTimeoutSeconds: 10,
+              cacheableResponse: {
+                statuses: [0, 200]
+              },
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 5 * 60
+              }
+            }
+          },
+          {
+            urlPattern: ({ url }) => url.pathname.endsWith('.json') || url.pathname.startsWith('/data/'),
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'data-cache',
+              cacheableResponse: {
+                statuses: [0, 200]
+              },
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 60
+              }
+            }
+          }
+        ]
+      },
       manifest: {
         name: 'PMS Web',
         short_name: 'PMS',

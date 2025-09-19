@@ -6,10 +6,14 @@ import { router } from './routes'
 import './index.css'
 
 import { toast } from './utils/toast'
-import { useSettings } from './store/useSettings'
+import { useSettings, Theme } from './store/useSettings'
 import { useAuth } from './store/useAuth'
 import { migrateIfNeeded } from './lib/migrate'
 import { bootstrap } from './lib/bootstrap'
+
+function LoadingMessage() {
+  return <div style={{ padding: 16 }}>Loading…</div>
+}
 
 function BootGate() {
   const [ready, setReady] = React.useState(false)
@@ -32,10 +36,27 @@ function BootGate() {
       })
   }, [])
 
+  React.useEffect(() => {
+    const applyTheme = (theme: Theme) => {
+      document.documentElement.classList.toggle('dark', theme === 'dark')
+    }
+    let previous = useSettings.getState().theme
+    applyTheme(previous)
+    const unsubscribe = useSettings.subscribe((state) => {
+      if (state.theme !== previous) {
+        previous = state.theme
+        applyTheme(state.theme)
+      }
+    })
+    return unsubscribe
+  }, [])
+
   if (!ready) return <div style={{ padding: 16 }}>Loading…</div>
   return (
     <React.StrictMode>
-      <RouterProvider router={router} />
+      <React.Suspense fallback={<LoadingMessage />}>
+        <RouterProvider router={router} />
+      </React.Suspense>
       <ToastHub />
     </React.StrictMode>
   )

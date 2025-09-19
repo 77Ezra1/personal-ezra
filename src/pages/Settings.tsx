@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import ImportExportModal from '../components/ImportExportModal'
 import { useItems } from '../store/useItems'
-import { useSettings } from '../store/useSettings'
+import { useSettings, Theme, Language } from '../store/useSettings'
 import { useTranslation } from '../lib/i18n'
 import { X, Copy } from 'lucide-react'
 import Input from '../components/ui/Input'
@@ -9,13 +9,33 @@ import { useAuth } from '../store/useAuth'
 import Modal from '../components/ui/Modal'
 import IconButton from '../components/ui/IconButton'
 import copyWithTimeout from '../lib/clipboard'
+import { shallow } from 'zustand/shallow'
 
 export default function Settings() {
-  const { language, setLanguage } = useSettings()
+  const { language, setLanguage, theme, setTheme } = useSettings()
   const t = useTranslation()
   const { exportSites, exportDocs, tags, removeTag } = useItems()
   const [importType, setImportType] = useState<'site' | 'doc' | null>(null)
-  const { hasMaster, setMaster, mnemonic, verifyMnemonic, resetMaster } = useAuth()
+  const {
+    hasMaster,
+    setMaster,
+    mnemonic,
+    verifyMnemonic,
+    resetMaster,
+    idleTimeoutMinutes,
+    setIdleTimeout,
+  } = useAuth(
+    s => ({
+      hasMaster: s.hasMaster,
+      setMaster: s.setMaster,
+      mnemonic: s.mnemonic,
+      verifyMnemonic: s.verifyMnemonic,
+      resetMaster: s.resetMaster,
+      idleTimeoutMinutes: s.idleTimeoutMinutes,
+      setIdleTimeout: s.setIdleTimeout,
+    }),
+    shallow,
+  )
   const [pw1, setPw1] = useState('')
   const [pw2, setPw2] = useState('')
   const [captcha, setCaptcha] = useState('')
@@ -35,6 +55,14 @@ export default function Settings() {
   const [resetCaptchaError, setResetCaptchaError] = useState(false)
   const [resetSaving, setResetSaving] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  const idleOptions = [0, 1, 5, 10, 15, 30, 60]
+
+  const formatIdleLabel = (value: number) => {
+    if (value === 0) return t('never')
+    const unit = value === 1 ? t('minute') : t('minutes')
+    return language === 'zh' ? `${value}${unit}` : `${value} ${unit}`
+  }
 
   useEffect(() => {
     if (pw1 && pw2 && pw1 === pw2) {
@@ -97,10 +125,21 @@ export default function Settings() {
         <select
           className="rounded px-2 py-1 border border-border bg-surface"
           value={language}
-          onChange={e => setLanguage(e.target.value as any)}
+          onChange={e => setLanguage(e.target.value as Language)}
         >
           <option value="zh">{t('chinese')}</option>
           <option value="en">{t('english')}</option>
+        </select>
+      </section>
+      <section>
+        <h2 className="text-lg font-medium mb-2">{t('theme')}</h2>
+        <select
+          className="rounded px-2 py-1 border border-border bg-surface"
+          value={theme}
+          onChange={e => setTheme(e.target.value as Theme)}
+        >
+          <option value="light">{t('lightTheme')}</option>
+          <option value="dark">{t('darkTheme')}</option>
         </select>
       </section>
       <section>

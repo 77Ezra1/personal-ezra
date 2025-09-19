@@ -36,6 +36,18 @@ docker run --rm -p 8080:80 pms-web
 ```bash
 docker compose up --build
 ```
+## 代码规范
+
+项目已集成 ESLint 与 Prettier，用以下命令保持代码风格一致：
+
+```bash
+pnpm lint         # 运行 ESLint
+pnpm lint:fix     # 自动修复可修复问题
+pnpm format       # 使用 Prettier 重写文件
+pnpm format:check # 仅检查格式
+```
+
+提交代码时 Husky 会自动执行 `pnpm lint` 作为 pre-commit 钩子。
 
 ## 功能点（MVP）
 - 网站管理：新增、打开、删除
@@ -46,3 +58,9 @@ docker compose up --build
 - 笔记：Markdown 编写与大模型对话
 
 > 默认离线运行；如配置 `VITE_LLM_API_URL`/`VITE_LLM_API_KEY` 将访问外部服务，请自行评估隐私与安全风险。
+
+## 离线能力
+
+- 构建时预缓存核心资源（HTML、JS、CSS、图标、字体等），首次访问后即可离线打开。
+- Workbox 运行时缓存 `/api/*` 与数据请求（JSON、`/data/` 路径），在网络不可用时回退到本地缓存。
+- 所有导航请求自动回退到应用壳（`index.html`），确保刷新或直接访问路由时也能离线渲染页面。

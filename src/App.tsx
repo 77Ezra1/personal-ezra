@@ -1,8 +1,21 @@
+import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import Topbar from './components/Topbar'
 import Sidebar from './components/Sidebar'
+import { useAuth } from './store/useAuth'
 
 export default function App() {
+  const resetActivity = useAuth(s => s.resetActivity)
+
+  useEffect(() => {
+    const handler = () => resetActivity()
+    const events: (keyof WindowEventMap)[] = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart']
+    events.forEach(event => window.addEventListener(event, handler))
+    return () => {
+      events.forEach(event => window.removeEventListener(event, handler))
+    }
+  }, [resetActivity])
+
   return (
     <div className="h-dvh bg-gradient-to-b from-slate-50 to-white grid grid-rows-[auto,1fr]">
       <Topbar />
