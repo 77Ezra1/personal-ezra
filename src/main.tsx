@@ -10,12 +10,6 @@ import { useAuthStore } from './stores/auth'
 import { migrateIfNeeded } from './lib/migrate'
 import { bootstrap } from './lib/bootstrap'
 
-const queryClient = new QueryClient()
-
-if (!rootElement) {
-  throw new Error('Failed to find the root element')
-}
-
 function BootGate() {
   const [ready, setReady] = React.useState(false)
 
@@ -48,8 +42,27 @@ function BootGate() {
         previous = state.theme
         applyTheme(state.theme)
       }
-    >
-      <RouterProvider router={router} />
+    })
+    return unsubscribe
+  }, [])
+
+  if (!ready) {
+    return <div>加载中...</div>
+  }
+
+  return <RouterProvider router={router} />
+}
+
+// 根渲染
+const rootElement = document.getElementById('root')
+if (!rootElement) {
+  throw new Error('Failed to find the root element')
+}
+
+ReactDOM.createRoot(rootElement).render(
+  <React.StrictMode>
+    <React.Suspense fallback={<div>加载中...</div>}>
+      <BootGate />
     </React.Suspense>
-  </React.StrictMode>,
+  </React.StrictMode>
 )
