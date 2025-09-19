@@ -9,7 +9,7 @@ import {
 import type { SiteItem } from '../types'
 import type { RenderHookResult } from '@testing-library/react'
 import { exec } from '../lib/db'
-import { useAuth } from '../store/useAuth'
+import { useAuthStore } from '../stores/auth'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
@@ -34,7 +34,7 @@ beforeEach(async () => {
   wrapper = ({ children }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
-  useAuth.setState({ key: new Uint8Array(32) })
+    useAuthStore.setState({ key: new Uint8Array(32) })
   await exec('DELETE FROM items')
   await exec('DELETE FROM tags')
   useItemsStore.setState({ filters: {}, selection: new Set() })

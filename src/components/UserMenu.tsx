@@ -5,17 +5,17 @@ import IconButton from './ui/IconButton'
 import ImportExportModal from './ImportExportModal'
 import Modal from './ui/Modal'
 import Input from './ui/Input'
-import { useAuth } from '../store/useAuth'
+import { useAuthStore } from '../stores/auth'
 import { useClickOutside } from '../hooks/useClickOutside'
 import { useTranslation } from '../lib/i18n'
 import { shallow } from 'zustand/shallow'
 
 export default function UserMenu() {
   const navigate = useNavigate()
-  const { unlocked, unlock, lock, username, avatar, logout, hasMaster } = useAuth(
+  const { unlocked, login, lock, username, avatar, logout, hasMaster } = useAuthStore(
     s => ({
       unlocked: s.unlocked,
-      unlock: s.unlock,
+      login: s.login,
       lock: s.lock,
       username: s.username,
       avatar: s.avatar,
@@ -133,7 +133,7 @@ export default function UserMenu() {
             <button
               className="h-9 px-4 rounded-xl border border-gray-300 bg-gray-100 text-sm text-gray-800 shadow-sm hover:bg-gray-200"
               onClick={async () => {
-                const ok = await unlock(mpw)
+                const ok = await login(mpw)
                 if (ok) {
                   setOpenUnlock(false)
                   setMpw('')

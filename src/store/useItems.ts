@@ -23,10 +23,9 @@ import {
 } from '../lib/db'
 import { encryptString, decryptString } from '../lib/crypto'
 import { saveFile, deleteFile } from '../lib/fs'
-import { useAuth } from './useAuth'
+import { useAuthStore } from '../stores/auth'
 import { useSettings } from './useSettings'
 import { translate } from '../lib/i18n'
-import { getStrongholdKey } from '../lib/stronghold'
 
 export const ITEMS_QUERY_KEY = ['items'] as const
 export const TAGS_QUERY_KEY = ['tags'] as const
@@ -86,7 +85,7 @@ export const useItemsStore = create<ItemUiState>((set) => ({
 }))
 
 function ensureKey(): Uint8Array {
-  const key = useAuth.getState().key
+  const key = useAuthStore.getState().key
   if (!key) throw new Error('Missing master key')
   return key
 }
@@ -361,7 +360,7 @@ async function importItemsFromFile<T extends AnyItem>(
 }
 
 export function useItemsQuery() {
-  const key = useAuth(s => s.key)
+  const key = useAuthStore(s => s.key)
   return useQuery({
     queryKey: ITEMS_QUERY_KEY,
     queryFn: () => fetchItemsData(ensureKey()),
@@ -520,7 +519,7 @@ export function useUpdateItemMutation() {
       }
       let toStore: any = next
       if (next.type === 'password') {
-        const key = await getStrongholdKey()
+        const key = ensureKey()
         toStore = await toDbRepresentation(next, key)
       }
       await db.items.put(toStore)
@@ -581,7 +580,7 @@ export function useDuplicateItemMutation() {
         createdAt: now,
         updatedAt: now,
       }
-      const key = await getStrongholdKey()
+      const key = ensureKey()
       const toStore = await toDbRepresentation(copy, key)
       await dbAddItem(toStore as AnyItem)
       return copy.id

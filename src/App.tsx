@@ -2,10 +2,10 @@ import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import Topbar from './components/Topbar'
 import Sidebar from './components/Sidebar'
-import { useAuth } from './store/useAuth'
+import { useAuthStore } from './stores/auth'
 
 export default function App() {
-  const resetActivity = useAuth(s => s.resetActivity)
+  const resetActivity = useAuthStore(s => s.resetActivity)
 
   useEffect(() => {
     const handler = () => resetActivity()

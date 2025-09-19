@@ -8,7 +8,7 @@ import './index.css'
 
 import { toast } from './utils/toast'
 import { useSettings, Theme } from './store/useSettings'
-import { useAuth } from './store/useAuth'
+import { useAuthStore } from './stores/auth'
 import { migrateIfNeeded } from './lib/migrate'
 import { bootstrap } from './lib/bootstrap'
 
@@ -34,7 +34,7 @@ function BootGate() {
           }
         }
         useSettings.getState().load()
-        useAuth.getState().load()
+        useAuthStore.getState().load()
         setReady(true)
       })
   }, [])

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { db, type NoteRecord } from '../lib/db'
 import { encryptString, decryptString } from '../lib/crypto'
-import { useAuth } from './useAuth'
+import { useAuthStore } from '../stores/auth'
 
 const NOTE_ID = 'default-note'
 
@@ -40,7 +40,7 @@ export const useNotes = create<NoteState>((set, get) => ({
         return
       }
       if (record.encrypted) {
-        const key = useAuth.getState().key
+        const key = useAuthStore.getState().key
         if (!key) {
           set({
             content: '',
@@ -92,7 +92,7 @@ export const useNotes = create<NoteState>((set, get) => ({
   async save(nextContent) {
     const now = Date.now()
     try {
-      const key = useAuth.getState().key
+      const key = useAuthStore.getState().key
       const encrypted = !!key
       const storedContent = encrypted ? await encryptString(key, nextContent) : nextContent
       const createdAt = get().createdAt ?? now

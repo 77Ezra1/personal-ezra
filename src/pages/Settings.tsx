@@ -9,7 +9,7 @@ import { useSettings, Theme, Language } from '../store/useSettings'
 import { useTranslation } from '../lib/i18n'
 import { X, Copy } from 'lucide-react'
 import Input from '../components/ui/Input'
-import { useAuth } from '../store/useAuth'
+import { useAuthStore } from '../stores/auth'
 import Modal from '../components/ui/Modal'
 import IconButton from '../components/ui/IconButton'
 import copyWithTimeout from '../lib/clipboard'
@@ -25,16 +25,16 @@ export default function Settings() {
   const [importType, setImportType] = useState<'site' | 'doc' | null>(null)
   const {
     hasMaster,
-    setMaster,
+    register,
     mnemonic,
     verifyMnemonic,
     resetMaster,
     idleTimeoutMinutes,
     setIdleTimeout,
-  } = useAuth(
+  } = useAuthStore(
     s => ({
       hasMaster: s.hasMaster,
-      setMaster: s.setMaster,
+      register: s.register,
       mnemonic: s.mnemonic,
       verifyMnemonic: s.verifyMnemonic,
       resetMaster: s.resetMaster,
@@ -194,7 +194,7 @@ export default function Settings() {
                       }
                       setSaving(true)
                       try {
-                        await setMaster(pw1)
+                        await register(pw1)
                         setLastMaster(pw1)
                         setShowMasterModal(true)
                         setPw1('')
