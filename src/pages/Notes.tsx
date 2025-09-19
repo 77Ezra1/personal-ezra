@@ -4,7 +4,7 @@ import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
 import { useNotes } from '../store/useNotes'
 import { useTranslation } from '../lib/i18n'
-import { useAuth } from '../store/useAuth'
+import { useAuthStore } from '../stores/auth'
 import { useNavigate } from 'react-router-dom'
 
 function formatTimestamp(ts?: number) {
@@ -20,7 +20,7 @@ export default function Notes() {
   const t = useTranslation()
   const navigate = useNavigate()
   const { locked, encrypted, load, save, content, updatedAt, loading } = useNotes()
-  const { key, hasMaster } = useAuth()
+  const { key, hasMaster } = useAuthStore()
 
   const [draft, setDraft] = useState(content)
 

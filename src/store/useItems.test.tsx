@@ -16,7 +16,7 @@ import {
   useItemsQuery,
   useItemsStore,
 } from './useItems'
-import { useAuth } from './useAuth'
+import { useAuthStore } from '../stores/auth'
 import { exec } from '../lib/db'
 
 let queryClient: QueryClient
@@ -37,7 +37,7 @@ beforeEach(async () => {
   wrapper = ({ children }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
-  useAuth.setState({ key: new Uint8Array(32) })
+  useAuthStore.setState({ key: new Uint8Array(32) })
   await exec('DELETE FROM items')
   await exec('DELETE FROM tags')
   useItemsStore.setState({ filters: {}, selection: new Set() })

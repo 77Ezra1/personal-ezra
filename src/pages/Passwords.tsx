@@ -15,7 +15,7 @@ import {
 import type { PasswordItem } from '../types'
 import { useTranslation } from '../lib/i18n'
 import { copyWithTimeout } from '../lib/clipboard'
-import { useAuth } from '../store/useAuth'
+import { useAuthStore } from '../stores/auth'
 import ItemForm, { ItemField } from '../components/ItemForm'
 import { useItemList } from '../hooks/useItemList'
 import { shallow } from 'zustand/shallow'
@@ -64,11 +64,11 @@ export default function Passwords() {
   const [mpw, setMpw] = React.useState('')
 
   const navigate = useNavigate()
-  const { key, unlocked, unlock, hasMaster } = useAuth(
+  const { key, unlocked, login, hasMaster } = useAuthStore(
     s => ({
       key: s.key,
       unlocked: s.unlocked,
-      unlock: s.unlock,
+      login: s.login,
       hasMaster: s.hasMaster,
     }),
     shallow,
@@ -348,7 +348,7 @@ export default function Passwords() {
             </Button>
             <Button
               onClick={async () => {
-                const ok = await unlock(mpw)
+                const ok = await login(mpw)
                 if (ok) {
                   setUnlockOpen(false)
                   setMpw('')

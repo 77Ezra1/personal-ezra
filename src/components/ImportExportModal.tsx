@@ -5,7 +5,7 @@ import {
   useImportSitesMutation,
   useImportDocsMutation,
 } from '../store/useItems'
-import { useAuth } from '../store/useAuth'
+import { useAuthStore } from '../stores/auth'
 import { createBackup, restoreBackup } from '../lib/backup'
 
 export default function ImportExportModal({ open, onClose, initialType = 'site' }: { open: boolean; onClose: () => void; initialType?: 'site' | 'doc' }) {
@@ -13,7 +13,7 @@ export default function ImportExportModal({ open, onClose, initialType = 'site' 
   const exportDocs = useExportItems('doc')
   const importSitesMutation = useImportSitesMutation()
   const importDocsMutation = useImportDocsMutation()
-  const unlocked = useAuth(s => s.unlocked)
+  const unlocked = useAuthStore(s => s.unlocked)
   const [type, setType] = useState<'site' | 'doc'>(initialType)
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<any[]>([])

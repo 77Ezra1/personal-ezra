@@ -1,59 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Outlet, useLocation, useNavigate, useOutletContext } from 'react-router-dom'
-
-const SESSION_STORAGE_KEY = 'pms:session-email'
-
-export interface AppContextValue {
-  email: string | null
-  startSession: (email: string) => void
-  endSession: () => void
-}
-
-export function useAppContext() {
-  return useOutletContext<AppContextValue>()
-}
+import { useEffect } from 'react'
+import { Outlet } from 'react-router-dom'
+import Topbar from './components/Topbar'
+import Sidebar from './components/Sidebar'
+import { useAuthStore } from './stores/auth'
 
 export default function App() {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const [email, setEmail] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null
-    try {
-      const stored = window.localStorage.getItem(SESSION_STORAGE_KEY)
-      return stored && stored.trim().length > 0 ? stored : null
-    } catch {
-      return null
-    }
-  })
-
-  const startSession = useCallback(
-    (nextEmail: string) => {
-      const normalized = nextEmail.trim().toLowerCase()
-      if (!normalized) return
-      setEmail(normalized)
-      if (typeof window !== 'undefined') {
-        try {
-          window.localStorage.setItem(SESSION_STORAGE_KEY, normalized)
-        } catch {
-          /* noop */
-        }
-      }
-      navigate('/dashboard', { replace: true })
-    },
-    [navigate],
-  )
-
-  const endSession = useCallback(() => {
-    setEmail(null)
-    if (typeof window !== 'undefined') {
-      try {
-        window.localStorage.removeItem(SESSION_STORAGE_KEY)
-      } catch {
-        /* noop */
-      }
-    }
-    navigate('/login', { replace: true })
-  }, [navigate])
+  const resetActivity = useAuthStore(s => s.resetActivity)
 
   useEffect(() => {
     const path = location.pathname
