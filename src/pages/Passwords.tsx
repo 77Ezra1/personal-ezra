@@ -15,6 +15,7 @@ import { copyWithTimeout } from '../lib/clipboard'
 import { useAuth } from '../store/useAuth'
 import ItemForm, { ItemField } from '../components/ItemForm'
 import { useItemList } from '../hooks/useItemList'
+import { shallow } from 'zustand/shallow'
 
 export default function Passwords() {
   const t = useTranslation()
@@ -59,7 +60,15 @@ export default function Passwords() {
   const [mpw, setMpw] = React.useState('')
 
   const navigate = useNavigate()
-  const { key, unlocked, unlock, hasMaster } = useAuth()
+  const { key, unlocked, unlock, hasMaster } = useAuth(
+    s => ({
+      key: s.key,
+      unlocked: s.unlocked,
+      unlock: s.unlock,
+      hasMaster: s.hasMaster,
+    }),
+    shallow,
+  )
 
   function ensureUnlock() {
     if (!unlocked || !key) {
