@@ -22,6 +22,20 @@ yarn && yarn dev
 
 如需调用外部大模型 API，请复制 `.env.example` 为 `.env` 并配置 `VITE_LLM_API_URL` 与 `VITE_LLM_API_KEY`。
 
+## Docker 部署
+
+使用 Docker 手动构建镜像：
+
+```bash
+docker build -t pms-web .
+docker run --rm -p 8080:80 pms-web
+```
+
+或者使用 docker compose（默认暴露在 http://localhost:8080）：
+
+```bash
+docker compose up --build
+```
 ## 代码规范
 
 项目已集成 ESLint 与 Prettier，用以下命令保持代码风格一致：
