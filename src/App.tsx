@@ -24,6 +24,7 @@ function AuthenticatedLayout() {
   const email = useAuthStore(s => s.email)
   const logout = useAuthStore(s => s.logout)
 
+function AppBackground({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <header className="border-b border-white/10 bg-slate-900/80 backdrop-blur">
