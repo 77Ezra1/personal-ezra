@@ -1,10 +1,8 @@
-import ToastHub from './components/ToastHub'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { router } from './routes'
 import './index.css'
+import { router } from './routes'
 
 import { toast } from './utils/toast'
 import { useSettings, Theme } from './store/useSettings'
@@ -14,8 +12,8 @@ import { bootstrap } from './lib/bootstrap'
 
 const queryClient = new QueryClient()
 
-function LoadingMessage() {
-  return <div style={{ padding: 16 }}>Loading…</div>
+if (!rootElement) {
+  throw new Error('Failed to find the root element')
 }
 
 function BootGate() {
@@ -50,25 +48,8 @@ function BootGate() {
         previous = state.theme
         applyTheme(state.theme)
       }
-    })
-    return unsubscribe
-  }, [])
-
-  if (!ready) return <div style={{ padding: 16 }}>Loading…</div>
-  return (
-    <QueryClientProvider client={queryClient}>
-      <React.StrictMode>
-        <React.Suspense fallback={<LoadingMessage />}>
-          <RouterProvider router={router} />
-        </React.Suspense>
-        <ToastHub />
-      </React.StrictMode>
-    </QueryClientProvider>
-  )
-}
-
-window.addEventListener('unhandledrejection', (e) => {
-  console.error('unhandledrejection:', e.reason)
-})
-
-ReactDOM.createRoot(document.getElementById('root')!).render(<BootGate />)
+    >
+      <RouterProvider router={router} />
+    </React.Suspense>
+  </React.StrictMode>,
+)

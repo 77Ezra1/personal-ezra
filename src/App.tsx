@@ -8,23 +8,49 @@ export default function App() {
   const resetActivity = useAuthStore(s => s.resetActivity)
 
   useEffect(() => {
-    const handler = () => resetActivity()
-    const events: (keyof WindowEventMap)[] = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart']
-    events.forEach(event => window.addEventListener(event, handler))
-    return () => {
-      events.forEach(event => window.removeEventListener(event, handler))
+    const path = location.pathname
+    if (email) {
+      if (path === '/' || path === '/login' || path === '/register') {
+        if (path !== '/dashboard') {
+          navigate('/dashboard', { replace: true })
+        }
+      }
+    } else if (path === '/' || path === '/dashboard') {
+      navigate('/login', { replace: true })
     }
-  }, [resetActivity])
+  }, [email, location.pathname, navigate])
+
+  const context = useMemo<AppContextValue>(() => ({ email, startSession, endSession }), [email, startSession, endSession])
+  const outlet = <Outlet context={context} />
 
   return (
-    <div className="h-dvh bg-gradient-to-b from-slate-50 to-white grid grid-rows-[auto,1fr]">
-      <Topbar />
-      <div className="grid grid-cols-[220px,1fr] border-t bg-white/60 backdrop-blur supports-[backdrop-filter]:bg-white/50">
-        <Sidebar />
-        <main className="overflow-auto bg-white">
-          <Outlet />
+    <div className="relative min-h-dvh bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-slate-100">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-96 bg-[radial-gradient(circle_at_top,rgba(148,163,255,0.12),rgba(15,23,42,0))]" aria-hidden />
+      {email ? (
+        <div className="relative flex min-h-dvh flex-col">
+          <header className="border-b border-white/10 bg-white/5 backdrop-blur">
+            <div className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-6">
+              <span className="text-sm text-slate-200">
+                Signed in as <span className="font-semibold text-white">{email}</span>
+              </span>
+              <button
+                type="button"
+                onClick={endSession}
+                className="inline-flex items-center justify-center rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/10"
+              >
+                Sign out
+              </button>
+            </div>
+          </header>
+          <main className="relative flex flex-1 justify-center px-6 py-12">
+            <div className="w-full max-w-5xl">{outlet}</div>
+          </main>
+        </div>
+      ) : (
+        <main className="relative flex min-h-dvh items-center justify-center px-6 py-12">
+          <div className="w-full max-w-md">{outlet}</div>
         </main>
-      </div>
+      )}
     </div>
   )
 }
