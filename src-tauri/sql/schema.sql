@@ -25,6 +25,15 @@ CREATE TABLE IF NOT EXISTS passwords (
   created_at INTEGER NOT NULL
 );
 
+-- notes (markdown content, stored encrypted when possible)
+CREATE TABLE IF NOT EXISTS notes (
+  id TEXT PRIMARY KEY,
+  content TEXT NOT NULL,
+  encrypted INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_sites_url ON sites(url);
 CREATE INDEX IF NOT EXISTS idx_docs_filename ON docs(filename);
 CREATE INDEX IF NOT EXISTS idx_pw_title ON passwords(title);

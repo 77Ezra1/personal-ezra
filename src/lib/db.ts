@@ -3,6 +3,14 @@ import { isTauri } from './env';
 type DatabaseNS = any;
 import type { AnyItem, Tag } from '../types';
 
+export interface NoteRecord {
+  id: string;
+  content: string;
+  encrypted: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 let sqlDb: DatabaseNS | null = null;
 
 export async function initDb(appDataDir: string) {
@@ -138,9 +146,10 @@ export class PmsDB {
   items = new Table<AnyItem & Record<string, any>>();
   tags = new Table<Tag>();
   settings = new Table<Setting>();
+  notes = new Table<NoteRecord>();
 
   async delete() {
-    await Promise.all([this.items.clear(), this.tags.clear(), this.settings.clear()]);
+    await Promise.all([this.items.clear(), this.tags.clear(), this.settings.clear(), this.notes.clear()]);
   }
 }
 
@@ -184,4 +193,16 @@ export function dbDeleteTag(id: string) {
 
 export function dbBulkPut(items: AnyItem[]) {
   return db.items.bulkPut(items as any[]);
+}
+
+export function dbGetNote(id: string) {
+  return db.notes.get(id as any);
+}
+
+export function dbPutNote(note: NoteRecord) {
+  return db.notes.put(note as any);
+}
+
+export function dbDeleteNote(id: string) {
+  return db.notes.delete(id);
 }
