@@ -1,76 +1,141 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useAppContext } from '../App'
+import { useAuthStore } from '../stores/auth'
+import { db, type DocRecord, type PasswordRecord, type SiteRecord } from '../stores/database'
+
+type RecentEntry = {
+  key: string
+  title: string
+  type: 'password' | 'site' | 'doc'
+  updatedAt: number
+}
 
 export default function Dashboard() {
-  const { email } = useAppContext()
+  const [passwordCount, setPasswordCount] = useState(0)
+  const [siteCount, setSiteCount] = useState(0)
+  const [docCount, setDocCount] = useState(0)
+  const [recent, setRecent] = useState<RecentEntry[]>([])
+  const email = useAuthStore(s => s.email)
 
-  if (!email) {
-    return (
-      <div className="space-y-6 rounded-2xl border border-white/10 bg-white/5 p-8 shadow-lg shadow-slate-950/20">
-        <h1 className="text-2xl font-semibold text-white">You&apos;re signed out</h1>
-        <p className="text-sm text-slate-300">
-          Sign in with your email address to view your dashboard and manage your workspace.
-        </p>
-        <Link
-          to="/login"
-          className="inline-flex w-full items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-200"
-        >
-          Go to sign-in
-        </Link>
-      </div>
-    )
-  }
+  useEffect(() => {
+    if (!email) {
+      setPasswordCount(0)
+      setSiteCount(0)
+      setDocCount(0)
+      setRecent([])
+      return
+    }
+
+    async function load(currentEmail: string) {
+      const [passwords, sites, docs] = await Promise.all([
+        db.passwords.where('ownerEmail').equals(currentEmail).toArray(),
+        db.sites.where('ownerEmail').equals(currentEmail).toArray(),
+        db.docs.where('ownerEmail').equals(currentEmail).toArray(),
+      ])
+      setPasswordCount(passwords.length)
+      setSiteCount(sites.length)
+      setDocCount(docs.length)
+      const merged: RecentEntry[] = [
+        ...passwords.map((item: PasswordRecord) => ({
+          key: `password-${item.id}`,
+          title: item.title,
+          type: 'password' as const,
+          updatedAt: item.updatedAt,
+        })),
+        ...sites.map((item: SiteRecord) => ({
+          key: `site-${item.id}`,
+          title: item.title,
+          type: 'site' as const,
+          updatedAt: item.updatedAt,
+        })),
+        ...docs.map((item: DocRecord) => ({
+          key: `doc-${item.id}`,
+          title: item.title,
+          type: 'doc' as const,
+          updatedAt: item.updatedAt,
+        })),
+      ]
+        .filter(entry => entry.updatedAt)
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, 5)
+      setRecent(merged)
+    }
+
+    void load(email)
+  }, [email])
 
   return (
     <div className="space-y-10">
-      <header className="space-y-2">
-        <p className="text-sm uppercase tracking-wide text-slate-400">Dashboard</p>
-        <h1 className="text-3xl font-semibold text-white">Welcome, {email}</h1>
+      <section className="space-y-3">
+        <h2 className="text-2xl font-semibold text-white">欢迎使用离线管理工具</h2>
         <p className="text-sm text-slate-300">
-          Everything you need to secure your credentials lives here. Use the actions below to get started or invite your team.
+          在这里可以集中管理常用密码、常访问的网站和重要文档。所有数据均保存在浏览器本地 IndexedDB 中，不会上传到服务器。
         </p>
-      </header>
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+            <p className="text-sm text-slate-300">密码条目</p>
+            <p className="mt-2 text-3xl font-semibold text-white">{passwordCount}</p>
+            <Link
+              to="/dashboard/passwords"
+              className="mt-4 inline-flex items-center text-sm font-medium text-sky-300 hover:text-sky-200"
+            >
+              管理密码 →
+            </Link>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+            <p className="text-sm text-slate-300">网站收藏</p>
+            <p className="mt-2 text-3xl font-semibold text-white">{siteCount}</p>
+            <Link
+              to="/dashboard/sites"
+              className="mt-4 inline-flex items-center text-sm font-medium text-sky-300 hover:text-sky-200"
+            >
+              管理网站 →
+            </Link>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+            <p className="text-sm text-slate-300">文档存档</p>
+            <p className="mt-2 text-3xl font-semibold text-white">{docCount}</p>
+            <Link
+              to="/dashboard/docs"
+              className="mt-4 inline-flex items-center text-sm font-medium text-sky-300 hover:text-sky-200"
+            >
+              管理文档 →
+            </Link>
+          </div>
+        </div>
+      </section>
 
-      <section className="grid gap-6 lg:grid-cols-2">
-        <article className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-6">
-          <h2 className="text-lg font-medium text-white">Add your first item</h2>
-          <p className="text-sm text-slate-300">
-            Store passwords, secrets, and sensitive documents without worrying about master passwords. We&apos;ll keep
-            everything encrypted and synced to your devices once you verify each login.
-          </p>
-          <button className="inline-flex items-center justify-center rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/10">
-            Start a secure note
-          </button>
-        </article>
-
-        <article className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-6">
-          <h2 className="text-lg font-medium text-white">Invite a teammate</h2>
-          <p className="text-sm text-slate-300">
-            Collaborate on shared vaults by inviting a coworker. We&apos;ll email them an approval link so they can join your
-            workspace once you&apos;re ready.
-          </p>
-          <button className="inline-flex items-center justify-center rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-slate-200">
-            Send invite
-          </button>
-        </article>
-
-        <article className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-6 lg:col-span-2">
-          <h2 className="text-lg font-medium text-white">What&apos;s next?</h2>
-          <ul className="space-y-2 text-sm text-slate-300">
-            <li className="flex items-start gap-2">
-              <span className="mt-1 inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" aria-hidden />
-              <span>Track pending logins and approvals right from this page.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1 inline-flex h-2.5 w-2.5 rounded-full bg-sky-400" aria-hidden />
-              <span>Centralize your secrets while keeping email-only authentication as the single way in.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1 inline-flex h-2.5 w-2.5 rounded-full bg-violet-400" aria-hidden />
-              <span>Approve new devices and teammates with one-click email confirmations.</span>
-            </li>
-          </ul>
-        </article>
+      <section className="space-y-3">
+        <h3 className="text-lg font-medium text-white">最近更新</h3>
+        {recent.length === 0 ? (
+          <p className="text-sm text-slate-400">暂无数据，先添加一条密码、网站或文档吧。</p>
+        ) : (
+          <ul className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+            {recent.map(entry => (
+              <li key={entry.key} className="flex items-center justify-between px-5 py-4 text-sm text-slate-200">
+                <div>
+                  <p className="font-medium text-white">{entry.title}</p>
+                  <p className="text-xs text-slate-400">
+                    {entry.type === 'password' ? '密码条目' : entry.type === 'site' ? '网站收藏' : '文档存档'} ·{' '}
+                    {new Date(entry.updatedAt).toLocaleString()}
+                  </p>
+                </div>
+                <Link
+                  to={
+                    entry.type === 'password'
+                      ? '/dashboard/passwords'
+                      : entry.type === 'site'
+                      ? '/dashboard/sites'
+                      : '/dashboard/docs'
+                  }
+                  className="text-xs font-medium text-sky-300 hover:text-sky-200"
+                >
+                  查看
+                </Link>
+              </li>
+            ))}
+            </ul>
+          )}
       </section>
     </div>
   )
