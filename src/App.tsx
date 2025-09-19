@@ -1,14 +1,13 @@
-import { lazy, useEffect } from 'react'
+import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { BrowserRouter, Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom'
 import { SESSION_STORAGE_KEY, useAuthStore } from './stores/auth'
-
-const Login = lazy(() => import('./routes/Login'))
-const Register = lazy(() => import('./routes/Register'))
-const Dashboard = lazy(() => import('./routes/Dashboard'))
-const Passwords = lazy(() => import('./routes/Passwords'))
-const Sites = lazy(() => import('./routes/Sites'))
-const Docs = lazy(() => import('./routes/Docs'))
+import Login from './routes/Login'
+import Register from './routes/Register'
+import Dashboard from './routes/Dashboard'
+import Passwords from './routes/Passwords'
+import Sites from './routes/Sites'
+import Docs from './routes/Docs'
 
 function GuestLayout({ children }: { children: ReactNode }) {
   return (
@@ -101,12 +100,15 @@ export default function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
+
     function handleStorage(event: StorageEvent) {
       if (event.key === SESSION_STORAGE_KEY) {
         void init()
       }
     }
+
     window.addEventListener('storage', handleStorage)
+
     return () => {
       window.removeEventListener('storage', handleStorage)
     }
@@ -116,62 +118,25 @@ export default function App() {
     return <div className="min-h-screen bg-slate-950 px-6 py-10 text-slate-100">加载中...</div>
   }
 
-function AuthenticatedLayout() {
-  const email = useAuthStore(s => s.email)
-  const logout = useAuthStore(s => s.logout)
-
-function AppBackground({ children }: { children: ReactNode }) {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Navigate to={email ? '/dashboard' : '/login'} replace />} />
         <Route
           path="/login"
-          element={email ? <Navigate to="/dashboard" replace /> : <GuestLayout><Login /></GuestLayout>}
+          element={email ? <Navigate to="/dashboard" replace /> : (
+            <GuestLayout>
+              <Login />
+            </GuestLayout>
+          )}
         />
         <Route
           path="/register"
-          element={email ? <Navigate to="/dashboard" replace /> : <GuestLayout><Register /></GuestLayout>}
-        />
-        <Route
-          path="/dashboard/*"
-          element={email ? <AuthenticatedLayout /> : <Navigate to="/login" replace />}
-        >
-          <Route index element={<Dashboard />} />
-          <Route path="passwords" element={<Passwords />} />
-          <Route path="sites" element={<Sites />} />
-          <Route path="docs" element={<Docs />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
-  )
-}
-
-export default function App() {
-  const email = useAuthStore(s => s.email)
-  const init = useAuthStore(s => s.init)
-  const initialized = useAuthStore(s => s.initialized)
-
-  useEffect(() => {
-    void init()
-  }, [init])
-
-  if (!initialized) {
-    return <div className="min-h-screen bg-slate-950 px-6 py-10 text-slate-100">加载中...</div>
-  }
-
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Navigate to={email ? '/dashboard' : '/login'} replace />} />
-        <Route
-          path="/login"
-          element={email ? <Navigate to="/dashboard" replace /> : <GuestLayout><Login /></GuestLayout>}
-        />
-        <Route
-          path="/register"
-          element={email ? <Navigate to="/dashboard" replace /> : <GuestLayout><Register /></GuestLayout>}
+          element={email ? <Navigate to="/dashboard" replace /> : (
+            <GuestLayout>
+              <Register />
+            </GuestLayout>
+          )}
         />
         <Route
           path="/dashboard/*"
