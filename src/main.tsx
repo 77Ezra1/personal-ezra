@@ -8,13 +8,22 @@ import { ToastProvider } from './components/ToastProvider'
 import IdleLock from './features/lock/IdleLock'
 import { LockProvider } from './features/lock/LockProvider'
 import { LockScreen } from './features/lock/LockScreen'
-import { initializeTheme } from './stores/theme'
-
-initializeTheme()
+import { initializeTheme, useTheme } from './stores/theme'
 
 const rootElement = document.getElementById('root')
 if (!rootElement) {
   throw new Error('Failed to find the root element')
+}
+
+// 应用首次主题
+initializeTheme()
+// 跟随系统（仅当当前模式为 system）
+if (window.matchMedia) {
+  const mq = window.matchMedia('(prefers-color-scheme: dark)')
+  mq.addEventListener?.('change', () => {
+    const mode = useTheme.getState().mode
+    if (mode === 'system') initializeTheme()
+  })
 }
 
 ReactDOM.createRoot(rootElement).render(
