@@ -198,9 +198,35 @@ function createOwnedCollection<T extends { id?: number; ownerEmail: string; crea
     selectColumns: readonly string[]
     mapRow: (row: SqliteRow) => T
     prepareInsert: (record: T) => { columns: string[]; values: unknown[] }
+    prepareUpdate: (record: T) => { columns: string[]; values: unknown[] }
   },
 ): OwnedCollection<T> {
   const columnsList = options.selectColumns.join(', ')
+  async function add(record: T) {
+    const { columns, values } = options.prepareInsert(record)
+    const placeholders = columns.map(() => '?').join(', ')
+    await connection.execute(
+      `INSERT INTO ${options.table} (${columns.join(', ')}) VALUES (${placeholders})`,
+      normalizeParams(values),
+    )
+    const rows = await connection.select<{ id?: number }[]>(`SELECT last_insert_rowid() as id`)
+    const inserted = rows[0]?.id
+    return toNumber(inserted)
+  }
+
+  async function put(record: T) {
+    if (typeof record.id !== 'number') {
+      return add(record)
+    }
+    const { columns, values } = options.prepareUpdate(record)
+    const assignments = columns.map(column => `${column} = ?`).join(', ')
+    await connection.execute(
+      `UPDATE ${options.table} SET ${assignments} WHERE id = ?`,
+      normalizeParams([...values, record.id]),
+    )
+    return record.id
+  }
+
   return {
     where: (_index: 'ownerEmail') => ({
       equals: value => ({
@@ -213,17 +239,8 @@ function createOwnedCollection<T extends { id?: number; ownerEmail: string; crea
         },
       }),
     }),
-    async add(record) {
-      const { columns, values } = options.prepareInsert(record)
-      const placeholders = columns.map(() => '?').join(', ')
-      await connection.execute(
-        `INSERT INTO ${options.table} (${columns.join(', ')}) VALUES (${placeholders})`,
-        normalizeParams(values),
-      )
-      const rows = await connection.select<{ id?: number }[]>(`SELECT last_insert_rowid() as id`)
-      const inserted = rows[0]?.id
-      return toNumber(inserted)
-    },
+    add,
+    put,
     async delete(key) {
       await connection.execute(`DELETE FROM ${options.table} WHERE id = ?`, [key])
     },
@@ -288,6 +305,13 @@ function preparePasswordInsert(record: PasswordRecord) {
   }
 }
 
+function preparePasswordUpdate(record: PasswordRecord) {
+  return {
+    columns: ['title', 'username', 'passwordCipher', 'url', 'updatedAt'],
+    values: [record.title, record.username, record.passwordCipher, record.url ?? null, record.updatedAt],
+  }
+}
+
 function prepareSiteInsert(record: SiteRecord) {
   return {
     columns: ['ownerEmail', 'title', 'url', 'description', 'createdAt', 'updatedAt'],
@@ -299,6 +323,13 @@ function prepareSiteInsert(record: SiteRecord) {
       record.createdAt,
       record.updatedAt,
     ],
+  }
+}
+
+function prepareSiteUpdate(record: SiteRecord) {
+  return {
+    columns: ['title', 'url', 'description', 'updatedAt'],
+    values: [record.title, record.url, record.description ?? null, record.updatedAt],
   }
 }
 
@@ -316,10 +347,40 @@ function prepareDocInsert(record: DocRecord) {
   }
 }
 
+function prepareDocUpdate(record: DocRecord) {
+  return {
+    columns: ['title', 'description', 'document', 'updatedAt'],
+    values: [record.title, record.description ?? null, serializeDocument(record.document), record.updatedAt],
+  }
+}
+
+type SqlDatabaseConstructor = { load: (identifier: string) => Promise<unknown> }
+
+function resolveSqlDatabase(): SqlDatabaseConstructor {
+  const plugin = SqlPlugin as unknown as Record<string, unknown>
+  if (Object.prototype.hasOwnProperty.call(plugin, 'default')) {
+    const defaultExport = plugin.default as SqlDatabaseConstructor | undefined
+    if (defaultExport && typeof defaultExport.load === 'function') {
+      return defaultExport
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(plugin, 'Database')) {
+    const namedExport = plugin.Database as SqlDatabaseConstructor | undefined
+    if (namedExport && typeof namedExport.load === 'function') {
+      return namedExport
+    }
+  }
+  if (typeof (plugin as SqlDatabaseConstructor)?.load === 'function') {
+    return plugin as unknown as SqlDatabaseConstructor
+  }
+  throw new Error('SQL plugin is unavailable')
+}
+
 export async function createSqliteDatabase(): Promise<DatabaseClient> {
+  const SqlDatabase = resolveSqlDatabase()
   const dbPath = await resolveDatabasePath()
   const identifier = `sqlite:${dbPath}`
-  const connection = await Database.load(identifier)
+  const connection = await SqlDatabase.load(identifier)
   await connection.execute('PRAGMA foreign_keys = ON')
   await connection.execute('PRAGMA journal_mode = WAL')
   await runMigrations(connection)
@@ -334,18 +395,21 @@ export async function createSqliteDatabase(): Promise<DatabaseClient> {
       selectColumns: ['id', 'ownerEmail', 'title', 'username', 'passwordCipher', 'url', 'createdAt', 'updatedAt'],
       mapRow: mapPasswordRow,
       prepareInsert: preparePasswordInsert,
+      prepareUpdate: preparePasswordUpdate,
     }),
     sites: createOwnedCollection(connection, {
       table: 'sites',
       selectColumns: ['id', 'ownerEmail', 'title', 'url', 'description', 'createdAt', 'updatedAt'],
       mapRow: mapSiteRow,
       prepareInsert: prepareSiteInsert,
+      prepareUpdate: prepareSiteUpdate,
     }),
     docs: createOwnedCollection(connection, {
       table: 'docs',
       selectColumns: ['id', 'ownerEmail', 'title', 'description', 'document', 'createdAt', 'updatedAt'],
       mapRow: mapDocRow,
       prepareInsert: prepareDocInsert,
+      prepareUpdate: prepareDocUpdate,
     }),
   }
 }
