@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "tauri:dev": "cross-env BUILD_TARGET=tauri tauri dev",
+    "kill-port": "node ./scripts/kill-port.cjs",
+    "tauri:dev": "pnpm run kill-port && cross-env BUILD_TARGET=tauri tauri dev",
     "tauri:build": "cross-env BUILD_TARGET=tauri tauri build",
     "prepare": "husky"
   },
