@@ -10,5 +10,18 @@
   },
   "bundle": {
     "icon": ["icons/icon.ico", "icons/icon.icns"]
+  },
+  "tauri": {
+    "allowlist": {
+      "fs": {
+        "all": true
+      },
+      "path": {
+        "all": true
+      },
+      "shell": {
+        "all": true
+      }
+    }
   }
 }
