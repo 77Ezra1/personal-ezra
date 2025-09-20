@@ -13,11 +13,11 @@ import { useAuthStore } from '../stores/auth'
 import { useToast } from '../components/Toast'
 
 // 这些 UI 组件/Hook 按你的项目实际路径导入（与之前优化建议一致）
-import AppLayout from '../components/AppLayout'
-import Skeleton from '../components/Skeleton'
-import Empty from '../components/Empty'
-import VaultItemCard from '../components/VaultItemCard'
-import DetailsDrawer from '../components/DetailsDrawer'
+import { AppLayout } from '../components/AppLayout'
+import { Skeleton } from '../components/Skeleton'
+import { Empty } from '../components/Empty'
+import { VaultItemCard } from '../components/VaultItemCard'
+import { DetailsDrawer } from '../components/DetailsDrawer'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 
 // 图标（若未安装 lucide-react，请先安装：pnpm add lucide-react）
