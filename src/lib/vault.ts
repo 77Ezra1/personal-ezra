@@ -1,4 +1,4 @@
-import { createDir, exists, removeFile, writeBinaryFile } from '@tauri-apps/api/fs'
+import { exists, mkdir, remove, writeFile } from '@tauri-apps/plugin-fs'
 import { appDataDir, join } from '@tauri-apps/api/path'
 import { open } from '@tauri-apps/plugin-shell'
 
@@ -39,7 +39,7 @@ function toHex(buffer: ArrayBuffer) {
 async function ensureVaultRoot() {
   const base = await appDataDir()
   const vaultDir = await join(base, VAULT_DIR_NAME)
-  await createDir(vaultDir, { recursive: true })
+  await mkdir(vaultDir, { recursive: true })
   return vaultDir
 }
 
@@ -68,7 +68,7 @@ export async function importFileToVault(file: File): Promise<VaultFileMeta> {
   const destination = await join(vaultRoot, storedName)
 
   if (!(await exists(destination))) {
-    await writeBinaryFile(destination, bytes)
+    await writeFile(destination, bytes)
   }
 
   const relPath = `${VAULT_DIR_NAME}/${storedName}`
@@ -95,7 +95,7 @@ export async function removeVaultFile(relPath: string) {
   try {
     const absolutePath = await resolveVaultPath(relPath)
     if (await exists(absolutePath)) {
-      await removeFile(absolutePath)
+      await remove(absolutePath)
     }
   } catch (error) {
     console.warn('Failed to remove vault file', error)
