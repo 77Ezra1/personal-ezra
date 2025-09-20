@@ -61,19 +61,19 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={toast.id}
             className={clsx(
-              'pointer-events-auto w-full max-w-sm overflow-hidden rounded-2xl border px-4 py-3 shadow-xl shadow-slate-950/40 backdrop-blur',
+              'pointer-events-auto w-full max-w-sm overflow-hidden rounded-2xl border px-4 py-3 shadow-xl shadow-black/30 backdrop-blur transition-colors',
               VARIANT_STYLES[toast.variant],
             )}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
                 <p className="text-sm font-semibold">{toast.title}</p>
-                {toast.description && <p className="text-xs text-slate-200/80">{toast.description}</p>}
+                {toast.description && <p className="text-xs text-text/80">{toast.description}</p>}
               </div>
               <button
                 type="button"
                 onClick={() => dismissToast(toast.id)}
-                className="rounded-full border border-white/10 px-2 py-1 text-[0.7rem] font-semibold uppercase tracking-wide text-white/80 transition hover:border-white/40 hover:bg-white/10"
+                className="rounded-full border border-border px-2 py-1 text-[0.7rem] font-semibold uppercase tracking-wide text-text/80 transition hover:bg-surface-hover"
               >
                 关闭
               </button>

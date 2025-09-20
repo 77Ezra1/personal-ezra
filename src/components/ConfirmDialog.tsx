@@ -110,7 +110,7 @@ export default function ConfirmDialog({
     if (tone === 'danger') {
       return 'bg-surface text-text border border-border'
     }
-    return 'bg-primary text-white'
+    return 'bg-primary text-background'
   }, [tone])
 
   if (!open || typeof document === 'undefined') {

@@ -67,37 +67,37 @@ export default function Dashboard() {
   return (
     <div className="space-y-10">
       <section className="space-y-3">
-        <h2 className="text-2xl font-semibold text-white">欢迎使用离线管理工具</h2>
-        <p className="text-sm text-slate-300">
+        <h2 className="text-2xl font-semibold text-text">欢迎使用离线管理工具</h2>
+        <p className="text-sm text-muted">
           在这里可以集中管理常用密码、常访问的网站和重要文档。所有数据均保存在浏览器本地 IndexedDB 中，不会上传到服务器。
         </p>
         <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-            <p className="text-sm text-slate-300">密码条目</p>
-            <p className="mt-2 text-3xl font-semibold text-white">{passwordCount}</p>
+          <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm shadow-black/10 transition-colors dark:shadow-black/30">
+            <p className="text-sm text-muted">密码条目</p>
+            <p className="mt-2 text-3xl font-semibold text-text">{passwordCount}</p>
             <Link
               to="/dashboard/passwords"
-              className="mt-4 inline-flex items-center text-sm font-medium text-sky-300 hover:text-sky-200"
+              className="mt-4 inline-flex items-center text-sm font-medium text-primary hover:text-primary/80"
             >
               管理密码 →
             </Link>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-            <p className="text-sm text-slate-300">网站收藏</p>
-            <p className="mt-2 text-3xl font-semibold text-white">{siteCount}</p>
+          <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm shadow-black/10 transition-colors dark:shadow-black/30">
+            <p className="text-sm text-muted">网站收藏</p>
+            <p className="mt-2 text-3xl font-semibold text-text">{siteCount}</p>
             <Link
               to="/dashboard/sites"
-              className="mt-4 inline-flex items-center text-sm font-medium text-sky-300 hover:text-sky-200"
+              className="mt-4 inline-flex items-center text-sm font-medium text-primary hover:text-primary/80"
             >
               管理网站 →
             </Link>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-            <p className="text-sm text-slate-300">文档存档</p>
-            <p className="mt-2 text-3xl font-semibold text-white">{docCount}</p>
+          <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm shadow-black/10 transition-colors dark:shadow-black/30">
+            <p className="text-sm text-muted">文档存档</p>
+            <p className="mt-2 text-3xl font-semibold text-text">{docCount}</p>
             <Link
               to="/dashboard/docs"
-              className="mt-4 inline-flex items-center text-sm font-medium text-sky-300 hover:text-sky-200"
+              className="mt-4 inline-flex items-center text-sm font-medium text-primary hover:text-primary/80"
             >
               管理文档 →
             </Link>
@@ -106,16 +106,16 @@ export default function Dashboard() {
       </section>
 
       <section className="space-y-3">
-        <h3 className="text-lg font-medium text-white">最近更新</h3>
+        <h3 className="text-lg font-medium text-text">最近更新</h3>
         {recent.length === 0 ? (
-          <p className="text-sm text-slate-400">暂无数据，先添加一条密码、网站或文档吧。</p>
+          <p className="text-sm text-muted">暂无数据，先添加一条密码、网站或文档吧。</p>
         ) : (
-          <ul className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+          <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border bg-surface">
             {recent.map(entry => (
-              <li key={entry.key} className="flex items-center justify-between px-5 py-4 text-sm text-slate-200">
+              <li key={entry.key} className="flex items-center justify-between px-5 py-4 text-sm text-text">
                 <div>
-                  <p className="font-medium text-white">{entry.title}</p>
-                  <p className="text-xs text-slate-400">
+                  <p className="font-medium text-text">{entry.title}</p>
+                  <p className="text-xs text-muted">
                     {entry.type === 'password' ? '密码条目' : entry.type === 'site' ? '网站收藏' : '文档存档'} ·{' '}
                     {new Date(entry.updatedAt).toLocaleString()}
                   </p>
@@ -128,7 +128,7 @@ export default function Dashboard() {
                       ? '/dashboard/sites'
                       : '/dashboard/docs'
                   }
-                  className="text-xs font-medium text-sky-300 hover:text-sky-200"
+                  className="text-xs font-medium text-primary hover:text-primary/80"
                 >
                   查看
                 </Link>

@@ -70,12 +70,12 @@ export function IdleLockSelector() {
   }
 
   return (
-    <label className="space-y-2 text-xs text-slate-200">
-      <span className="text-slate-300">自动锁定</span>
+    <label className="space-y-2 text-xs text-text">
+      <span className="text-muted">自动锁定</span>
       <select
         value={duration === 'off' ? 'off' : String(duration)}
         onChange={event => handleChange(event.target.value)}
-        className="w-full rounded-lg border border-white/10 bg-slate-900/80 px-3 py-2 text-xs text-white outline-none transition focus:border-white/50 focus:bg-slate-900"
+        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
       >
         <option value="off">不自动锁定</option>
         <option value={60_000}>1 分钟</option>

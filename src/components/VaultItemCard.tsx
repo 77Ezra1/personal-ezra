@@ -31,7 +31,7 @@ const BADGE_STYLES: Record<NonNullable<VaultItemBadge['tone']>, string> = {
   info: 'bg-sky-500/10 text-sky-200 border-sky-500/30',
   success: 'bg-emerald-500/10 text-emerald-200 border-emerald-500/30',
   warning: 'bg-amber-500/10 text-amber-200 border-amber-500/30',
-  neutral: 'bg-white/5 text-slate-200 border-white/10',
+  neutral: 'bg-surface-hover text-text border-border',
 }
 
 function formatTimestamp(timestamp?: number) {
@@ -55,18 +55,18 @@ export function VaultItemCard({ title, description, badges, tags, updatedAt, onO
           onOpen()
         }
       }}
-      className="group relative flex flex-col gap-4 rounded-3xl border border-white/10 bg-white/5 p-6 text-left text-sm text-slate-200 shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 hover:border-white/30 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+      className="group relative flex flex-col gap-4 rounded-3xl border border-border bg-surface p-6 text-left text-sm text-text shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:border-primary/30 hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-2">
-          <h3 className="text-lg font-semibold text-white">{title}</h3>
-          {description && <p className="text-sm text-slate-300">{description}</p>}
+          <h3 className="text-lg font-semibold text-text">{title}</h3>
+          {description && <p className="text-sm text-muted">{description}</p>}
           {badges && badges.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {badges.map((badge, index) => (
                 <span
                   key={`${badge.label}-${index}`}
-                  className={clsx('inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium', BADGE_STYLES[badge.tone ?? 'neutral'])}
+                  className={clsx('inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors', BADGE_STYLES[badge.tone ?? 'neutral'])}
                 >
                   {badge.label}
                 </span>
@@ -78,7 +78,7 @@ export function VaultItemCard({ title, description, badges, tags, updatedAt, onO
               {tags.map(tag => (
                 <span
                   key={tag.id}
-                  className="inline-flex items-center rounded-full bg-slate-900/60 px-2.5 py-0.5 text-xs text-slate-300"
+                  className="inline-flex items-center rounded-full bg-surface-hover px-2.5 py-0.5 text-xs text-muted"
                 >
                   #{tag.name}
                 </span>
@@ -96,7 +96,7 @@ export function VaultItemCard({ title, description, badges, tags, updatedAt, onO
                   event.stopPropagation()
                   action.onClick()
                 }}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white opacity-0 transition focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 group-hover:opacity-100 hover:border-white/30 hover:bg-white/20"
+                className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-text opacity-0 transition focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 group-hover:opacity-100 hover:bg-surface-hover"
               >
                 {action.icon}
                 <span>{action.label}</span>
@@ -106,7 +106,7 @@ export function VaultItemCard({ title, description, badges, tags, updatedAt, onO
         )}
       </div>
       {updatedAt && (
-        <p className="text-xs text-slate-400">最近更新：{formatTimestamp(updatedAt)}</p>
+        <p className="text-xs text-muted">最近更新：{formatTimestamp(updatedAt)}</p>
       )}
     </div>
   )

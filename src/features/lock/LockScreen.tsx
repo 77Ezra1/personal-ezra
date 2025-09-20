@@ -40,22 +40,22 @@ export function LockScreen() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 px-6 py-12">
-      <div className="w-full max-w-sm space-y-6 rounded-2xl border border-white/10 bg-slate-950/80 p-8 shadow-xl shadow-slate-950/40">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 px-6 py-12">
+      <div className="w-full max-w-sm space-y-6 rounded-2xl border border-border bg-surface p-8 shadow-xl shadow-black/40">
         <div className="space-y-1 text-center">
-          <h2 className="text-2xl font-semibold text-white">已锁定</h2>
-          <p className="text-sm text-slate-300">{email}</p>
-          <p className="text-sm text-slate-400">请输入密码以继续使用应用</p>
+          <h2 className="text-2xl font-semibold text-text">已锁定</h2>
+          <p className="text-sm text-muted">{email}</p>
+          <p className="text-sm text-muted">请输入密码以继续使用应用</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <label className="space-y-2 text-sm">
-            <span className="text-slate-200">密码</span>
+            <span className="text-text">密码</span>
             <input
               type="password"
               value={password}
               onChange={event => setPassword(event.target.value)}
               autoFocus
-              className="w-full rounded-xl border border-white/20 bg-slate-900/60 px-4 py-3 text-sm text-white outline-none transition focus:border-white/60 focus:bg-slate-900"
+              className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
               placeholder="请输入密码"
             />
           </label>
@@ -63,7 +63,7 @@ export function LockScreen() {
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex w-full items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-200 disabled:opacity-70"
+            className="inline-flex w-full items-center justify-center rounded-full bg-primary px-5 py-3 text-sm font-semibold text-background transition hover:bg-primary/90 disabled:bg-primary/50 disabled:text-background/80"
           >
             {submitting ? '解锁中…' : '解锁'}
           </button>
@@ -73,7 +73,7 @@ export function LockScreen() {
           onClick={() => {
             void logout()
           }}
-          className="block w-full text-center text-xs text-slate-400 transition hover:text-slate-200"
+          className="block w-full text-center text-xs text-muted transition hover:text-text"
         >
           切换账号
         </button>

@@ -26,16 +26,16 @@ export default function Login() {
   return (
     <div className="space-y-8">
       <div className="space-y-2 text-center">
-        <h1 className="text-3xl font-semibold text-white">邮箱登录</h1>
-        <p className="text-sm text-slate-300">输入邮箱与密码登录，所有数据仅保存在本地设备。</p>
+        <h1 className="text-3xl font-semibold text-text">邮箱登录</h1>
+        <p className="text-sm text-muted">输入邮箱与密码登录，所有数据仅保存在本地设备。</p>
       </div>
 
       <form
         onSubmit={handleSubmit}
-        className="space-y-6 rounded-2xl border border-white/10 bg-white/5 p-8 shadow-lg shadow-slate-950/20"
+        className="space-y-6 rounded-2xl border border-border bg-surface/90 p-8 shadow-lg shadow-black/10 transition-colors dark:shadow-black/40"
       >
         <div className="space-y-2 text-left">
-          <label htmlFor="email" className="text-sm font-medium text-white">
+          <label htmlFor="email" className="text-sm font-medium text-text">
             邮箱
           </label>
           <input
@@ -45,13 +45,13 @@ export default function Login() {
             autoComplete="email"
             value={email}
             onChange={event => setEmail(event.target.value)}
-            className="w-full rounded-xl border border-white/20 bg-slate-950/40 px-4 py-3 text-sm text-white outline-none transition focus:border-white/60 focus:bg-slate-950/60"
+            className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
             placeholder="you@example.com"
           />
         </div>
 
         <div className="space-y-2 text-left">
-          <label htmlFor="password" className="text-sm font-medium text-white">
+          <label htmlFor="password" className="text-sm font-medium text-text">
             密码
           </label>
           <input
@@ -61,7 +61,7 @@ export default function Login() {
             autoComplete="current-password"
             value={password}
             onChange={event => setPassword(event.target.value)}
-            className="w-full rounded-xl border border-white/20 bg-slate-950/40 px-4 py-3 text-sm text-white outline-none transition focus:border-white/60 focus:bg-slate-950/60"
+            className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
             placeholder="请输入登录密码"
           />
         </div>
@@ -71,15 +71,15 @@ export default function Login() {
         <button
           type="submit"
           disabled={loading}
-          className="inline-flex w-full items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:bg-white/40 disabled:text-slate-700/70"
+          className="inline-flex w-full items-center justify-center rounded-full bg-primary px-5 py-3 text-sm font-semibold text-background transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50 disabled:text-background/80"
         >
           {loading ? '登录中…' : '登录'}
         </button>
       </form>
 
-      <p className="text-center text-sm text-slate-300">
+      <p className="text-center text-sm text-muted">
         还没有账号？{' '}
-        <Link to="/register" className="font-medium text-white transition hover:text-slate-200">
+        <Link to="/register" className="font-medium text-text transition hover:text-text/80">
           立即注册
         </Link>
       </p>

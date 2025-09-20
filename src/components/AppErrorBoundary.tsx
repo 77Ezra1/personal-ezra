@@ -80,7 +80,7 @@ export default class AppErrorBoundary extends Component<
             <button
               type="button"
               onClick={this.handleRefresh}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-white transition hover:bg-primary/90"
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-background transition hover:bg-primary/90"
             >
               <RefreshCw className="h-4 w-4" aria-hidden />
               <span>刷新页面</span>

@@ -388,7 +388,7 @@ export default function Passwords() {
                   <button
                     type="button"
                     onClick={() => handleCopyPassword(activeItem)}
-                    className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/20"
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-text transition hover:bg-surface-hover"
                   >
                     <Copy className="h-4 w-4" />
                     复制密码
@@ -397,7 +397,7 @@ export default function Passwords() {
                     <button
                       type="button"
                       onClick={() => handleOpenUrl(activeItem)}
-                      className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/20"
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-text transition hover:bg-surface-hover"
                     >
                       <ExternalLink className="h-4 w-4" />
                       打开链接
@@ -406,7 +406,7 @@ export default function Passwords() {
                   <button
                     type="button"
                     onClick={() => handleEdit(activeItem)}
-                    className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-background transition hover:bg-primary/90"
                   >
                     <Pencil className="h-4 w-4" />
                     编辑
@@ -424,62 +424,62 @@ export default function Passwords() {
         }
       >
         {drawerMode === 'view' && activeItem ? (
-          <div className="space-y-4 text-sm text-slate-200">
+          <div className="space-y-4 text-sm text-text">
             <div>
-              <p className="text-xs text-slate-400">用户名</p>
-              <p className="mt-1 text-base text-white">{activeItem.username || '未填写'}</p>
+              <p className="text-xs text-muted">用户名</p>
+              <p className="mt-1 text-base text-text">{activeItem.username || '未填写'}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-400">关联网址</p>
-              <p className="mt-1 break-all text-base text-sky-300">{activeItem.url || '未填写'}</p>
+              <p className="text-xs text-muted">关联网址</p>
+              <p className="mt-1 break-all text-base text-primary">{activeItem.url || '未填写'}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-400">最近更新</p>
-              <p className="mt-1 text-base text-white">
+              <p className="text-xs text-muted">最近更新</p>
+              <p className="mt-1 text-base text-text">
                 {activeItem.updatedAt ? new Date(activeItem.updatedAt).toLocaleString() : '未知'}
               </p>
             </div>
           </div>
         ) : (
-          <form className="space-y-5 text-sm text-slate-200" onSubmit={handleSubmit}>
+          <form className="space-y-5 text-sm text-text" onSubmit={handleSubmit}>
             <label className="block space-y-2">
-              <span className="text-xs uppercase tracking-wide text-slate-400">名称</span>
+              <span className="text-xs uppercase tracking-wide text-muted">名称</span>
               <input
                 value={draft.title}
                 onChange={event => setDraft(prev => ({ ...prev, title: event.target.value }))}
                 required
-                className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none transition focus:border-white/40 focus:bg-slate-950/80"
+                className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
                 placeholder="例如：邮箱账号"
               />
             </label>
             <label className="block space-y-2">
-              <span className="text-xs uppercase tracking-wide text-slate-400">用户名</span>
+              <span className="text-xs uppercase tracking-wide text-muted">用户名</span>
               <input
                 value={draft.username}
                 onChange={event => setDraft(prev => ({ ...prev, username: event.target.value }))}
-                className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none transition focus:border-white/40 focus:bg-slate-950/80"
+                className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
                 placeholder="可选"
               />
             </label>
             <label className="block space-y-2">
-              <span className="text-xs uppercase tracking-wide text-slate-400">
+              <span className="text-xs uppercase tracking-wide text-muted">
                 {drawerMode === 'edit' ? '新密码（留空保持不变）' : '密码'}
               </span>
               <input
                 value={draft.password}
                 onChange={event => setDraft(prev => ({ ...prev, password: event.target.value }))}
                 type="password"
-                className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none transition focus:border-white/40 focus:bg-slate-950/80"
+                className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
                 placeholder={drawerMode === 'edit' ? '如需更新密码，请在此输入' : '请输入密码'}
               />
             </label>
             <label className="block space-y-2">
-              <span className="text-xs uppercase tracking-wide text-slate-400">关联网址</span>
+              <span className="text-xs uppercase tracking-wide text-muted">关联网址</span>
               <input
                 value={draft.url}
                 onChange={event => setDraft(prev => ({ ...prev, url: event.target.value }))}
                 type="url"
-                className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none transition focus:border-white/40 focus:bg-slate-950/80"
+                className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
                 placeholder="https://example.com"
               />
             </label>
@@ -488,14 +488,14 @@ export default function Passwords() {
               <button
                 type="button"
                 onClick={closeDrawer}
-                className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/10"
+                className="inline-flex items-center justify-center rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-text transition hover:bg-surface-hover"
               >
                 取消
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="inline-flex items-center justify-center rounded-full bg-white px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70"
+                className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-semibold text-background transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50 disabled:text-background/80"
               >
                 {submitting ? '保存中…' : '保存'}
               </button>

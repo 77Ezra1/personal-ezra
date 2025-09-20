@@ -31,29 +31,29 @@ export function DetailsDrawer({ open, title, description, onClose, footer, child
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="absolute inset-0 bg-slate-950/70 backdrop-blur" aria-hidden onClick={onClose} />
+      <div className="absolute inset-0 bg-background/80 backdrop-blur" aria-hidden onClick={onClose} />
       <aside
         className={clsx(
-          'relative ml-auto flex h-full w-full flex-col overflow-hidden border-l border-white/10 bg-slate-900/95 text-slate-100 shadow-2xl shadow-slate-950/40 backdrop-blur',
+          'relative ml-auto flex h-full w-full flex-col overflow-hidden border-l border-border bg-surface text-text shadow-2xl shadow-black/40 backdrop-blur',
           width === 'md' ? 'max-w-lg' : 'max-w-2xl',
         )}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? 'drawer-title' : undefined}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-white/5 px-8 py-6">
+        <div className="flex items-start justify-between gap-4 border-b border-border/60 px-8 py-6">
           <div className="space-y-2">
             {title && (
-              <h2 id="drawer-title" className="text-xl font-semibold text-white">
+              <h2 id="drawer-title" className="text-xl font-semibold text-text">
                 {title}
               </h2>
             )}
-            {description && <p className="text-sm text-slate-300">{description}</p>}
+            {description && <p className="text-sm text-muted">{description}</p>}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white transition hover:border-white/40 hover:bg-white/10"
+            className="rounded-full border border-border px-3 py-1 text-xs font-semibold uppercase tracking-wide text-text transition hover:bg-surface-hover"
           >
             关闭
           </button>
@@ -61,7 +61,7 @@ export function DetailsDrawer({ open, title, description, onClose, footer, child
         <div ref={firstFocusable} className="flex-1 overflow-y-auto px-8 py-6">
           <div className="space-y-6">{children}</div>
         </div>
-        {footer && <div className="border-t border-white/5 px-8 py-6">{footer}</div>}
+        {footer && <div className="border-t border-border/60 px-8 py-6">{footer}</div>}
       </aside>
     </div>
   )

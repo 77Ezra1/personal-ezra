@@ -133,8 +133,8 @@ function ToastViewport({ toasts, onDismiss }: ToastViewportProps) {
           <div
             key={toast.id}
             className={clsx(
-              'pointer-events-auto overflow-hidden rounded-2xl border border-white/10 bg-surface text-text shadow-xl shadow-slate-950/40 backdrop-blur transition',
-              'focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-offset-slate-950 focus-within:outline-none',
+              'pointer-events-auto overflow-hidden rounded-2xl border border-border bg-surface text-text shadow-xl shadow-black/30 backdrop-blur transition',
+              'focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-offset-background focus-within:outline-none focus-within:ring-primary/40',
             )}
           >
             <div className={clsx('h-1 w-full', accentClass)} />

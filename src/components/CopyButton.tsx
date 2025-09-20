@@ -127,12 +127,12 @@ export default function CopyButton({
   }
 
   const buttonClassName = clsx(
-    'inline-flex items-center justify-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/40',
+    'inline-flex items-center justify-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary/50',
     status === 'success'
       ? 'border-emerald-300/70 bg-emerald-300/10 text-emerald-200'
       : status === 'error'
       ? 'border-rose-400/70 bg-rose-400/10 text-rose-200'
-      : 'border-white/20 text-white hover:border-white/40 hover:bg-white/10',
+      : 'border-border text-text hover:bg-surface-hover',
     (disabled || isLoading) && 'pointer-events-none opacity-60',
     className,
   )

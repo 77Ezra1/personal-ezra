@@ -13,7 +13,7 @@ export default function FabTools() {
 
   return (
     <div className="pointer-events-none fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3">
-      <div className="pointer-events-auto rounded-2xl border border-white/10 bg-slate-900/80 p-4 text-xs text-slate-200 shadow-lg shadow-slate-950/40 backdrop-blur">
+      <div className="pointer-events-auto rounded-2xl border border-border bg-surface/90 p-4 text-xs text-text/80 shadow-lg shadow-black/30 backdrop-blur">
         <IdleLockSelector />
       </div>
       <button
@@ -21,7 +21,7 @@ export default function FabTools() {
         onClick={() => {
           lock()
         }}
-        className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-lg shadow-slate-950/40 transition hover:bg-slate-200"
+        className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-background shadow-lg shadow-black/20 transition hover:bg-primary/90 dark:shadow-black/50"
       >
         <LockIcon className="h-4 w-4" />
         立即锁定

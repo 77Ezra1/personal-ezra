@@ -345,7 +345,7 @@ export default function Sites() {
                   <button
                     type="button"
                     onClick={() => handleCopyUrl(activeItem)}
-                    className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/20"
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-text transition hover:bg-surface-hover"
                   >
                     <Copy className="h-4 w-4" />
                     复制链接
@@ -353,7 +353,7 @@ export default function Sites() {
                   <button
                     type="button"
                     onClick={() => handleOpenUrl(activeItem)}
-                    className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/20"
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-text transition hover:bg-surface-hover"
                   >
                     <ExternalLink className="h-4 w-4" />
                     打开链接
@@ -361,7 +361,7 @@ export default function Sites() {
                   <button
                     type="button"
                     onClick={() => handleEdit(activeItem)}
-                    className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-background transition hover:bg-primary/90"
                   >
                     <Pencil className="h-4 w-4" />
                     编辑
@@ -379,52 +379,52 @@ export default function Sites() {
         }
       >
         {drawerMode === 'view' && activeItem ? (
-          <div className="space-y-4 text-sm text-slate-200">
+          <div className="space-y-4 text-sm text-text">
             <div>
-              <p className="text-xs text-slate-400">链接地址</p>
-              <p className="mt-1 break-all text-base text-sky-300">{activeItem.url}</p>
+              <p className="text-xs text-muted">链接地址</p>
+              <p className="mt-1 break-all text-base text-primary">{activeItem.url}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-400">简介</p>
-              <p className="mt-1 whitespace-pre-line text-base text-white">{activeItem.description || '未填写'}</p>
+              <p className="text-xs text-muted">简介</p>
+              <p className="mt-1 whitespace-pre-line text-base text-text">{activeItem.description || '未填写'}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-400">最近更新</p>
-              <p className="mt-1 text-base text-white">
+              <p className="text-xs text-muted">最近更新</p>
+              <p className="mt-1 text-base text-text">
                 {activeItem.updatedAt ? new Date(activeItem.updatedAt).toLocaleString() : '未知'}
               </p>
             </div>
           </div>
         ) : (
-          <form className="space-y-5 text-sm text-slate-200" onSubmit={handleSubmit}>
+          <form className="space-y-5 text-sm text-text" onSubmit={handleSubmit}>
             <label className="block space-y-2">
-              <span className="text-xs uppercase tracking-wide text-slate-400">名称</span>
+              <span className="text-xs uppercase tracking-wide text-muted">名称</span>
               <input
                 value={draft.title}
                 onChange={event => setDraft(prev => ({ ...prev, title: event.target.value }))}
                 required
-                className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none transition focus:border-white/40 focus:bg-slate-950/80"
+                className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
                 placeholder="例如：公司后台"
               />
             </label>
             <label className="block space-y-2">
-              <span className="text-xs uppercase tracking-wide text-slate-400">链接</span>
+              <span className="text-xs uppercase tracking-wide text-muted">链接</span>
               <input
                 value={draft.url}
                 onChange={event => setDraft(prev => ({ ...prev, url: event.target.value }))}
                 required
                 type="url"
-                className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none transition focus:border-white/40 focus:bg-slate-950/80"
+                className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
                 placeholder="https://example.com"
               />
             </label>
             <label className="block space-y-2">
-              <span className="text-xs uppercase tracking-wide text-slate-400">简介</span>
+              <span className="text-xs uppercase tracking-wide text-muted">简介</span>
               <textarea
                 value={draft.description}
                 onChange={event => setDraft(prev => ({ ...prev, description: event.target.value }))}
                 rows={4}
-                className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none transition focus:border-white/40 focus:bg-slate-950/80"
+                className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
                 placeholder="可记录登录说明或备注"
               />
             </label>
@@ -433,14 +433,14 @@ export default function Sites() {
               <button
                 type="button"
                 onClick={closeDrawer}
-                className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/10"
+                className="inline-flex items-center justify-center rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-text transition hover:bg-surface-hover"
               >
                 取消
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="inline-flex items-center justify-center rounded-full bg-white px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-70"
+                className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-semibold text-background transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50 disabled:text-background/80"
               >
                 {submitting ? '保存中…' : '保存'}
               </button>
