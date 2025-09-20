@@ -2,32 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: light;
-  --color-primary: 51 112 255;
-  --color-background: 245 246 248;
-  --color-surface: 255 255 255;
-  --color-surface-hover: 242 243 245;
-  --color-border: 222 225 230;
-  --color-text: 31 35 41;
-  --color-text-muted: 134 136 144;
-}
-.dark {
-  color-scheme: dark;
-  --color-primary: 83 140 255;
-  --color-background: 32 34 37;
-  --color-surface: 45 47 51;
-  --color-surface-hover: 56 59 63;
-  --color-border: 62 66 73;
-  --color-text: 238 239 241;
-  --color-text-muted: 166 168 173;
-}
 html, body, #root { height: 100%; }
 body { @apply font-sans bg-background text-text; }
 table { border-collapse: collapse; }
 th, td { border-color: #eee; }
 a { color: rgb(var(--color-primary)); }
-button { outline: none }
 
 
 @keyframes flash { 0%{background:#fef3c7} 100%{background:transparent} }
@@ -51,9 +30,6 @@ button { outline: none }
 a { word-break: break-all; }
 
 /* 更好的焦点可见性 */
-:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
-
-
 /* Base form controls */
 input[type="text"], input[type="url"], input[type="password"], input[type="email"], textarea, select {
   border-radius: 0.75rem;
