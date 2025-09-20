@@ -87,7 +87,7 @@ export function VaultItemCard({ title, description, badges, tags, updatedAt, onO
           )}
         </div>
         {actions && actions.length > 0 && (
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-row flex-wrap justify-end gap-2">
             {actions.map((action, index) => (
               <button
                 key={`${action.label}-${index}`}
