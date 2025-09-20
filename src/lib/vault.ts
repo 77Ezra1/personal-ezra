@@ -1,6 +1,6 @@
 import { createDir, exists, removeFile, writeBinaryFile } from '@tauri-apps/api/fs'
 import { appDataDir, join } from '@tauri-apps/api/path'
-import { open } from '@tauri-apps/api/shell'
+import { open } from '@tauri-apps/plugin-shell'
 
 const VAULT_DIR_NAME = 'vault'
 
