@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
+import { Lock as LockIcon } from 'lucide-react'
 import { BrowserRouter, Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom'
 import { SESSION_STORAGE_KEY, useAuthStore } from './stores/auth'
 import Login from './routes/Login'
@@ -9,6 +10,8 @@ import Passwords from './routes/Passwords'
 import Sites from './routes/Sites'
 import Docs from './routes/Docs'
 import Settings from './routes/Settings'
+import { IdleLockSelector } from './features/lock/IdleLock'
+import { useLock } from './features/lock/LockProvider'
 
 function GuestLayout({ children }: { children: ReactNode }) {
   return (
@@ -23,6 +26,7 @@ function GuestLayout({ children }: { children: ReactNode }) {
 function AuthenticatedLayout() {
   const email = useAuthStore(s => s.email)
   const logout = useAuthStore(s => s.logout)
+  const { lock, locked } = useLock()
 
   return (
     <div className="min-h-screen bg-background text-text transition-colors">
@@ -32,17 +36,36 @@ function AuthenticatedLayout() {
             <h1 className="text-2xl font-semibold text-text">离线管理工具</h1>
             <p className="text-sm text-muted">管理密码、网站与文档，数据仅保存在本地。</p>
           </div>
-          <div className="flex items-center gap-4 text-sm text-text/80">
-            <span className="truncate">{email}</span>
-            <button
-              type="button"
-              onClick={() => {
-                void logout()
-              }}
-              className="inline-flex items-center justify-center rounded-full border border-border/60 px-4 py-2 font-medium text-text transition hover:border-border hover:bg-surface-hover"
-            >
-              登出
-            </button>
+          <div className="flex flex-col items-end gap-3 text-sm text-text/80">
+            <div className="flex items-center gap-4">
+              <span className="truncate">{email}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  void logout()
+                }}
+                className="inline-flex items-center justify-center rounded-full border border-border/60 px-4 py-2 font-medium text-text transition hover:border-border hover:bg-surface-hover"
+              >
+                登出
+              </button>
+            </div>
+            {email && !locked && (
+              <div className="flex w-full min-w-[220px] flex-col items-end gap-2 text-xs text-text/80">
+                <div className="w-full">
+                  <IdleLockSelector />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    lock()
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-background transition hover:bg-primary/90"
+                >
+                  <LockIcon className="h-4 w-4" />
+                  立即锁定
+                </button>
+              </div>
+            )}
           </div>
         </div>
         <nav className="border-t border-border/60">
