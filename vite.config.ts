@@ -73,11 +73,11 @@ export default defineConfig(async () => {
     plugins,
     ...(isTauri ? { base: './' } : {}),
     server: {
-      port: 1420,
+      port: 5173,
       strictPort: true
     },
     preview: {
-      port: 1420,
+      port: 5173,
       strictPort: true
     },
     resolve: {
