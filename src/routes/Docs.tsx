@@ -1,5 +1,11 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { importFileToVault, openDocument, removeVaultFile, type VaultFileMeta } from '../lib/vault'
+import {
+  importFileToVault,
+  openDocument,
+  removeVaultFile,
+  type StoredDocument,
+  type VaultFileMeta,
+} from '../lib/vault'
 import { db, type DocRecord } from '../stores/database'
 import { useAuthStore } from '../stores/auth'
 
@@ -100,14 +106,14 @@ export default function Docs() {
       return
     }
 
-    const document =
-      fileMeta && linkMeta
-        ? { kind: 'file+link', file: fileMeta, link: linkMeta }
-        : fileMeta
-        ? { kind: 'file', file: fileMeta }
-        : linkMeta
-        ? { kind: 'link', link: linkMeta }
-        : undefined
+    let document: StoredDocument | undefined
+    if (fileMeta && linkMeta) {
+      document = { kind: 'file+link', file: fileMeta, link: linkMeta }
+    } else if (fileMeta) {
+      document = { kind: 'file', file: fileMeta }
+    } else if (linkMeta) {
+      document = { kind: 'link', link: linkMeta }
+    }
 
     const now = Date.now()
 
