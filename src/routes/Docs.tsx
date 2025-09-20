@@ -395,6 +395,8 @@ export default function Docs() {
 
   /* --------------------------------- 渲染 -------------------------------- */
 
+  const editingTitle = draft.title.trim() || activeItem?.title || ''
+
   return (
     <AppLayout
       title="文档管理"
@@ -492,7 +494,9 @@ export default function Docs() {
           drawerMode === 'create'
             ? '新增文档'
             : drawerMode === 'edit'
-            ? `编辑文档：${activeItem?.title ?? ''}`
+            ? editingTitle
+              ? `编辑文档：${editingTitle}`
+              : '编辑文档'
             : activeItem?.title ?? '查看文档'
         }
         description={

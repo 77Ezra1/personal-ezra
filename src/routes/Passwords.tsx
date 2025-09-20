@@ -293,6 +293,8 @@ export default function Passwords() {
     },
   })
 
+  const editingTitle = draft.title.trim() || activeItem?.title || ''
+
   return (
     <AppLayout
       title="密码库"
@@ -373,7 +375,9 @@ export default function Passwords() {
           drawerMode === 'create'
             ? '新增密码'
             : drawerMode === 'edit'
-            ? `编辑密码：${activeItem?.title ?? ''}`
+            ? editingTitle
+              ? `编辑密码：${editingTitle}`
+              : '编辑密码'
             : activeItem?.title ?? '查看密码'
         }
         description={

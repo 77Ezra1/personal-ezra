@@ -252,6 +252,8 @@ export default function Sites() {
     },
   })
 
+  const editingTitle = draft.title.trim() || activeItem?.title || ''
+
   return (
     <AppLayout
       title="网站管理"
@@ -330,7 +332,9 @@ export default function Sites() {
           drawerMode === 'create'
             ? '新增网站'
             : drawerMode === 'edit'
-            ? `编辑网站：${activeItem?.title ?? ''}`
+            ? editingTitle
+              ? `编辑网站：${editingTitle}`
+              : '编辑网站'
             : activeItem?.title ?? '查看网站'
         }
         description={
