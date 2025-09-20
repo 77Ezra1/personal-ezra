@@ -229,10 +229,12 @@ vi.mock('@tauri-apps/plugin-sql', () => {
     connections.length = 0
     load.mockClear()
   }
-  return {
+  const api = {
     Database: { load },
     __mock: { connections, reset },
   }
+  ;(globalThis as Record<string, unknown>).SqlPlugin = api
+  return api
 })
 
 vi.mock('../src/lib/crypto', () => ({

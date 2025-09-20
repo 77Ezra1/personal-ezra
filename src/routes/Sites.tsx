@@ -6,6 +6,7 @@ import { DetailsDrawer } from '../components/DetailsDrawer'
 import { Empty } from '../components/Empty'
 import { Skeleton } from '../components/Skeleton'
 import { VaultItemCard } from '../components/VaultItemCard'
+import { VaultItemList } from '../components/VaultItemList'
 import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyTextAutoClear } from '../lib/clipboard'
 import { useToast } from '../components/ToastProvider'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
@@ -24,6 +25,8 @@ const EMPTY_DRAFT: SiteDraft = {
   description: '',
 }
 
+const SITE_VIEW_MODE_STORAGE_KEY = 'pms:view:sites'
+
 export default function Sites() {
   const email = useAuthStore(s => s.email)
   const { showToast } = useToast()
@@ -38,6 +41,20 @@ export default function Sites() {
   const [draft, setDraft] = useState<SiteDraft>(EMPTY_DRAFT)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [viewMode, setViewMode] = useState<'card' | 'list'>(() => {
+    if (typeof window === 'undefined') return 'card'
+    const stored = window.localStorage.getItem(SITE_VIEW_MODE_STORAGE_KEY)
+    return stored === 'list' ? 'list' : 'card'
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(SITE_VIEW_MODE_STORAGE_KEY, viewMode)
+    } catch {
+      // ignore persistence errors
+    }
+  }, [viewMode])
 
   useEffect(() => {
     if (!email) {
@@ -145,6 +162,26 @@ export default function Sites() {
       console.error('Failed to open site url', error)
       showToast({ title: '打开失败', description: '请稍后再试。', variant: 'error' })
     }
+  }
+
+  function buildItemActions(item: SiteRecord) {
+    return [
+      {
+        icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
+        label: '复制链接',
+        onClick: () => handleCopyUrl(item),
+      },
+      {
+        icon: <ExternalLink className="h-3.5 w-3.5" aria-hidden />,
+        label: '打开链接',
+        onClick: () => handleOpenUrl(item),
+      },
+      {
+        icon: <Pencil className="h-3.5 w-3.5" aria-hidden />,
+        label: '编辑',
+        onClick: () => handleEdit(item),
+      },
+    ]
   }
 
   async function handleDelete(item: SiteRecord) {
@@ -271,6 +308,8 @@ export default function Sites() {
         onSelect: item => handleCommandSelect(item.id),
         placeholder: '搜索网站收藏',
       }}
+      viewMode={viewMode}
+      onViewModeChange={setViewMode}
     >
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -289,27 +328,10 @@ export default function Sites() {
           actionLabel="新增网站"
           onAction={handleCreate}
         />
-      ) : (
+      ) : viewMode === 'card' ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredItems.map(item => {
-            const actions = [
-              {
-                icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
-                label: '复制链接',
-                onClick: () => handleCopyUrl(item),
-              },
-              {
-                icon: <ExternalLink className="h-3.5 w-3.5" aria-hidden />,
-                label: '打开链接',
-                onClick: () => handleOpenUrl(item),
-              },
-              {
-                icon: <Pencil className="h-3.5 w-3.5" aria-hidden />,
-                label: '编辑',
-                onClick: () => handleEdit(item),
-              },
-            ]
-
+            const actions = buildItemActions(item)
             return (
               <VaultItemCard
                 key={item.id ?? item.title}
@@ -323,6 +345,18 @@ export default function Sites() {
             )
           })}
         </div>
+      ) : (
+        <VaultItemList
+          items={filteredItems.map(item => ({
+            key: item.id ?? item.title,
+            title: item.title,
+            description: item.description || '未填写简介',
+            metadata: item.url ? [`链接：${item.url}`] : undefined,
+            updatedAt: item.updatedAt,
+            onOpen: () => handleView(item),
+            actions: buildItemActions(item),
+          }))}
+        />
       )}
 
       <DetailsDrawer
