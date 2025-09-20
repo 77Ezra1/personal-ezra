@@ -2,6 +2,10 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import './index.css'
 import App from './App'
+import FabTools from './components/FabTools'
+import IdleLock from './features/lock/IdleLock'
+import { LockProvider } from './features/lock/LockProvider'
+import { LockScreen } from './features/lock/LockScreen'
 
 const rootElement = document.getElementById('root')
 if (!rootElement) {
@@ -10,8 +14,13 @@ if (!rootElement) {
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
-    <React.Suspense fallback={<div>加载中...</div>}>
-      <App />
-    </React.Suspense>
+    <LockProvider>
+      <React.Suspense fallback={<div>加载中...</div>}>
+        <App />
+      </React.Suspense>
+      <FabTools />
+      <LockScreen />
+      <IdleLock />
+    </LockProvider>
   </React.StrictMode>,
 )
