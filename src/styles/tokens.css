@@ -1,10 +1,17 @@
 /* 允许通过 data-theme 覆盖（默认按 light/dark 两套） */
 :root[data-theme="light"] {
-  --bg: #f7f8fb;
-  --panel: #ffffff;
-  --text: #1a1c24;
-  --muted: #6b7280;
-  --primary: #5b8cff;
+  --color-background: 247 248 251;
+  --color-surface: 255 255 255;
+  --color-surface-hover: 240 243 250;
+  --color-border: 226 232 240;
+  --color-text: 26 28 36;
+  --color-text-muted: 107 114 128;
+  --color-primary: 91 140 255;
+  --bg: rgb(var(--color-background));
+  --panel: rgb(var(--color-surface));
+  --text: rgb(var(--color-text));
+  --muted: rgb(var(--color-text-muted));
+  --primary: rgb(var(--color-primary));
   --destructive: #f06a6a;
   --ring: #88a7ff;
   --radius: 12px;
@@ -15,11 +22,18 @@
   --space-4: 24px;
 }
 :root[data-theme="dark"] {
-  --bg: #0b0c10;
-  --panel: #111318;
-  --text: #e6e8ef;
-  --muted: #8b93a7;
-  --primary: #5b8cff;
+  --color-background: 11 12 16;
+  --color-surface: 17 19 24;
+  --color-surface-hover: 26 29 36;
+  --color-border: 36 40 50;
+  --color-text: 230 232 239;
+  --color-text-muted: 139 147 167;
+  --color-primary: 91 140 255;
+  --bg: rgb(var(--color-background));
+  --panel: rgb(var(--color-surface));
+  --text: rgb(var(--color-text));
+  --muted: rgb(var(--color-text-muted));
+  --primary: rgb(var(--color-primary));
   --destructive: #f06a6a;
   --ring: #88a7ff;
   --radius: 12px;
@@ -32,11 +46,18 @@
 
 :root {
   color-scheme: light dark;
-  --bg: #f7f8fb;
-  --panel: #ffffff;
-  --text: #1a1c24;
-  --muted: #6b7280;
-  --primary: #5b8cff;
+  --color-background: 247 248 251;
+  --color-surface: 255 255 255;
+  --color-surface-hover: 240 243 250;
+  --color-border: 226 232 240;
+  --color-text: 26 28 36;
+  --color-text-muted: 107 114 128;
+  --color-primary: 91 140 255;
+  --bg: rgb(var(--color-background));
+  --panel: rgb(var(--color-surface));
+  --text: rgb(var(--color-text));
+  --muted: rgb(var(--color-text-muted));
+  --primary: rgb(var(--color-primary));
   --destructive: #f06a6a;
   --ring: #88a7ff;
   --radius: 12px;
@@ -60,8 +81,8 @@ body,
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
+  background: rgb(var(--color-background));
+  color: rgb(var(--color-text));
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;

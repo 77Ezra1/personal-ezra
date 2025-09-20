@@ -12,7 +12,7 @@ import Settings from './routes/Settings'
 
 function GuestLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-screen bg-background text-text transition-colors">
       <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6 py-12">
         {children}
       </div>
@@ -25,33 +25,37 @@ function AuthenticatedLayout() {
   const logout = useAuthStore(s => s.logout)
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-white/10 bg-slate-900/80 backdrop-blur">
+    <div className="min-h-screen bg-background text-text transition-colors">
+      <header className="border-b border-border/60 bg-surface/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 px-6 py-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-white">离线管理工具</h1>
-            <p className="text-sm text-slate-300">管理密码、网站与文档，数据仅保存在本地。</p>
+            <h1 className="text-2xl font-semibold text-text">离线管理工具</h1>
+            <p className="text-sm text-muted">管理密码、网站与文档，数据仅保存在本地。</p>
           </div>
-          <div className="flex items-center gap-4 text-sm text-slate-200">
+          <div className="flex items-center gap-4 text-sm text-text/80">
             <span className="truncate">{email}</span>
             <button
               type="button"
               onClick={() => {
                 void logout()
               }}
-              className="inline-flex items-center justify-center rounded-full border border-white/20 px-4 py-2 font-medium text-white transition hover:border-white/40 hover:bg-white/10"
+              className="inline-flex items-center justify-center rounded-full border border-border/60 px-4 py-2 font-medium text-text transition hover:border-border hover:bg-surface-hover"
             >
               登出
             </button>
           </div>
         </div>
-        <nav className="border-t border-white/5">
+        <nav className="border-t border-border/60">
           <div className="mx-auto flex w-full max-w-5xl gap-4 px-6 py-3 text-sm">
             <NavLink
               to="/dashboard"
               end
               className={({ isActive }) =>
-                `rounded-full px-4 py-2 transition ${isActive ? 'bg-white text-slate-900' : 'text-slate-200 hover:bg-white/10'}`
+                `rounded-full px-4 py-2 transition ${
+                  isActive
+                    ? 'bg-primary text-background'
+                    : 'text-muted hover:bg-surface-hover hover:text-text'
+                }`
               }
             >
               总览
@@ -59,7 +63,11 @@ function AuthenticatedLayout() {
             <NavLink
               to="/dashboard/passwords"
               className={({ isActive }) =>
-                `rounded-full px-4 py-2 transition ${isActive ? 'bg-white text-slate-900' : 'text-slate-200 hover:bg-white/10'}`
+                `rounded-full px-4 py-2 transition ${
+                  isActive
+                    ? 'bg-primary text-background'
+                    : 'text-muted hover:bg-surface-hover hover:text-text'
+                }`
               }
             >
               密码库
@@ -67,7 +75,11 @@ function AuthenticatedLayout() {
             <NavLink
               to="/dashboard/sites"
               className={({ isActive }) =>
-                `rounded-full px-4 py-2 transition ${isActive ? 'bg-white text-slate-900' : 'text-slate-200 hover:bg-white/10'}`
+                `rounded-full px-4 py-2 transition ${
+                  isActive
+                    ? 'bg-primary text-background'
+                    : 'text-muted hover:bg-surface-hover hover:text-text'
+                }`
               }
             >
               网站管理
@@ -75,7 +87,11 @@ function AuthenticatedLayout() {
             <NavLink
               to="/dashboard/docs"
               className={({ isActive }) =>
-                `rounded-full px-4 py-2 transition ${isActive ? 'bg-white text-slate-900' : 'text-slate-200 hover:bg-white/10'}`
+                `rounded-full px-4 py-2 transition ${
+                  isActive
+                    ? 'bg-primary text-background'
+                    : 'text-muted hover:bg-surface-hover hover:text-text'
+                }`
               }
             >
               文档管理
@@ -83,7 +99,11 @@ function AuthenticatedLayout() {
             <NavLink
               to="/dashboard/settings"
               className={({ isActive }) =>
-                `rounded-full px-4 py-2 transition ${isActive ? 'bg-white text-slate-900' : 'text-slate-200 hover:bg-white/10'}`
+                `rounded-full px-4 py-2 transition ${
+                  isActive
+                    ? 'bg-primary text-background'
+                    : 'text-muted hover:bg-surface-hover hover:text-text'
+                }`
               }
             >
               设置
@@ -124,7 +144,7 @@ export default function App() {
   }, [init])
 
   if (!initialized) {
-    return <div className="min-h-screen bg-slate-950 px-6 py-10 text-slate-100">加载中...</div>
+    return <div className="min-h-screen bg-background px-6 py-10 text-text transition-colors">加载中...</div>
   }
 
   return (
