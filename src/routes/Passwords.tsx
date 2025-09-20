@@ -1,7 +1,11 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { db, type PasswordRecord } from '../stores/database'
-import { useAuthStore } from '../stores/auth'
+import CopyButton from '../components/CopyButton'
+import { DEFAULT_CLIPBOARD_CLEAR_DELAY } from '../lib/clipboard'
 import { decryptString, encryptString } from '../lib/crypto'
+import { useAuthStore } from '../stores/auth'
+import { db, type PasswordRecord } from '../stores/database'
+
+const CLIPBOARD_CLEAR_DELAY_SECONDS = Math.round(DEFAULT_CLIPBOARD_CLEAR_DELAY / 1_000)
 
 export default function Passwords() {
   const email = useAuthStore(s => s.email)
@@ -54,20 +58,6 @@ export default function Passwords() {
     setUrl('')
     setError(null)
     await load(email)
-  }
-
-  async function handleReveal(item: PasswordRecord) {
-    if (!encryptionKey) {
-      window.alert('登录信息失效，请重新登录。')
-      return
-    }
-    try {
-      const plain = await decryptString(encryptionKey, item.passwordCipher)
-      window.alert(`密码：${plain}`)
-    } catch (err) {
-      console.error(err)
-      window.alert('解密失败，请确认登录状态。')
-    }
   }
 
   async function handleDelete(id?: number) {
@@ -166,13 +156,27 @@ export default function Passwords() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleReveal(item)}
-                          className="rounded-full border border-white/20 px-3 py-1 text-xs font-medium text-white transition hover:border-white/40 hover:bg-white/10"
-                        >
-                          查看
-                        </button>
+                        <CopyButton
+                          text={async () => {
+                            if (!encryptionKey) {
+                              throw new Error('登录信息失效，请重新登录。')
+                            }
+                            return decryptString(encryptionKey, item.passwordCipher)
+                          }}
+                          clearDelay={DEFAULT_CLIPBOARD_CLEAR_DELAY}
+                          idleLabel="复制密码"
+                          successLabel="已复制"
+                          formatErrorMessage={error => {
+                            if (error instanceof Error && error.message.includes('登录')) {
+                              return error.message
+                            }
+                            return '复制失败，请检查浏览器权限。'
+                          }}
+                          title={`复制成功后将在 ${CLIPBOARD_CLEAR_DELAY_SECONDS} 秒后自动清空剪贴板`}
+                          onError={error => {
+                            console.error('Failed to copy password', error)
+                          }}
+                        />
                         <button
                           type="button"
                           onClick={() => handleDelete(item.id)}
