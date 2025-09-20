@@ -8,6 +8,9 @@ import { ToastProvider } from './components/ToastProvider'
 import IdleLock from './features/lock/IdleLock'
 import { LockProvider } from './features/lock/LockProvider'
 import { LockScreen } from './features/lock/LockScreen'
+import { initializeTheme } from './stores/theme'
+
+initializeTheme()
 
 initializeTheme()
 

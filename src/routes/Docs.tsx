@@ -1,13 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { ChangeEvent, FormEvent, ReactNode } from 'react'
-import Fuse from 'fuse.js'
-import { Copy, ExternalLink, FileText, Pencil } from 'lucide-react'
-import { AppLayout } from '../components/AppLayout'
-import { DetailsDrawer } from '../components/DetailsDrawer'
-import { Empty } from '../components/Empty'
-import { Skeleton } from '../components/Skeleton'
-import { VaultItemCard } from '../components/VaultItemCard'
-import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyTextAutoClear } from '../lib/clipboard'
+import { FormEvent, useEffect, useState } from 'react'
 import {
   importFileToVault,
   openDocument,
@@ -15,8 +6,7 @@ import {
   type StoredDocument,
   type VaultFileMeta,
 } from '../lib/vault'
-import { useToast } from '../components/ToastProvider'
-import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
+import { db, type DocRecord } from '../stores/database'
 import { useAuthStore } from '../stores/auth'
 import { db, type DocRecord } from '../stores/database'
 
@@ -280,8 +270,14 @@ export default function Docs() {
       return
     }
 
-    setFormError(null)
-    setSubmitting(true)
+    let document: StoredDocument | undefined
+    if (fileMeta && linkMeta) {
+      document = { kind: 'file+link', file: fileMeta, link: linkMeta }
+    } else if (fileMeta) {
+      document = { kind: 'file', file: fileMeta }
+    } else if (linkMeta) {
+      document = { kind: 'link', link: linkMeta }
+    }
 
     const now = Date.now()
 

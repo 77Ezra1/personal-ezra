@@ -1,4 +1,4 @@
-import * as SqlPlugin from '@tauri-apps/plugin-sql'
+import Database from '@tauri-apps/plugin-sql'
 import { mkdir } from '@tauri-apps/plugin-fs'
 import { appDataDir, join } from '@tauri-apps/api/path'
 import type {
