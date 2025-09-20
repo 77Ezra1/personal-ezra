@@ -8,6 +8,7 @@ export default defineConfig({
         __dirname,
         'src/tauri-stronghold-stub.ts'
       ),
+      '@tauri-apps/plugin-fs': path.resolve(__dirname, 'src/tauri-fs-stub.ts'),
     },
   },
   test: {
