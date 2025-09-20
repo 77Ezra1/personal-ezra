@@ -4,14 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = "2"
 
 [dependencies]
-# 启用 config-json5，否则 .json5 配置文件无法识别
-tauri = { version = "2", features = ["config-json5"] }
-tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-fs = "2"
+tauri-plugin-sql = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
