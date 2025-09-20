@@ -42,6 +42,29 @@ export interface DocRecord {
   updatedAt: number
 }
 
+export type OwnerWhereClause<T> = {
+  equals(value: string): { toArray(): Promise<T[]> }
+}
+
+export interface OwnedCollection<T extends { ownerEmail: string }> {
+  where(index: 'ownerEmail'): OwnerWhereClause<T>
+  add(record: T): Promise<number>
+  delete(key: number): Promise<void>
+}
+
+export interface UsersTable {
+  get(key: string): Promise<UserRecord | undefined>
+  put(record: UserRecord): Promise<string>
+}
+
+export interface DatabaseClient {
+  open(): Promise<void>
+  users: UsersTable
+  passwords: OwnedCollection<PasswordRecord>
+  sites: OwnedCollection<SiteRecord>
+  docs: OwnedCollection<DocRecord>
+}
+
 class AppDatabase extends Dexie {
   users!: Table<UserRecord, string>
   passwords!: Table<PasswordRecord, number>
@@ -129,9 +152,9 @@ class AppDatabase extends Dexie {
             }
 
             if (typeof legacy.id === 'number') {
-              await docsTable.put(next)
+              await docsTable.put(next as unknown as LegacyDocRecord)
             } else {
-              await docsTable.add(next)
+              await docsTable.add(next as unknown as LegacyDocRecord)
             }
           }),
         )
@@ -139,7 +162,49 @@ class AppDatabase extends Dexie {
   }
 }
 
-export const db = new AppDatabase()
+function createDexieOwnedCollection<T extends { ownerEmail: string; id?: number }>(
+  table: Table<T, number>,
+): OwnedCollection<T> {
+  return {
+    where: (_index: 'ownerEmail') => ({
+      equals: value => ({
+        toArray: () => table.where('ownerEmail').equals(value).toArray(),
+      }),
+    }),
+    add: record => table.add(record),
+    delete: key => table.delete(key),
+  }
+}
+
+function createDexieClient(): DatabaseClient {
+  const database = new AppDatabase()
+  return {
+    open: async () => {
+      await database.open()
+    },
+    users: {
+      get: key => database.users.get(key),
+      put: record => database.users.put(record),
+    },
+    passwords: createDexieOwnedCollection(database.passwords),
+    sites: createDexieOwnedCollection(database.sites),
+    docs: createDexieOwnedCollection(database.docs),
+  }
+}
+
+const isTauri =
+  typeof window !== 'undefined' && Boolean((window as Record<string, unknown>).__TAURI_INTERNALS__)
+
+let dbInstance: DatabaseClient
+
+if (isTauri) {
+  const { createSqliteDatabase } = await import('./sqlite')
+  dbInstance = await createSqliteDatabase()
+} else {
+  dbInstance = createDexieClient()
+}
+
+export const db = dbInstance
 
 interface LegacyDocRecord {
   id?: number
