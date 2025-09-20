@@ -71,12 +71,18 @@ export default defineConfig(async () => {
 
   return {
     plugins,
-    ...(isTauri ? { base: './' } : {}),
+    base: './',
     server: {
+      host: true,
       port: 5173,
-      strictPort: true
+      strictPort: true,
+      watch: {
+        usePolling: true,
+        interval: 200
+      }
     },
     preview: {
+      host: true,
       port: 5173,
       strictPort: true
     },
