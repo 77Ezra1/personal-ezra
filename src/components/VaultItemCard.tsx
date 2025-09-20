@@ -11,7 +11,7 @@ export type VaultItemTag = {
   name: string
 }
 
-type VaultItemAction = {
+export type VaultItemAction = {
   icon: ReactNode
   label: string
   onClick: () => void
@@ -27,7 +27,7 @@ type VaultItemCardProps = {
   actions?: VaultItemAction[]
 }
 
-const BADGE_STYLES: Record<NonNullable<VaultItemBadge['tone']>, string> = {
+export const VAULT_BADGE_STYLES: Record<NonNullable<VaultItemBadge['tone']>, string> = {
   info: 'bg-sky-500/10 text-sky-200 border-sky-500/30',
   success: 'bg-emerald-500/10 text-emerald-200 border-emerald-500/30',
   warning: 'bg-amber-500/10 text-amber-200 border-amber-500/30',
@@ -70,7 +70,10 @@ export function VaultItemCard({ title, description, badges, tags, updatedAt, onO
             {badges.map((badge, index) => (
               <span
                 key={`${badge.label}-${index}`}
-                className={clsx('inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors', BADGE_STYLES[badge.tone ?? 'neutral'])}
+                className={clsx(
+                  'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors',
+                  VAULT_BADGE_STYLES[badge.tone ?? 'neutral'],
+                )}
               >
                 {badge.label}
               </span>

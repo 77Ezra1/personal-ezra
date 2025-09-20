@@ -6,6 +6,7 @@ import { DetailsDrawer } from '../components/DetailsDrawer'
 import { Empty } from '../components/Empty'
 import { Skeleton } from '../components/Skeleton'
 import { VaultItemCard } from '../components/VaultItemCard'
+import { VaultItemList } from '../components/VaultItemList'
 import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyTextAutoClear } from '../lib/clipboard'
 import { decryptString, encryptString } from '../lib/crypto'
 import { useToast } from '../components/ToastProvider'
@@ -14,6 +15,7 @@ import { useAuthStore } from '../stores/auth'
 import { db, type PasswordRecord } from '../stores/database'
 
 const CLIPBOARD_CLEAR_DELAY_SECONDS = Math.round(DEFAULT_CLIPBOARD_CLEAR_DELAY / 1_000)
+const PASSWORD_VIEW_MODE_STORAGE_KEY = 'pms:view:passwords'
 
 type PasswordDraft = {
   title: string
@@ -44,6 +46,20 @@ export default function Passwords() {
   const [draft, setDraft] = useState<PasswordDraft>(EMPTY_DRAFT)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [viewMode, setViewMode] = useState<'card' | 'list'>(() => {
+    if (typeof window === 'undefined') return 'card'
+    const stored = window.localStorage.getItem(PASSWORD_VIEW_MODE_STORAGE_KEY)
+    return stored === 'list' ? 'list' : 'card'
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(PASSWORD_VIEW_MODE_STORAGE_KEY, viewMode)
+    } catch {
+      // ignore persistence errors
+    }
+  }, [viewMode])
 
   useEffect(() => {
     if (!email) {
@@ -150,6 +166,29 @@ export default function Passwords() {
       console.error('Failed to copy password', error)
       showToast({ title: '复制失败', description: '请检查浏览器剪贴板权限。', variant: 'error' })
     }
+  }
+
+  function buildItemActions(item: PasswordRecord) {
+    const actions = [
+      {
+        icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
+        label: '复制密码',
+        onClick: () => handleCopyPassword(item),
+      },
+    ]
+    if (item.url) {
+      actions.push({
+        icon: <ExternalLink className="h-3.5 w-3.5" aria-hidden />,
+        label: '打开链接',
+        onClick: () => handleOpenUrl(item),
+      })
+    }
+    actions.push({
+      icon: <Pencil className="h-3.5 w-3.5" aria-hidden />,
+      label: '编辑',
+      onClick: () => handleEdit(item),
+    })
+    return actions
   }
 
   function handleOpenUrl(item: PasswordRecord) {
@@ -312,6 +351,8 @@ export default function Passwords() {
         onSelect: item => handleCommandSelect(item.id),
         placeholder: '搜索密码条目',
       }}
+      viewMode={viewMode}
+      onViewModeChange={setViewMode}
     >
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -330,29 +371,10 @@ export default function Passwords() {
           actionLabel="新增密码"
           onAction={handleCreate}
         />
-      ) : (
+      ) : viewMode === 'card' ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredItems.map(item => {
-            const actions = [
-              {
-                icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
-                label: '复制密码',
-                onClick: () => handleCopyPassword(item),
-              },
-            ]
-            if (item.url) {
-              actions.push({
-                icon: <ExternalLink className="h-3.5 w-3.5" aria-hidden />,
-                label: '打开链接',
-                onClick: () => handleOpenUrl(item),
-              })
-            }
-            actions.push({
-              icon: <Pencil className="h-3.5 w-3.5" aria-hidden />,
-              label: '编辑',
-              onClick: () => handleEdit(item),
-            })
-
+            const actions = buildItemActions(item)
             return (
               <VaultItemCard
                 key={item.id ?? item.title}
@@ -366,6 +388,18 @@ export default function Passwords() {
             )
           })}
         </div>
+      ) : (
+        <VaultItemList
+          items={filteredItems.map(item => ({
+            key: item.id ?? item.title,
+            title: item.title,
+            description: item.username ? `用户名：${item.username}` : '未填写用户名',
+            metadata: item.url ? [`网址：${item.url}`] : undefined,
+            updatedAt: item.updatedAt,
+            onOpen: () => handleView(item),
+            actions: buildItemActions(item),
+          }))}
+        />
       )}
 
       <DetailsDrawer

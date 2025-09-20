@@ -15,6 +15,7 @@ import { AppLayout } from '../components/AppLayout'
 import { Skeleton } from '../components/Skeleton'
 import { Empty } from '../components/Empty'
 import { VaultItemCard } from '../components/VaultItemCard'
+import { VaultItemList } from '../components/VaultItemList'
 import { DetailsDrawer } from '../components/DetailsDrawer'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 
@@ -56,6 +57,8 @@ const EMPTY_DRAFT: DocDraft = {
   url: '',
   file: null,
 }
+
+const DOC_VIEW_MODE_STORAGE_KEY = 'pms:view:docs'
 
 /* --------------------------------- 工具 --------------------------------- */
 
@@ -102,6 +105,20 @@ export default function Docs() {
   const [draft, setDraft] = useState<DocDraft>(EMPTY_DRAFT)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [viewMode, setViewMode] = useState<'card' | 'list'>(() => {
+    if (typeof window === 'undefined') return 'card'
+    const stored = window.localStorage.getItem(DOC_VIEW_MODE_STORAGE_KEY)
+    return stored === 'list' ? 'list' : 'card'
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(DOC_VIEW_MODE_STORAGE_KEY, viewMode)
+    } catch {
+      // ignore persistence errors
+    }
+  }, [viewMode])
 
   // 加载列表
   useEffect(() => {
@@ -221,6 +238,39 @@ export default function Docs() {
       window.open(url, '_blank', 'noreferrer')
       showToast({ title: '已尝试在新窗口打开', variant: 'info' })
     }
+  }
+
+  function buildItemActions(item: DocRecord) {
+    const linkMeta = extractLinkMeta(item.document)
+    const fileMeta = extractFileMeta(item.document)
+    const actions: { icon: ReactNode; label: string; onClick: () => void }[] = []
+
+    if (linkMeta) {
+      actions.push({
+        icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
+        label: '复制链接',
+        onClick: () => handleCopyLink(linkMeta.url),
+      })
+      actions.push({
+        icon: <ExternalLink className="h-3.5 w-3.5" aria-hidden />,
+        label: '打开链接',
+        onClick: () => handleOpenLink(linkMeta.url),
+      })
+    }
+    if (fileMeta) {
+      actions.push({
+        icon: <FileText className="h-3.5 w-3.5" aria-hidden />,
+        label: '打开文件',
+        onClick: () => handleOpenFile(fileMeta),
+      })
+    }
+    actions.push({
+      icon: <Pencil className="h-3.5 w-3.5" aria-hidden />,
+      label: '编辑',
+      onClick: () => handleEdit(item),
+    })
+
+    return actions
   }
 
   /* -------------------------------- 删除 -------------------------------- */
@@ -414,6 +464,8 @@ export default function Docs() {
         onSelect: item => handleCommandSelect(item.id),
         placeholder: '搜索文档条目',
       }}
+      viewMode={viewMode}
+      onViewModeChange={setViewMode}
     >
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -432,38 +484,12 @@ export default function Docs() {
           actionLabel="新增文档"
           onAction={handleCreate}
         />
-      ) : (
+      ) : viewMode === 'card' ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredItems.map(item => {
             const linkMeta = extractLinkMeta(item.document)
             const fileMeta = extractFileMeta(item.document)
-            const actions: { icon: ReactNode; label: string; onClick: () => void }[] = []
-
-            if (linkMeta) {
-              actions.push({
-                icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
-                label: '复制链接',
-                onClick: () => handleCopyLink(linkMeta.url),
-              })
-              actions.push({
-                icon: <ExternalLink className="h-3.5 w-3.5" aria-hidden />,
-                label: '打开链接',
-                onClick: () => handleOpenLink(linkMeta.url),
-              })
-            }
-            if (fileMeta) {
-              actions.push({
-                icon: <FileText className="h-3.5 w-3.5" aria-hidden />,
-                label: '打开文件',
-                onClick: () => handleOpenFile(fileMeta),
-              })
-            }
-            actions.push({
-              icon: <Pencil className="h-3.5 w-3.5" aria-hidden />,
-              label: '编辑',
-              onClick: () => handleEdit(item),
-            })
-
+            const actions = buildItemActions(item)
             const badges = []
             if (fileMeta) {
               badges.push({ label: `文件：${fileMeta.name}`, tone: 'neutral' as const })
@@ -485,6 +511,37 @@ export default function Docs() {
             )
           })}
         </div>
+      ) : (
+        <VaultItemList
+          items={filteredItems.map(item => {
+            const linkMeta = extractLinkMeta(item.document)
+            const fileMeta = extractFileMeta(item.document)
+            const badges = []
+            if (fileMeta) {
+              badges.push({ label: `文件：${fileMeta.name}`, tone: 'neutral' as const })
+            }
+            if (linkMeta) {
+              badges.push({ label: '在线链接', tone: 'info' as const })
+            }
+            const metadata: ReactNode[] = []
+            if (linkMeta) {
+              metadata.push(`链接：${linkMeta.url}`)
+            }
+            if (fileMeta) {
+              metadata.push(`文件大小：${formatSize(fileMeta.size)}`)
+            }
+            return {
+              key: item.id ?? item.title,
+              title: item.title,
+              description: item.description || '未填写描述',
+              metadata,
+              badges,
+              updatedAt: item.updatedAt,
+              onOpen: () => handleView(item),
+              actions: buildItemActions(item),
+            }
+          })}
+        />
       )}
 
       <DetailsDrawer
