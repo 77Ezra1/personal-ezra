@@ -8,6 +8,7 @@ import Dashboard from './routes/Dashboard'
 import Passwords from './routes/Passwords'
 import Sites from './routes/Sites'
 import Docs from './routes/Docs'
+import Settings from './routes/Settings'
 
 function GuestLayout({ children }: { children: ReactNode }) {
   return (
@@ -79,6 +80,14 @@ function AuthenticatedLayout() {
             >
               文档管理
             </NavLink>
+            <NavLink
+              to="/dashboard/settings"
+              className={({ isActive }) =>
+                `rounded-full px-4 py-2 transition ${isActive ? 'bg-white text-slate-900' : 'text-slate-200 hover:bg-white/10'}`
+              }
+            >
+              设置
+            </NavLink>
           </div>
         </nav>
       </header>
@@ -146,6 +155,7 @@ export default function App() {
           <Route path="passwords" element={<Passwords />} />
           <Route path="sites" element={<Sites />} />
           <Route path="docs" element={<Docs />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

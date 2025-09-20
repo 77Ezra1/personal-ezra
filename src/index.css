@@ -7,7 +7,6 @@ body { @apply font-sans bg-background text-text; }
 table { border-collapse: collapse; }
 th, td { border-color: #eee; }
 a { color: rgb(var(--color-primary)); }
-button { outline: none }
 
 
 @keyframes flash { 0%{background:#fef3c7} 100%{background:transparent} }
@@ -31,9 +30,6 @@ button { outline: none }
 a { word-break: break-all; }
 
 /* 更好的焦点可见性 */
-:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
-
-
 /* Base form controls */
 input[type="text"], input[type="url"], input[type="password"], input[type="email"], textarea, select {
   border-radius: 0.75rem;
