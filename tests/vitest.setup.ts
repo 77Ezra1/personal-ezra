@@ -1,9 +1,10 @@
 import { vi } from 'vitest';
 
-vi.mock('@tauri-apps/api/fs', () => ({
+vi.mock('@tauri-apps/plugin-fs', () => ({
   readTextFile: vi.fn(),
   writeFile: vi.fn(),
-  createDir: vi.fn(),
+  mkdir: vi.fn(),
+  remove: vi.fn(),
   exists: vi.fn().mockResolvedValue(true),
   BaseDirectory: { AppData: 'AppData' },
 }));

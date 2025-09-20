@@ -4,8 +4,10 @@ import path from 'path';
 export default defineConfig({
   resolve: {
     alias: {
-      '@tauri-apps/api/fs': path.resolve(__dirname, 'src/tauri-fs-impl.ts'),
-      '@tauri-apps/plugin-stronghold': path.resolve(__dirname, 'src/tauri-stronghold-stub.ts'),
+      '@tauri-apps/plugin-stronghold': path.resolve(
+        __dirname,
+        'src/tauri-stronghold-stub.ts'
+      ),
     },
   },
   test: {
