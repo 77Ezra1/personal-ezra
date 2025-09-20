@@ -57,54 +57,57 @@ export function VaultItemCard({ title, description, badges, tags, updatedAt, onO
       }}
       className="group relative flex flex-col gap-4 rounded-3xl border border-border bg-surface p-6 text-left text-sm text-text shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:border-primary/30 hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-2">
-          <h3 className="text-lg font-semibold text-text">{title}</h3>
-          {description && <p className="text-sm text-muted">{description}</p>}
-          {badges && badges.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {badges.map((badge, index) => (
-                <span
-                  key={`${badge.label}-${index}`}
-                  className={clsx('inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors', BADGE_STYLES[badge.tone ?? 'neutral'])}
-                >
-                  {badge.label}
-                </span>
-              ))}
-            </div>
-          )}
-          {tags && tags.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {tags.map(tag => (
-                <span
-                  key={tag.id}
-                  className="inline-flex items-center rounded-full bg-surface-hover px-2.5 py-0.5 text-xs text-muted"
-                >
-                  #{tag.name}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        {actions && actions.length > 0 && (
-          <div className="flex shrink-0 flex-row justify-end gap-2 whitespace-nowrap">
-            {actions.map((action, index) => (
-              <button
-                key={`${action.label}-${index}`}
-                type="button"
-                onClick={event => {
-                  event.stopPropagation()
-                  action.onClick()
-                }}
-                className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-text opacity-0 transition focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 group-hover:opacity-100 hover:bg-surface-hover"
+      <div
+        className={clsx(
+          'space-y-2',
+          actions && actions.length > 0 && 'pr-24'
+        )}
+      >
+        <h3 className="text-lg font-semibold text-text">{title}</h3>
+        {description && <p className="text-sm text-muted">{description}</p>}
+        {badges && badges.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {badges.map((badge, index) => (
+              <span
+                key={`${badge.label}-${index}`}
+                className={clsx('inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors', BADGE_STYLES[badge.tone ?? 'neutral'])}
               >
-                {action.icon}
-                <span>{action.label}</span>
-              </button>
+                {badge.label}
+              </span>
+            ))}
+          </div>
+        )}
+        {tags && tags.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {tags.map(tag => (
+              <span
+                key={tag.id}
+                className="inline-flex items-center rounded-full bg-surface-hover px-2.5 py-0.5 text-xs text-muted"
+              >
+                #{tag.name}
+              </span>
             ))}
           </div>
         )}
       </div>
+      {actions && actions.length > 0 && (
+        <div className="absolute right-6 top-6 flex gap-2 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto">
+          {actions.map((action, index) => (
+            <button
+              key={`${action.label}-${index}`}
+              type="button"
+              onClick={event => {
+                event.stopPropagation()
+                action.onClick()
+              }}
+              className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-text transition hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              {action.icon}
+              <span>{action.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {updatedAt && (
         <p className="text-xs text-muted">最近更新：{formatTimestamp(updatedAt)}</p>
       )}
