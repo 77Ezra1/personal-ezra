@@ -5,23 +5,27 @@
   "identifier": "com.pms.web",
   "build": {
     "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173"
   },
   "bundle": {
-    "icon": ["icons/icon.ico", "icons/icon.icns"]
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ]
   },
-  "tauri": {
-    "allowlist": {
-      "fs": {
-        "all": true
-      },
-      "path": {
-        "all": true
-      },
-      "shell": {
-        "all": true
+  "app": {
+    "security": {
+      "capabilities": ["default"]
+    },
+    "windows": [
+      {
+        "title": "pms-web",
+        "width": 1200,
+        "height": 800,
+        "resizable": true
       }
-    }
+    ]
   }
 }
