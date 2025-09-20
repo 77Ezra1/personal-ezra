@@ -55,9 +55,8 @@ pnpm format:check # 仅检查格式
 - 命令面板：⌘/Ctrl+K 快速搜索打开
 - SQLite 存储（tauri-plugin-sql）
 - PWA 配置（vite-plugin-pwa）
-- 笔记：Markdown 编写与大模型对话
 
-> 默认离线运行；如配置 `VITE_LLM_API_URL`/`VITE_LLM_API_KEY` 将访问外部服务，请自行评估隐私与安全风险。
+> 默认离线运行
 
 ## 离线能力
 
