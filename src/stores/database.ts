@@ -193,7 +193,8 @@ function createDexieClient(): DatabaseClient {
 }
 
 const isTauri =
-  typeof window !== 'undefined' && Boolean((window as Record<string, unknown>).__TAURI_INTERNALS__)
+  typeof window !== 'undefined' &&
+  typeof (window as any).__TAURI_INTERNALS__ !== 'undefined'
 
 let dbInstance: DatabaseClient
 

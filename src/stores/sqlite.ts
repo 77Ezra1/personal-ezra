@@ -1,4 +1,4 @@
-import { Database } from '@tauri-apps/plugin-sql'
+import Database from '@tauri-apps/plugin-sql'
 import { mkdir } from '@tauri-apps/plugin-fs'
 import { appDataDir, join } from '@tauri-apps/api/path'
 import type {
@@ -142,7 +142,8 @@ const MIGRATIONS: Migration[] = [
     version: 3,
     async run(connection) {
       const columns = await connection.select<{ name?: string }[]>(`PRAGMA table_info(docs)`)
-      const hasDocumentColumn = columns.some(column => column.name === 'document')
+      type ColumnInfo = { name: string }
+      const hasDocumentColumn = (columns as ColumnInfo[]).some((column) => column.name === 'document')
       if (!hasDocumentColumn) {
         await connection.execute('ALTER TABLE docs ADD COLUMN document TEXT')
       }
