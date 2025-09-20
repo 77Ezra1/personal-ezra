@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "cross-env CHOKIDAR_USEPOLLING=1 VITE_FORCE_POLLING=1 vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview --strictPort --port 5173",
     "test": "vitest --run",
@@ -15,7 +15,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "kill-port": "node ./scripts/kill-port.cjs",
-    "tauri:dev": "pnpm run kill-port && cross-env BUILD_TARGET=tauri tauri dev",
+    "tauri:dev": "pnpm run kill-port && cross-env CHOKIDAR_USEPOLLING=1 VITE_FORCE_POLLING=1 BUILD_TARGET=tauri tauri dev",
     "tauri:build": "cross-env BUILD_TARGET=tauri tauri build",
     "prepare": "husky"
   },
