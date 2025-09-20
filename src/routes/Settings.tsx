@@ -1,10 +1,10 @@
 import clsx from 'clsx'
 import type { ChangeEvent } from 'react'
-import { useTheme, type ThemePreference } from '../stores/theme'
+import { resolveEffectiveTheme, type ThemeMode, useTheme } from '../stores/theme'
 
 type ThemeOption = {
   label: string
-  value: ThemePreference
+  value: ThemeMode
   description: string
 }
 
@@ -27,11 +27,12 @@ const THEME_OPTIONS: ThemeOption[] = [
 ]
 
 export default function Settings() {
-  const { preference, resolved, setPreference } = useTheme()
+  const { mode, setMode } = useTheme()
+  const effectiveTheme = resolveEffectiveTheme(mode)
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const next = event.currentTarget.value as ThemePreference
-    setPreference(next)
+    const next = event.currentTarget.value as ThemeMode
+    setMode(next)
   }
 
   return (
@@ -45,12 +46,12 @@ export default function Settings() {
         <div className="space-y-1">
           <h2 className="text-lg font-medium text-text">主题模式</h2>
           <p className="text-sm text-muted">
-            当前显示：{resolved === 'dark' ? '深色主题' : '浅色主题'}
+            当前显示：{effectiveTheme === 'dark' ? '深色主题' : '浅色主题'}
           </p>
         </div>
         <fieldset className="grid gap-3 sm:grid-cols-3" aria-label="主题模式">
           {THEME_OPTIONS.map(option => {
-            const checked = preference === option.value
+            const checked = mode === option.value
             return (
               <label
                 key={option.value}
