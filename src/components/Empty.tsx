@@ -1,50 +1,30 @@
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 
-export interface EmptyProps {
+type EmptyProps = {
   icon?: ReactNode
-  title: ReactNode
-  description?: ReactNode
-  action?: ReactNode
-  size?: 'sm' | 'md' | 'lg'
-  align?: 'center' | 'start'
+  title: string
+  description?: string
+  actionLabel?: string
+  onAction?: () => void
   className?: string
 }
 
-const SIZE_MAP: Record<NonNullable<EmptyProps['size']>, string> = {
-  sm: 'gap-2 text-sm',
-  md: 'gap-3 text-base',
-  lg: 'gap-4 text-lg',
-}
-
-export default function Empty({
-  icon,
-  title,
-  description,
-  action,
-  size = 'md',
-  align = 'center',
-  className,
-}: EmptyProps) {
+export function Empty({ icon, title, description, actionLabel, onAction, className }: EmptyProps) {
   return (
-    <div
-      className={clsx(
-        'flex flex-col items-center rounded-2xl border border-dashed border-border bg-surface px-6 py-12 text-center text-muted',
-        SIZE_MAP[size],
-        align === 'start' && 'items-start text-left',
-        className,
+    <div className={clsx('flex flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-white/10 bg-white/5 px-6 py-16 text-center text-slate-300', className)}>
+      {icon && <div className="text-3xl text-white/60">{icon}</div>}
+      <h3 className="text-lg font-semibold text-white">{title}</h3>
+      {description && <p className="max-w-md text-sm text-slate-400">{description}</p>}
+      {actionLabel && onAction && (
+        <button
+          type="button"
+          onClick={onAction}
+          className="mt-2 inline-flex items-center justify-center rounded-full bg-white px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
+        >
+          {actionLabel}
+        </button>
       )}
-      role="status"
-      aria-live="polite"
-    >
-      {icon ? (
-        <div className="mb-1 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-hover text-primary">
-          {icon}
-        </div>
-      ) : null}
-      <div className="font-semibold text-text">{title}</div>
-      {description ? <p className="max-w-xl text-sm text-muted">{description}</p> : null}
-      {action ? <div className="mt-4 flex items-center justify-center gap-3 text-sm text-text">{action}</div> : null}
     </div>
   )
 }

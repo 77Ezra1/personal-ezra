@@ -1,176 +1,96 @@
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
-} from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Fuse from 'fuse.js'
-import type { IFuseOptions } from 'fuse.js'
-import { ArrowUpRight, PlusCircle, Search, X } from 'lucide-react'
 import clsx from 'clsx'
 
-export interface CommandEntity {
+export type CommandItem = {
   id: string
   title: string
-  type: string
-  description?: string
+  subtitle?: string
   keywords?: string[]
-  tags?: string[]
-  icon?: ReactNode
-  data?: unknown
 }
 
-export interface CommandPaletteAction {
-  key: string
-  label: string
-  description?: string
-  icon?: ReactNode
-}
-
-export interface CommandPaletteProps {
+type CommandPaletteProps = {
   open: boolean
-  entities: CommandEntity[]
   onClose: () => void
-  onOpen: (entity: CommandEntity) => void
-  newActions?: CommandPaletteAction[]
-  onCreate?: (actionKey: string) => void
+  items: CommandItem[]
+  onSelect: (item: CommandItem) => void
   placeholder?: string
-  emptyMessage?: ReactNode
 }
 
-const fuseOptions: IFuseOptions<CommandEntity> = {
+const fuseOptions: Fuse.IFuseOptions<CommandItem> = {
+  includeScore: true,
+  threshold: 0.3,
   keys: [
-    { name: 'title', weight: 0.5 },
-    { name: 'description', weight: 0.3 },
-    { name: 'keywords', weight: 0.2 },
-    { name: 'tags', weight: 0.2 },
+    { name: 'title', weight: 0.7 },
+    { name: 'subtitle', weight: 0.2 },
+    { name: 'keywords', weight: 0.1 },
   ],
-  threshold: 0.35,
   ignoreLocation: true,
-  includeMatches: false,
   minMatchCharLength: 1,
 }
 
-function stopScroll(open: boolean) {
-  if (typeof document === 'undefined') return
-  document.body.style.overflow = open ? 'hidden' : ''
-}
-
-export default function CommandPalette({
-  open,
-  entities,
-  onClose,
-  onOpen,
-  newActions = [],
-  onCreate,
-  placeholder = '搜索命令或条目…',
-  emptyMessage = '没有匹配的结果',
-}: CommandPaletteProps) {
-  const inputRef = useRef<HTMLInputElement | null>(null)
-  const containerRef = useRef<HTMLDivElement | null>(null)
+export function CommandPalette({ open, onClose, items, onSelect, placeholder }: CommandPaletteProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
-  const listboxId = useId()
 
-  const fuse = useMemo(() => new Fuse(entities, fuseOptions), [entities])
+  const fuse = useMemo(() => new Fuse(items, fuseOptions), [items])
 
   const results = useMemo(() => {
     if (!query.trim()) {
-      return entities
+      return items.slice(0, 10)
     }
-    return fuse.search(query.trim()).map(item => item.item)
-  }, [entities, fuse, query])
+    return fuse
+      .search(query.trim())
+      .slice(0, 10)
+      .map(result => result.item)
+  }, [fuse, items, query])
 
   useEffect(() => {
-    if (!open) return
-    setQuery('')
-    setActiveIndex(0)
-    stopScroll(true)
-    const timeout = window.setTimeout(() => {
-      inputRef.current?.focus()
-    }, 0)
-    return () => {
-      window.clearTimeout(timeout)
+    if (open) {
+      setQuery('')
+      setActiveIndex(0)
+      requestAnimationFrame(() => {
+        inputRef.current?.focus()
+      })
     }
   }, [open])
-
-  useEffect(() => {
-    if (!open) {
-      stopScroll(false)
-    }
-  }, [open])
-
-  useEffect(() => {
-    return () => {
-      stopScroll(false)
-    }
-  }, [])
 
   useEffect(() => {
     if (!open) return undefined
-    function handleKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        setActiveIndex(prev => (prev + 1) % Math.max(results.length, 1))
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        setActiveIndex(prev => (prev - 1 + Math.max(results.length, 1)) % Math.max(results.length, 1))
+      } else if (event.key === 'Enter') {
+        event.preventDefault()
+        const item = results[activeIndex]
+        if (item) {
+          onSelect(item)
+          onClose()
+        }
+      } else if (event.key === 'Escape') {
         event.preventDefault()
         onClose()
       }
     }
-    window.addEventListener('keydown', handleKey)
+
+    window.addEventListener('keydown', handleKeyDown)
     return () => {
-      window.removeEventListener('keydown', handleKey)
+      window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [open, onClose])
+  }, [activeIndex, onClose, onSelect, open, results])
 
-  const handleKeyNavigation = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (!results.length) return
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      setActiveIndex(prev => (prev + 1) % results.length)
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      setActiveIndex(prev => (prev - 1 + results.length) % results.length)
-    } else if (event.key === 'Home') {
-      event.preventDefault()
-      setActiveIndex(0)
-    } else if (event.key === 'End') {
-      event.preventDefault()
-      setActiveIndex(results.length - 1)
-    } else if (event.key === 'Enter') {
-      event.preventDefault()
-      const activeItem = results[activeIndex]
-      if (activeItem) {
-        onOpen(activeItem)
-        onClose()
-      }
-    }
-  }
+  if (!open) return null
 
-  if (typeof document === 'undefined' || !open) {
-    return null
-  }
-
-  return createPortal(
-    <div
-      ref={containerRef}
-      className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 px-4 py-10 sm:py-20"
-      aria-modal="true"
-      role="dialog"
-      aria-label="命令面板"
-      onMouseDown={event => {
-        if (event.target === containerRef.current) {
-          onClose()
-        }
-      }}
-    >
-      <div
-        className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-surface shadow-xl"
-        onKeyDown={handleKeyNavigation}
-      >
-        <div className="flex items-center gap-3 border-b border-border px-5 py-4">
-          <Search className="h-4 w-4 text-muted" aria-hidden />
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/60 px-4 py-24 backdrop-blur">
+      <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-white/10 bg-slate-900/90 shadow-2xl shadow-slate-950/40 backdrop-blur">
+        <div className="border-b border-white/5 px-6 py-4">
           <input
             ref={inputRef}
             value={query}
@@ -178,109 +98,39 @@ export default function CommandPalette({
               setQuery(event.target.value)
               setActiveIndex(0)
             }}
-            placeholder={placeholder}
-            className="flex-1 bg-transparent text-sm text-text placeholder:text-muted focus:outline-none"
-            aria-controls={listboxId}
-            aria-label="搜索命令"
+            placeholder={placeholder ?? '搜索条目或执行操作'}
+            className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-400"
           />
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted transition hover:bg-surface-hover hover:text-text"
-            aria-label="关闭命令面板"
-          >
-            <X className="h-4 w-4" aria-hidden />
-          </button>
         </div>
-        {newActions.length > 0 ? (
-          <div className="border-b border-border bg-surface px-5 py-3 text-sm text-text">
-            <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-wide text-muted">快速新建</div>
-            <div className="flex flex-col gap-1">
-              {newActions.map(action => (
-                <button
-                  key={action.key}
-                  type="button"
-                  onClick={() => {
-                    onCreate?.(action.key)
-                    onClose()
-                  }}
-                  className="flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-left transition hover:border-border hover:bg-surface-hover"
-                >
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-hover text-primary">
-                    {action.icon ?? <PlusCircle className="h-4 w-4" aria-hidden />}
-                  </span>
-                  <span className="flex flex-1 flex-col">
-                    <span className="text-sm font-medium">{action.label}</span>
-                    {action.description ? (
-                      <span className="text-xs text-muted">{action.description}</span>
-                    ) : null}
-                  </span>
-                  <ArrowUpRight className="h-4 w-4 text-muted" aria-hidden />
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        <div className="max-h-80 overflow-y-auto">
-          {results.length > 0 ? (
-            <ul id={listboxId} role="listbox" aria-label="搜索结果" className="divide-y divide-border/60">
-              {results.map((item, index) => {
-                const isActive = index === activeIndex
-                return (
-                  <li key={item.id} role="presentation">
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={isActive}
-                      onClick={() => {
-                        onOpen(item)
-                        onClose()
-                      }}
-                      onMouseEnter={() => setActiveIndex(index)}
-                      className={clsx(
-                        'flex w-full items-start gap-3 px-5 py-3 text-left text-sm transition',
-                        isActive
-                          ? 'bg-primary/10 text-text'
-                          : 'text-text hover:bg-surface-hover',
-                      )}
-                    >
-                      {item.icon ? (
-                        <span className="mt-1 flex h-9 w-9 items-center justify-center rounded-xl bg-surface-hover text-primary">
-                          {item.icon}
-                        </span>
-                      ) : null}
-                      <span className="flex flex-1 flex-col gap-1">
-                        <span className="text-base font-medium text-text">{item.title}</span>
-                        {item.description ? (
-                          <span className="text-xs text-muted">{item.description}</span>
-                        ) : null}
-                        {item.tags && item.tags.length > 0 ? (
-                          <span className="flex flex-wrap gap-2 text-[11px] text-muted">
-                            {item.tags.map(tag => (
-                              <span
-                                key={tag}
-                                className="rounded-full border border-border px-2 py-0.5"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className="ml-auto inline-flex h-6 items-center rounded-full bg-surface-hover px-2 text-[11px] font-medium text-muted">
-                        {item.type}
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
+        <div className="max-h-80 overflow-y-auto py-2">
+          {results.length === 0 ? (
+            <p className="px-6 py-8 text-center text-sm text-slate-400">未找到匹配项</p>
           ) : (
-            <div className="px-6 py-12 text-center text-sm text-muted">{emptyMessage}</div>
+            <ul className="space-y-1 px-2">
+              {results.map((item, index) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelect(item)
+                      onClose()
+                    }}
+                    className={clsx(
+                      'w-full rounded-2xl px-4 py-3 text-left transition',
+                      index === activeIndex
+                        ? 'bg-white/10 text-white'
+                        : 'text-slate-200 hover:bg-white/5 hover:text-white',
+                    )}
+                  >
+                    <p className="text-sm font-medium">{item.title}</p>
+                    {item.subtitle && <p className="text-xs text-slate-400">{item.subtitle}</p>}
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
   )
 }

@@ -1,171 +1,68 @@
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  type ReactNode,
-} from 'react'
-import { createPortal } from 'react-dom'
-import { X } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import type { ReactNode } from 'react'
 import clsx from 'clsx'
 
-export interface DetailsDrawerProps {
+type DetailsDrawerProps = {
   open: boolean
-  title?: ReactNode
-  description?: ReactNode
-  children: ReactNode
-  footer?: ReactNode
+  title?: string
+  description?: string
   onClose: () => void
-  width?: 'sm' | 'md' | 'lg'
-  className?: string
-  headerActions?: ReactNode
+  footer?: ReactNode
+  children: ReactNode
+  width?: 'md' | 'lg'
 }
 
-const WIDTH_MAP: Record<NonNullable<DetailsDrawerProps['width']>, string> = {
-  sm: 'max-w-md',
-  md: 'max-w-xl',
-  lg: 'max-w-2xl',
-}
-
-function getFocusableElements(container: HTMLElement | null) {
-  if (!container) return []
-  return Array.from(
-    container.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])',
-    ),
-  )
-}
-
-export default function DetailsDrawer({
-  open,
-  title,
-  description,
-  children,
-  footer,
-  onClose,
-  width = 'lg',
-  className,
-  headerActions,
-}: DetailsDrawerProps) {
-  const drawerRef = useRef<HTMLDivElement | null>(null)
-  const restoreFocusRef = useRef<HTMLElement | null>(null)
-  const titleId = useId()
-  const descriptionId = useId()
+export function DetailsDrawer({ open, title, description, onClose, footer, children, width = 'lg' }: DetailsDrawerProps) {
+  const firstFocusable = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!open) return undefined
-    restoreFocusRef.current = (document.activeElement as HTMLElement) ?? null
-    const timer = window.setTimeout(() => {
-      const focusables = getFocusableElements(drawerRef.current)
-      focusables[0]?.focus()
-    }, 0)
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    const timer = requestAnimationFrame(() => {
+      firstFocusable.current?.querySelector<HTMLElement>('button, input, textarea, select, [tabindex]')?.focus()
+    })
     return () => {
-      window.clearTimeout(timer)
+      cancelAnimationFrame(timer)
+      previouslyFocused?.focus()
     }
   }, [open])
 
-  useEffect(() => {
-    if (open) return
-    restoreFocusRef.current?.focus()
-  }, [open])
+  if (!open) return null
 
-  useEffect(() => {
-    if (!open) return undefined
-
-    function handleKeydown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        onClose()
-        return
-      }
-      if (event.key === 'Tab') {
-        const focusables = getFocusableElements(drawerRef.current)
-        if (focusables.length === 0) {
-          event.preventDefault()
-          return
-        }
-        const first = focusables[0]
-        const last = focusables[focusables.length - 1]
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault()
-          last.focus()
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault()
-          first.focus()
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeydown)
-    return () => {
-      window.removeEventListener('keydown', handleKeydown)
-    }
-  }, [open, onClose])
-
-  useEffect(() => {
-    if (typeof document === 'undefined') return
-    document.body.style.overflow = open ? 'hidden' : ''
-    return () => {
-      document.body.style.overflow = ''
-    }
-  }, [open])
-
-  const widthClass = useMemo(() => WIDTH_MAP[width], [width])
-
-  if (!open || typeof document === 'undefined') {
-    return null
-  }
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-40 flex justify-end bg-black/40"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={title ? titleId : undefined}
-      aria-describedby={description ? descriptionId : undefined}
-      onMouseDown={event => {
-        if (event.target === event.currentTarget) {
-          onClose()
-        }
-      }}
-    >
-      <div
-        ref={drawerRef}
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="absolute inset-0 bg-slate-950/70 backdrop-blur" aria-hidden onClick={onClose} />
+      <aside
         className={clsx(
-          'flex h-full w-full flex-col gap-4 border-l border-border bg-surface text-text shadow-2xl transition-transform duration-200 ease-out',
-          widthClass,
-          className,
+          'relative ml-auto flex h-full w-full flex-col overflow-hidden border-l border-white/10 bg-slate-900/95 text-slate-100 shadow-2xl shadow-slate-950/40 backdrop-blur',
+          width === 'md' ? 'max-w-lg' : 'max-w-2xl',
         )}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? 'drawer-title' : undefined}
       >
-        <header className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
-          <div className="space-y-1">
-            {title ? (
-              <h2 id={titleId} className="text-lg font-semibold">
+        <div className="flex items-start justify-between gap-4 border-b border-white/5 px-8 py-6">
+          <div className="space-y-2">
+            {title && (
+              <h2 id="drawer-title" className="text-xl font-semibold text-white">
                 {title}
               </h2>
-            ) : null}
-            {description ? (
-              <p id={descriptionId} className="text-sm text-muted">
-                {description}
-              </p>
-            ) : null}
+            )}
+            {description && <p className="text-sm text-slate-300">{description}</p>}
           </div>
-          <div className="flex items-center gap-2">
-            {headerActions}
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full text-muted transition hover:bg-surface-hover hover:text-text"
-              aria-label="关闭详情抽屉"
-            >
-              <X className="h-4 w-4" aria-hidden />
-            </button>
-          </div>
-        </header>
-        <div className="flex-1 overflow-y-auto px-6 py-4">{children}</div>
-        {footer ? <div className="border-t border-border bg-surface px-6 py-4">{footer}</div> : null}
-      </div>
-    </div>,
-    document.body,
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white transition hover:border-white/40 hover:bg-white/10"
+          >
+            关闭
+          </button>
+        </div>
+        <div ref={firstFocusable} className="flex-1 overflow-y-auto px-8 py-6">
+          <div className="space-y-6">{children}</div>
+        </div>
+        {footer && <div className="border-t border-white/5 px-8 py-6">{footer}</div>}
+      </aside>
+    </div>
   )
 }

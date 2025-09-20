@@ -49,6 +49,7 @@ export type OwnerWhereClause<T> = {
 export interface OwnedCollection<T extends { ownerEmail: string }> {
   where(index: 'ownerEmail'): OwnerWhereClause<T>
   add(record: T): Promise<number>
+  put(record: T): Promise<number>
   delete(key: number): Promise<void>
 }
 
@@ -172,6 +173,7 @@ function createDexieOwnedCollection<T extends { ownerEmail: string; id?: number 
       }),
     }),
     add: record => table.add(record),
+    put: record => table.put(record),
     delete: key => table.delete(key),
   }
 }
