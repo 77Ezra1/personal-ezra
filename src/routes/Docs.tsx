@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import React, { FormEvent, useEffect, useMemo, useState, ChangeEvent, ReactNode } from 'react'
 import {
   importFileToVault,
   openDocument,
@@ -8,7 +8,41 @@ import {
 } from '../lib/vault'
 import { db as docsDb, type DocRecord } from '../stores/database'
 import { useAuthStore } from '../stores/auth'
-import { db, type DocRecord } from '../stores/database'
+
+// 如果你的项目里已经有 useToast，请按实际路径替换
+import { useToast } from '../components/Toast'
+
+// 这些 UI 组件/Hook 按你的项目实际路径导入（与之前优化建议一致）
+import AppLayout from '../components/AppLayout'
+import Skeleton from '../components/Skeleton'
+import Empty from '../components/Empty'
+import VaultItemCard from '../components/VaultItemCard'
+import DetailsDrawer from '../components/DetailsDrawer'
+import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
+
+// 图标（若未安装 lucide-react，请先安装：pnpm add lucide-react）
+import { Copy, ExternalLink, FileText, Pencil } from 'lucide-react'
+
+/* ---------------------- 本文件内的小工具，减少外部依赖 --------------------- */
+
+const DEFAULT_CLIPBOARD_CLEAR_DELAY = 15_000 // 15s
+
+async function copyTextAutoClear(text: string, delay = DEFAULT_CLIPBOARD_CLEAR_DELAY) {
+  await navigator.clipboard.writeText(text)
+  // 尽力在一段时间后清空（不保证一定能清）
+  window.setTimeout(async () => {
+    try {
+      const current = await navigator.clipboard.readText()
+      if (current === text) {
+        await navigator.clipboard.writeText('')
+      }
+    } catch {
+      /* ignore */
+    }
+  }, delay)
+}
+
+/* --------------------------------- 类型 --------------------------------- */
 
 type DocDraft = {
   title: string
@@ -17,12 +51,16 @@ type DocDraft = {
   file: File | null
 }
 
+/* --------------------------------- 常量 --------------------------------- */
+
 const EMPTY_DRAFT: DocDraft = {
   title: '',
   description: '',
   url: '',
   file: null,
 }
+
+/* --------------------------------- 工具 --------------------------------- */
 
 function formatSize(bytes?: number) {
   if (!bytes) return '未知'
@@ -49,6 +87,8 @@ function extractLinkMeta(document?: StoredDocument) {
   return undefined
 }
 
+/* --------------------------------- 页面 --------------------------------- */
+
 export default function Docs() {
   const email = useAuthStore(s => s.email)
   const { showToast } = useToast()
@@ -57,13 +97,16 @@ export default function Docs() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'view' | 'edit'>('create')
   const [activeItem, setActiveItem] = useState<DocRecord | null>(null)
+
   const [draft, setDraft] = useState<DocDraft>(EMPTY_DRAFT)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  // 加载列表
   useEffect(() => {
     if (!email) {
       setItems([])
@@ -74,7 +117,7 @@ export default function Docs() {
     async function load(currentEmail: string) {
       setLoading(true)
       try {
-        const rows = await db.docs.where('ownerEmail').equals(currentEmail).toArray()
+        const rows = await docsDb.docs.where('ownerEmail').equals(currentEmail).toArray()
         rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
         setItems(rows)
       } finally {
@@ -85,11 +128,72 @@ export default function Docs() {
     void load(email)
   }, [email])
 
-  async function load(currentEmail: string) {
+  async function reloadItems(currentEmail: string) {
     const rows = await docsDb.docs.where('ownerEmail').equals(currentEmail).toArray()
-    rows.sort((a, b) => b.updatedAt - a.updatedAt)
+    rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
     setItems(rows)
   }
+
+  /* ------------------------------ 列表派生 ------------------------------ */
+
+  const filteredItems = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase()
+    if (!q) return items
+    return items.filter(item => {
+      const linkUrl = extractLinkMeta(item.document)?.url || ''
+      return (
+        item.title.toLowerCase().includes(q) ||
+        (item.description ?? '').toLowerCase().includes(q) ||
+        linkUrl.toLowerCase().includes(q)
+      )
+    })
+  }, [items, searchTerm])
+
+  const commandItems = useMemo(
+    () =>
+      items.map(it => ({
+        id: `doc-${it.id ?? it.title}`,
+        label: it.title,
+      })),
+    [items]
+  )
+
+  /* ------------------------------ 基础动作 ------------------------------ */
+
+  function closeDrawer() {
+    setDrawerOpen(false)
+    setActiveItem(null)
+    setDraft(EMPTY_DRAFT)
+    setFormError(null)
+    setSubmitting(false)
+  }
+
+  function handleCreate() {
+    setActiveItem(null)
+    setDraft(EMPTY_DRAFT)
+    setDrawerMode('create')
+    setDrawerOpen(true)
+  }
+
+  function handleView(item: DocRecord) {
+    setActiveItem(item)
+    setDrawerMode('view')
+    setDrawerOpen(true)
+  }
+
+  function handleEdit(item: DocRecord) {
+    setActiveItem(item)
+    setDraft({
+      title: item.title,
+      description: item.description ?? '',
+      url: extractLinkMeta(item.document)?.url ?? '',
+      file: null,
+    })
+    setDrawerMode('edit')
+    setDrawerOpen(true)
+  }
+
+  /* ------------------------------ 复制/打开 ------------------------------ */
 
   async function handleCopyLink(url: string) {
     try {
@@ -122,12 +226,14 @@ export default function Docs() {
     }
   }
 
+  /* -------------------------------- 删除 -------------------------------- */
+
   async function handleDelete(item: DocRecord) {
     if (typeof item.id !== 'number') return
     const confirmed = window.confirm(`确定要删除“${item.title}”吗？相关文件也会被移除。`)
     if (!confirmed) return
     try {
-      await db.docs.delete(item.id)
+      await docsDb.docs.delete(item.id)
       const fileMeta = extractFileMeta(item.document)
       if (fileMeta) {
         await removeVaultFile(fileMeta.relPath).catch(error => {
@@ -135,14 +241,19 @@ export default function Docs() {
         })
       }
       showToast({ title: '文档已删除', variant: 'success' })
-      if (email) {
-        await reloadItems(email)
-      }
+      if (email) await reloadItems(email)
       closeDrawer()
     } catch (error) {
       console.error('Failed to delete document', error)
       showToast({ title: '删除失败', description: '请稍后再试。', variant: 'error' })
     }
+  }
+
+  /* -------------------------------- 表单 -------------------------------- */
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null
+    setDraft(prev => ({ ...prev, file }))
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -152,12 +263,16 @@ export default function Docs() {
       return
     }
 
+    if (submitting) return
+    setSubmitting(true)
+
     const trimmedTitle = draft.title.trim()
     const trimmedDescription = draft.description.trim()
     const trimmedUrl = draft.url.trim()
 
     if (!trimmedTitle) {
       setFormError('请填写标题')
+      setSubmitting(false)
       return
     }
 
@@ -168,6 +283,7 @@ export default function Docs() {
         linkMeta = { url: parsed.toString() }
       } catch {
         setFormError('请输入有效的链接地址')
+        setSubmitting(false)
         return
       }
     }
@@ -183,6 +299,7 @@ export default function Docs() {
       } catch (error) {
         console.error('Failed to import file into vault', error)
         setFormError('保存文件失败，请确认桌面端已运行。')
+        setSubmitting(false)
         return
       }
     }
@@ -194,14 +311,15 @@ export default function Docs() {
           console.warn('Failed to cleanup imported file after validation error', err)
         })
       }
+      setSubmitting(false)
       return
     }
 
     let document: StoredDocument | undefined
-    if (fileMeta && linkMeta) {
-      document = { kind: 'file+link', file: fileMeta, link: linkMeta }
-    } else if (fileMeta) {
-      document = { kind: 'file', file: fileMeta }
+    if (nextFileMeta && linkMeta) {
+      document = { kind: 'file+link', file: nextFileMeta, link: linkMeta }
+    } else if (nextFileMeta) {
+      document = { kind: 'file', file: nextFileMeta }
     } else if (linkMeta) {
       document = { kind: 'link', link: linkMeta }
     }
@@ -209,37 +327,22 @@ export default function Docs() {
     const now = Date.now()
 
     try {
-      await docsDb.docs.add({
-        ownerEmail: email,
-        title: trimmedTitle,
-        description: description.trim() || undefined,
-        document,
-        createdAt: now,
-        updatedAt: now,
-      })
-    } catch (err) {
-      console.error('Failed to store document metadata', err)
-      setError('保存文档失败，请稍后重试。')
-      return
-    }
-
-    try {
       if (drawerMode === 'create') {
-        await db.docs.add({
+        await docsDb.docs.add({
           ownerEmail: email,
           title: trimmedTitle,
           description: trimmedDescription || undefined,
-          document: documentPayload,
+          document,
           createdAt: now,
           updatedAt: now,
         })
         showToast({ title: '文档已保存', variant: 'success' })
       } else if (drawerMode === 'edit' && activeItem && typeof activeItem.id === 'number') {
-        await db.docs.put({
+        await docsDb.docs.put({
           ...activeItem,
           title: trimmedTitle,
           description: trimmedDescription || undefined,
-          document: documentPayload,
+          document,
           updatedAt: now,
         })
         if (importedFileMeta && existingFileMeta) {
@@ -250,27 +353,17 @@ export default function Docs() {
         showToast({ title: '文档已更新', variant: 'success' })
       }
 
-  async function handleDelete(item: DocRecord) {
-    if (typeof item.id !== 'number' || !email) return
-    await docsDb.docs.delete(item.id)
-    const fileMeta = extractFileMeta(item.document)
-    if (fileMeta) {
-      await removeVaultFile(fileMeta.relPath)
+      if (email) await reloadItems(email)
+      closeDrawer()
+    } catch (error) {
+      console.error('Failed to save or update document', error)
+      showToast({ title: '操作失败', description: '请稍后再试。', variant: 'error' })
+    } finally {
+      setSubmitting(false)
     }
   }
 
-  function handleCommandSelect(commandId: string) {
-    const id = Number(commandId.replace('doc-', ''))
-    const target = items.find(item => item.id === id)
-    if (target) {
-      handleView(target)
-    }
-  }
-
-  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0] ?? null
-    setDraft(prev => ({ ...prev, file }))
-  }
+  /* ------------------------------ 快捷键绑定 ------------------------------ */
 
   useGlobalShortcuts({
     onCreate: handleCreate,
@@ -295,6 +388,15 @@ export default function Docs() {
       }
     },
   })
+
+  function handleCommandSelect(commandId: string) {
+    const idStr = commandId.replace('doc-', '')
+    const id = Number(idStr)
+    const target = items.find(item => (typeof item.id === 'number' ? item.id === id : item.title === idStr))
+    if (target) handleView(target)
+  }
+
+  /* --------------------------------- 渲染 -------------------------------- */
 
   return (
     <AppLayout
@@ -337,6 +439,7 @@ export default function Docs() {
             const linkMeta = extractLinkMeta(item.document)
             const fileMeta = extractFileMeta(item.document)
             const actions: { icon: ReactNode; label: string; onClick: () => void }[] = []
+
             if (linkMeta) {
               actions.push({
                 icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
@@ -522,11 +625,7 @@ export default function Docs() {
             </label>
             <label className="block space-y-2">
               <span className="text-xs uppercase tracking-wide text-slate-400">上传文件</span>
-              <input
-                type="file"
-                onChange={handleFileChange}
-                className="block w-full text-sm text-slate-200"
-              />
+              <input type="file" onChange={handleFileChange} className="block w-full text-sm text-slate-200" />
               <p className="text-xs text-slate-400">
                 {draft.file
                   ? `已选择：${draft.file.name}`
