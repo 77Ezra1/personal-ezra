@@ -24,7 +24,7 @@ export function LockScreen() {
     setSubmitting(true)
     setError(null)
     try {
-      const result = await login(email, password)
+      const result = await login(email ?? '', password ?? '')
       if (result.success) {
         setPassword('')
         unlock()

@@ -72,6 +72,9 @@ export default defineConfig(async () => {
   return {
     plugins,
     base: './',
+    build: {
+      target: 'esnext',
+    },
     server: {
       host: true,
       port: 5173,

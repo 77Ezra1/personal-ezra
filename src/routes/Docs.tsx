@@ -1,6 +1,12 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { importFileToVault, openDocument, removeVaultFile, type VaultFileMeta } from '../lib/vault'
-import { db, type DocRecord } from '../stores/database'
+import {
+  importFileToVault,
+  openDocument,
+  removeVaultFile,
+  type StoredDocument,
+  type VaultFileMeta,
+} from '../lib/vault'
+import { db as docsDb, type DocRecord } from '../stores/database'
 import { useAuthStore } from '../stores/auth'
 
 function formatSize(bytes?: number) {
@@ -46,7 +52,7 @@ export default function Docs() {
   }, [email])
 
   async function load(currentEmail: string) {
-    const rows = await db.docs.where('ownerEmail').equals(currentEmail).toArray()
+    const rows = await docsDb.docs.where('ownerEmail').equals(currentEmail).toArray()
     rows.sort((a, b) => b.updatedAt - a.updatedAt)
     setItems(rows)
   }
@@ -100,19 +106,19 @@ export default function Docs() {
       return
     }
 
-    const document =
-      fileMeta && linkMeta
-        ? { kind: 'file+link', file: fileMeta, link: linkMeta }
-        : fileMeta
-        ? { kind: 'file', file: fileMeta }
-        : linkMeta
-        ? { kind: 'link', link: linkMeta }
-        : undefined
+    let document: StoredDocument | undefined
+    if (fileMeta && linkMeta) {
+      document = { kind: 'file+link', file: fileMeta, link: linkMeta }
+    } else if (fileMeta) {
+      document = { kind: 'file', file: fileMeta }
+    } else if (linkMeta) {
+      document = { kind: 'link', link: linkMeta }
+    }
 
     const now = Date.now()
 
     try {
-      await db.docs.add({
+      await docsDb.docs.add({
         ownerEmail: email,
         title: trimmedTitle,
         description: description.trim() || undefined,
@@ -136,7 +142,7 @@ export default function Docs() {
 
   async function handleDelete(item: DocRecord) {
     if (typeof item.id !== 'number' || !email) return
-    await db.docs.delete(item.id)
+    await docsDb.docs.delete(item.id)
     const fileMeta = extractFileMeta(item.document)
     if (fileMeta) {
       await removeVaultFile(fileMeta.relPath)
