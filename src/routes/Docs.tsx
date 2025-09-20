@@ -6,7 +6,7 @@ import {
   type StoredDocument,
   type VaultFileMeta,
 } from '../lib/vault'
-import { db, type DocRecord } from '../stores/database'
+import { db as docsDb, type DocRecord } from '../stores/database'
 import { useAuthStore } from '../stores/auth'
 import { db, type DocRecord } from '../stores/database'
 
@@ -85,82 +85,9 @@ export default function Docs() {
     void load(email)
   }, [email])
 
-  const fuse = useMemo(() => {
-    return new Fuse(items, {
-      keys: [
-        { name: 'title', weight: 0.6 },
-        { name: 'description', weight: 0.2 },
-        { name: 'document.link.url', weight: 0.1 },
-        { name: 'document.file.name', weight: 0.1 },
-      ],
-      threshold: 0.32,
-      ignoreLocation: true,
-    })
-  }, [items])
-
-  const filteredItems = useMemo(() => {
-    if (!searchTerm.trim()) {
-      return items
-    }
-    return fuse.search(searchTerm.trim()).map(result => result.item)
-  }, [fuse, items, searchTerm])
-
-  const commandItems = useMemo(
-    () =>
-      items
-        .filter(item => typeof item.id === 'number')
-        .map(item => ({
-          id: `doc-${item.id}`,
-          title: item.title,
-          subtitle: item.description || extractLinkMeta(item.document)?.url || '—',
-          keywords: [item.description, extractLinkMeta(item.document)?.url].filter(Boolean) as string[],
-        })),
-    [items],
-  )
-
-  function closeDrawer() {
-    setDrawerOpen(false)
-    setDrawerMode('create')
-    setActiveItem(null)
-    setDraft(EMPTY_DRAFT)
-    setFormError(null)
-    setSubmitting(false)
-  }
-
-  function handleCreate() {
-    setDraft(EMPTY_DRAFT)
-    setDrawerMode('create')
-    setActiveItem(null)
-    setDrawerOpen(true)
-  }
-
-  function handleView(item: DocRecord) {
-    setActiveItem(item)
-    setDrawerMode('view')
-    setDraft({
-      title: item.title,
-      description: item.description ?? '',
-      url: extractLinkMeta(item.document)?.url ?? '',
-      file: null,
-    })
-    setDrawerOpen(true)
-  }
-
-  function handleEdit(item: DocRecord) {
-    setActiveItem(item)
-    setDrawerMode('edit')
-    setDraft({
-      title: item.title,
-      description: item.description ?? '',
-      url: extractLinkMeta(item.document)?.url ?? '',
-      file: null,
-    })
-    setDrawerOpen(true)
-  }
-
-  async function reloadItems(currentEmail: string) {
-    const rows = await db.docs.where('ownerEmail').equals(currentEmail).toArray()
-    rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+  async function load(currentEmail: string) {
+    const rows = await docsDb.docs.where('ownerEmail').equals(currentEmail).toArray()
+    rows.sort((a, b) => b.updatedAt - a.updatedAt)
     setItems(rows)
   }
 
@@ -281,13 +208,19 @@ export default function Docs() {
 
     const now = Date.now()
 
-    let documentPayload: StoredDocument | undefined
-    if (nextFileMeta && linkMeta) {
-      documentPayload = { kind: 'file+link', file: nextFileMeta, link: linkMeta }
-    } else if (nextFileMeta) {
-      documentPayload = { kind: 'file', file: nextFileMeta }
-    } else if (linkMeta) {
-      documentPayload = { kind: 'link', link: linkMeta }
+    try {
+      await docsDb.docs.add({
+        ownerEmail: email,
+        title: trimmedTitle,
+        description: description.trim() || undefined,
+        document,
+        createdAt: now,
+        updatedAt: now,
+      })
+    } catch (err) {
+      console.error('Failed to store document metadata', err)
+      setError('保存文档失败，请稍后重试。')
+      return
     }
 
     try {
@@ -317,20 +250,12 @@ export default function Docs() {
         showToast({ title: '文档已更新', variant: 'success' })
       }
 
-      if (email) {
-        await reloadItems(email)
-      }
-
-      closeDrawer()
-    } catch (error) {
-      console.error('Failed to save document', error)
-      setSubmitting(false)
-      if (importedFileMeta) {
-        await removeVaultFile(importedFileMeta.relPath).catch(err => {
-          console.warn('Failed to cleanup imported file after save error', err)
-        })
-      }
-      showToast({ title: '保存失败', description: '请稍后再试。', variant: 'error' })
+  async function handleDelete(item: DocRecord) {
+    if (typeof item.id !== 'number' || !email) return
+    await docsDb.docs.delete(item.id)
+    const fileMeta = extractFileMeta(item.document)
+    if (fileMeta) {
+      await removeVaultFile(fileMeta.relPath)
     }
   }
 

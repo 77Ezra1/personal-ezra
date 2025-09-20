@@ -12,8 +12,6 @@ import { initializeTheme } from './stores/theme'
 
 initializeTheme()
 
-initializeTheme()
-
 const rootElement = document.getElementById('root')
 if (!rootElement) {
   throw new Error('Failed to find the root element')
