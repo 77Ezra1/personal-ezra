@@ -1,0 +1,95 @@
+/* 允许通过 data-theme 覆盖（默认按 light/dark 两套） */
+:root[data-theme="light"] {
+  --bg: #f7f8fb;
+  --panel: #ffffff;
+  --text: #1a1c24;
+  --muted: #6b7280;
+  --primary: #5b8cff;
+  --destructive: #f06a6a;
+  --ring: #88a7ff;
+  --radius: 12px;
+  --shadow: 0 6px 24px rgba(16, 24, 40, 0.08);
+  --space-1: 8px;
+  --space-2: 12px;
+  --space-3: 16px;
+  --space-4: 24px;
+}
+:root[data-theme="dark"] {
+  --bg: #0b0c10;
+  --panel: #111318;
+  --text: #e6e8ef;
+  --muted: #8b93a7;
+  --primary: #5b8cff;
+  --destructive: #f06a6a;
+  --ring: #88a7ff;
+  --radius: 12px;
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  --space-1: 8px;
+  --space-2: 12px;
+  --space-3: 16px;
+  --space-4: 24px;
+}
+
+:root {
+  color-scheme: light dark;
+  --bg: #f7f8fb;
+  --panel: #ffffff;
+  --text: #1a1c24;
+  --muted: #6b7280;
+  --primary: #5b8cff;
+  --destructive: #f06a6a;
+  --ring: #88a7ff;
+  --radius: 12px;
+  --shadow: 0 6px 24px rgba(16, 24, 40, 0.08);
+  --space-1: 8px;
+  --space-2: 12px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:hover,
+a:focus {
+  text-decoration: underline;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--primary) 20%, transparent);
+}
