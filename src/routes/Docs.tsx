@@ -1,10 +1,11 @@
 import { FormEvent, useEffect, useState } from 'react'
+import { importFileToVault, openDocument, removeVaultFile, type VaultFileMeta } from '../lib/vault'
 import { db, type DocRecord } from '../stores/database'
 import { useAuthStore } from '../stores/auth'
 
-function formatSize(bytes: number) {
+function formatSize(bytes?: number) {
   if (!bytes) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
   let size = bytes
   let unitIndex = 0
   while (size >= 1024 && unitIndex < units.length - 1) {
@@ -12,6 +13,19 @@ function formatSize(bytes: number) {
     unitIndex += 1
   }
   return `${size.toFixed(1)} ${units[unitIndex]}`
+}
+
+function extractFileMeta(document?: DocRecord['document']) {
+  if (!document) return undefined
+  if (document.kind === 'file' || document.kind === 'file+link') return document.file
+  return undefined
+}
+
+function extractLinkMeta(document?: DocRecord['document']) {
+  if (!document) return undefined
+  if (document.kind === 'link') return document.link
+  if (document.kind === 'file+link') return document.link
+  return undefined
 }
 
 export default function Docs() {
@@ -43,56 +57,109 @@ export default function Docs() {
       setError('登录信息失效，请重新登录后再试。')
       return
     }
-    if (!title.trim()) {
+
+    const trimmedTitle = title.trim()
+    const trimmedUrl = url.trim()
+
+    if (!trimmedTitle) {
       setError('请填写文档标题')
       return
     }
-    if (!file && !url.trim()) {
+
+    if (!file && !trimmedUrl) {
       setError('请上传文件或填写链接')
       return
     }
-    const now = Date.now()
-    let fileData: ArrayBuffer | undefined
-    let fileName: string | undefined
-    let fileType: string | undefined
-    if (file) {
-      fileData = await file.arrayBuffer()
-      fileName = file.name
-      fileType = file.type
+
+    setError(null)
+
+    let linkMeta: { url: string } | undefined
+    if (trimmedUrl) {
+      try {
+        const parsed = new URL(trimmedUrl)
+        linkMeta = { url: parsed.toString() }
+      } catch {
+        setError('请输入有效的链接地址')
+        return
+      }
     }
-    await db.docs.add({
-      ownerEmail: email,
-      title: title.trim(),
-      description: description.trim() || undefined,
-      url: url.trim() || undefined,
-      fileData,
-      fileName,
-      fileType,
-      createdAt: now,
-      updatedAt: now,
-    })
+
+    let fileMeta: VaultFileMeta | undefined
+    try {
+      if (file) {
+        fileMeta = await importFileToVault(file)
+      }
+    } catch (err) {
+      console.error('Failed to import file into vault', err)
+      setError('保存文件到 Vault 失败，请确认已在桌面端运行。')
+      return
+    }
+
+    if (!fileMeta && !linkMeta) {
+      setError('请上传文件或填写链接')
+      return
+    }
+
+    const document =
+      fileMeta && linkMeta
+        ? { kind: 'file+link', file: fileMeta, link: linkMeta }
+        : fileMeta
+        ? { kind: 'file', file: fileMeta }
+        : linkMeta
+        ? { kind: 'link', link: linkMeta }
+        : undefined
+
+    const now = Date.now()
+
+    try {
+      await db.docs.add({
+        ownerEmail: email,
+        title: trimmedTitle,
+        description: description.trim() || undefined,
+        document,
+        createdAt: now,
+        updatedAt: now,
+      })
+    } catch (err) {
+      console.error('Failed to store document metadata', err)
+      setError('保存文档失败，请稍后重试。')
+      return
+    }
+
     setTitle('')
     setDescription('')
     setUrl('')
     setFile(null)
-    setError(null)
+    event.currentTarget.reset()
     await load(email)
   }
 
-  async function handleDelete(id?: number) {
-    if (typeof id !== 'number' || !email) return
-    await db.docs.delete(id)
+  async function handleDelete(item: DocRecord) {
+    if (typeof item.id !== 'number' || !email) return
+    await db.docs.delete(item.id)
+    const fileMeta = extractFileMeta(item.document)
+    if (fileMeta) {
+      await removeVaultFile(fileMeta.relPath)
+    }
     await load(email)
   }
 
-  function handleDownload(item: DocRecord) {
-    if (!item.fileData) return
-    const blob = new Blob([item.fileData], { type: item.fileType || 'application/octet-stream' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = item.fileName || 'document'
-    link.click()
-    URL.revokeObjectURL(link.href)
+  async function handleOpenFile(meta: VaultFileMeta) {
+    try {
+      await openDocument({ kind: 'file', file: meta })
+    } catch (err) {
+      console.error('Failed to open local document', err)
+      setError('无法打开本地文件，请确认已在桌面端运行。')
+    }
+  }
+
+  async function handleOpenLink(urlToOpen: string) {
+    try {
+      await openDocument({ kind: 'link', url: urlToOpen })
+    } catch (err) {
+      console.error('Failed to open link via shell, fallback to window.open', err)
+      window.open(urlToOpen, '_blank', 'noreferrer')
+    }
   }
 
   return (
@@ -160,48 +227,66 @@ export default function Docs() {
           <p className="mt-4 text-sm text-slate-400">暂无文档，先在上方上传或记录一个链接。</p>
         ) : (
           <div className="mt-4 space-y-4">
-            {items.map(item => (
-              <div key={item.id} className="rounded-xl border border-white/10 bg-slate-900/40 p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="space-y-2">
-                    <h3 className="text-lg font-medium text-white">{item.title}</h3>
-                    {item.description && <p className="text-sm text-slate-300 whitespace-pre-line">{item.description}</p>}
-                    <div className="text-sm text-slate-400">
-                      {item.url ? (
-                        <a href={item.url} target="_blank" rel="noreferrer" className="text-sky-300 hover:text-sky-200">
-                          {item.url}
-                        </a>
-                      ) : (
-                        '无在线链接'
+            {items.map(item => {
+              const fileMeta = extractFileMeta(item.document)
+              const linkMeta = extractLinkMeta(item.document)
+              return (
+                <div key={item.id} className="rounded-xl border border-white/10 bg-slate-900/40 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-2">
+                      <h3 className="text-lg font-medium text-white">{item.title}</h3>
+                      {item.description && <p className="whitespace-pre-line text-sm text-slate-300">{item.description}</p>}
+                      <div className="text-sm text-slate-400">
+                        {linkMeta ? (
+                          <a href={linkMeta.url} target="_blank" rel="noreferrer" className="break-all text-sky-300 hover:text-sky-200">
+                            {linkMeta.url}
+                          </a>
+                        ) : (
+                          '无在线链接'
+                        )}
+                      </div>
+                      {fileMeta && (
+                        <div className="space-y-1 text-xs text-slate-400">
+                          <div>本地文件：{fileMeta.name}</div>
+                          <div>
+                            类型：{fileMeta.mime} · 大小：{formatSize(fileMeta.size)}
+                          </div>
+                          <div className="break-all">路径：{fileMeta.relPath}</div>
+                          <div className="break-all">SHA-256：{fileMeta.sha256}</div>
+                        </div>
                       )}
                     </div>
-                    {item.fileData && (
-                      <div className="text-xs text-slate-400">
-                        本地文件：{item.fileName || '未命名'} · {formatSize(item.fileData.byteLength)}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end gap-2 text-xs">
-                    {item.fileData && (
+                    <div className="flex flex-col items-end gap-2 text-xs">
+                      {fileMeta && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenFile(fileMeta)}
+                          className="rounded-full border border-white/20 px-3 py-1 font-medium text-white transition hover:border-white/40 hover:bg-white/10"
+                        >
+                          打开文件
+                        </button>
+                      )}
+                      {linkMeta && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenLink(linkMeta.url)}
+                          className="rounded-full border border-white/20 px-3 py-1 font-medium text-sky-200 transition hover:border-white/40 hover:bg-white/10"
+                        >
+                          打开链接
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => handleDownload(item)}
-                        className="rounded-full border border-white/20 px-3 py-1 font-medium text-white transition hover:border-white/40 hover:bg-white/10"
+                        onClick={() => handleDelete(item)}
+                        className="rounded-full border border-white/20 px-3 py-1 font-medium text-rose-200 transition hover:border-rose-300 hover:bg-rose-300/10"
                       >
-                        下载
+                        删除
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(item.id)}
-                      className="rounded-full border border-white/20 px-3 py-1 font-medium text-rose-200 transition hover:border-rose-300 hover:bg-rose-300/10"
-                    >
-                      删除
-                    </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </section>
