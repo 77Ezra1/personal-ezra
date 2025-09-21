@@ -19,7 +19,7 @@ export interface UserRecord {
   keyHash: string
   displayName: string
   avatar: UserAvatarMeta | null
-  mustChangePassword?: boolean
+  mustChangePassword: boolean
   mnemonic: string
   mustChangePassword?: boolean
   createdAt: number
@@ -225,10 +225,10 @@ class AppDatabase extends Dexie {
               keyHash: typeof legacy.keyHash === 'string' ? legacy.keyHash : '',
               displayName,
               avatar: legacy.avatar ?? null,
+              mustChangePassword,
               mnemonic: typeof legacy.mnemonic === 'string' ? legacy.mnemonic : '',
               createdAt,
               updatedAt,
-              mustChangePassword,
             }
             await usersTable.put(next)
           }),
@@ -258,7 +258,7 @@ class AppDatabase extends Dexie {
               mnemonic,
               updatedAt: legacy.updatedAt ?? Date.now(),
             }
-            await usersTable.put(next as unknown as LegacyUserRecord)
+            await usersTable.put(next as LegacyUserRecord)
           }),
         )
       })

@@ -265,7 +265,7 @@ export default function Passwords() {
     }
   }
 
-  function buildItemActions(item: PasswordRecord): VaultItemAction[] {
+  function buildItemActions(item: PasswordRecord) {
     const actions: VaultItemAction[] = [
       {
         icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
