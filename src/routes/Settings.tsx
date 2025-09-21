@@ -68,9 +68,13 @@ const THEME_OPTIONS: ThemeOption[] = [
 
 const ACCOUNT_DELETE_CONFIRMATION_PHRASE = '我已了解注销后账号及所有数据将被永久删除，且无法恢复。'
 
-export default function Settings() {
-  const { mode, setMode } = useTheme()
-  const effectiveTheme = resolveEffectiveTheme(mode)
+type SettingsSection = {
+  key: string
+  label: string
+  render: () => JSX.Element
+}
+
+function ProfileSection() {
   const email = useAuthStore(state => state.email)
   const profile = useAuthStore(selectAuthProfile)
   const initialized = useAuthStore(state => state.initialized)
@@ -91,11 +95,6 @@ export default function Settings() {
   const canSubmit = !profileDisabled && !isSaving && hasChanges
 
   useAutoDismissFormMessage(formMessage, setFormMessage)
-
-  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const next = event.currentTarget.value as ThemeMode
-    setMode(next)
-  }
 
   useEffect(() => {
     if (initialized && email && !profile) {
@@ -149,161 +148,223 @@ export default function Settings() {
   }
 
   return (
+    <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
+      <div className="space-y-1">
+        <h2 className="text-lg font-medium text-text">用户资料</h2>
+        <p className="text-sm text-muted">
+          更新显示名称与头像{profileDisabled ? '，请先登录后再编辑。' : '。邮箱仅用于登录验证。'}
+        </p>
+      </div>
+      <form className="space-y-6" onSubmit={handleProfileSubmit}>
+        <div className="space-y-2">
+          <label htmlFor="profile-email" className="text-sm font-medium text-text">
+            登录邮箱
+          </label>
+          <input
+            id="profile-email"
+            type="email"
+            value={email ?? ''}
+            readOnly
+            placeholder={profileDisabled ? '尚未登录' : undefined}
+            className={clsx(
+              'w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover',
+              profileDisabled && 'bg-surface/60 text-muted',
+            )}
+          />
+          <p className="text-xs text-muted">邮箱仅用于登录与数据加密，不会对外展示。</p>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="profile-displayName" className="text-sm font-medium text-text">
+            用户名
+          </label>
+          <input
+            id="profile-displayName"
+            type="text"
+            value={displayName}
+            onChange={handleDisplayNameChange}
+            maxLength={30}
+            disabled={profileDisabled || isSaving}
+            placeholder="例如：小明"
+            className={clsx(
+              'w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+              !profileDisabled && 'placeholder:text-muted',
+            )}
+          />
+          <p className="text-xs text-muted">2-30 个字符，支持中英文、数字，将自动过滤敏感词。</p>
+        </div>
+
+        <div className="space-y-2">
+          <span className="text-sm font-medium text-text">头像</span>
+          <AvatarUploader
+            value={avatar}
+            onChange={handleAvatarChange}
+            onError={handleAvatarError}
+            disabled={profileDisabled || isSaving}
+          />
+        </div>
+
+        {formMessage ? (
+          <div
+            role="alert"
+            className={clsx(
+              'rounded-xl border px-3 py-2 text-sm shadow-sm',
+              formMessage.type === 'success'
+                ? 'border-primary/50 bg-primary/10 text-primary'
+                : 'border-red-400/70 bg-red-500/10 text-red-400',
+            )}
+          >
+            {formMessage.text}
+          </div>
+        ) : null}
+
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className={clsx(
+              'inline-flex items-center rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-background shadow-sm transition',
+              'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50',
+            )}
+          >
+            {isSaving ? '保存中…' : '保存资料'}
+          </button>
+        </div>
+      </form>
+    </section>
+  )
+}
+
+export default function Settings() {
+  const [activeSection, setActiveSection] = useState<string>('profile')
+
+  const sections: SettingsSection[] = [
+    { key: 'profile', label: '用户资料', render: () => <ProfileSection /> },
+    { key: 'change-password', label: '修改密码', render: () => <ChangePasswordSection /> },
+    { key: 'mnemonic-recovery', label: '助记词找回', render: () => <MnemonicRecoverySection /> },
+    { key: 'data-backup', label: '数据备份', render: () => <DataBackupSection /> },
+    { key: 'idle-timeout', label: '自动锁定', render: () => <IdleTimeoutSettingsSection /> },
+    { key: 'delete-account', label: '注销账号', render: () => <DeleteAccountSection /> },
+    { key: 'theme-mode', label: '主题模式', render: () => <ThemeModeSection /> },
+  ]
+
+  return (
     <div className="space-y-8 text-text">
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold text-text">设置</h1>
         <p className="text-sm text-muted">调整主题外观与个性化选项。</p>
       </header>
 
-      <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
-        <div className="space-y-1">
-          <h2 className="text-lg font-medium text-text">用户资料</h2>
-          <p className="text-sm text-muted">
-            更新显示名称与头像{profileDisabled ? '，请先登录后再编辑。' : '。邮箱仅用于登录验证。'}
-          </p>
-        </div>
-        <form className="space-y-6" onSubmit={handleProfileSubmit}>
-          <div className="space-y-2">
-            <label htmlFor="profile-email" className="text-sm font-medium text-text">
-              登录邮箱
-            </label>
-            <input
-              id="profile-email"
-              type="email"
-              value={email ?? ''}
-              readOnly
-              placeholder={profileDisabled ? '尚未登录' : undefined}
-              className={clsx(
-                'w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover',
-                profileDisabled && 'bg-surface/60 text-muted',
-              )}
-            />
-            <p className="text-xs text-muted">邮箱仅用于登录与数据加密，不会对外展示。</p>
+      <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[240px_1fr]">
+        <nav
+          aria-label="设置导航"
+          className="rounded-2xl border border-border/60 bg-surface/80 p-2 shadow-sm"
+        >
+          <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
+            {sections.map(section => {
+              const isActive = section.key === activeSection
+              return (
+                <button
+                  key={section.key}
+                  type="button"
+                  onClick={() => setActiveSection(section.key)}
+                  className={clsx(
+                    'flex-shrink-0 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 lg:w-full lg:text-left',
+                    isActive
+                      ? 'bg-primary/10 text-primary shadow-sm ring-1 ring-primary/40'
+                      : 'text-muted hover:bg-surface-hover hover:text-text',
+                  )}
+                  aria-pressed={isActive}
+                >
+                  {section.label}
+                </button>
+              )
+            })}
           </div>
+        </nav>
 
-          <div className="space-y-2">
-            <label htmlFor="profile-displayName" className="text-sm font-medium text-text">
-              用户名
-            </label>
-            <input
-              id="profile-displayName"
-              type="text"
-              value={displayName}
-              onChange={handleDisplayNameChange}
-              maxLength={30}
-              disabled={profileDisabled || isSaving}
-              placeholder="例如：小明"
-              className={clsx(
-                'w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
-                !profileDisabled && 'placeholder:text-muted',
-              )}
-            />
-            <p className="text-xs text-muted">2-30 个字符，支持中英文、数字，将自动过滤敏感词。</p>
-          </div>
-
-          <div className="space-y-2">
-            <span className="text-sm font-medium text-text">头像</span>
-            <AvatarUploader
-              value={avatar}
-              onChange={handleAvatarChange}
-              onError={handleAvatarError}
-              disabled={profileDisabled || isSaving}
-            />
-          </div>
-
-          {formMessage ? (
-            <div
-              role="alert"
-              className={clsx(
-                'rounded-xl border px-3 py-2 text-sm shadow-sm',
-                formMessage.type === 'success'
-                  ? 'border-primary/50 bg-primary/10 text-primary'
-                  : 'border-red-400/70 bg-red-500/10 text-red-400',
-              )}
-            >
-              {formMessage.text}
-            </div>
-          ) : null}
-
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={!canSubmit}
-              className={clsx(
-                'inline-flex items-center rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-background shadow-sm transition',
-                'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50',
-              )}
-            >
-              {isSaving ? '保存中…' : '保存资料'}
-            </button>
-          </div>
-        </form>
-      </section>
-
-      <ChangePasswordSection />
-
-      <MnemonicRecoverySection />
-
-      <DataBackupSection />
-
-      <IdleTimeoutSettingsSection />
-
-      <DeleteAccountSection />
-
-      <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
-        <div className="space-y-1">
-          <h2 className="text-lg font-medium text-text">主题模式</h2>
-          <p className="text-sm text-muted">
-            当前显示：{effectiveTheme === 'dark' ? '深色主题' : '浅色主题'}
-          </p>
-        </div>
-        <fieldset className="grid gap-3 sm:grid-cols-3" aria-label="主题模式">
-          {THEME_OPTIONS.map(option => {
-            const checked = mode === option.value
+        <div className="min-w-0 space-y-6">
+          {sections.map(section => {
+            const isActive = section.key === activeSection
             return (
-              <label
-                key={option.value}
-                className={clsx(
-                  'group relative flex cursor-pointer flex-col gap-2 rounded-xl border p-4 transition-colors duration-200',
-                  'focus-within:ring-2 focus-within:ring-primary/40 focus-within:ring-offset-2 focus-within:ring-offset-background',
-                  checked
-                    ? 'border-primary/70 bg-primary/10 shadow-[0_0_0_1px_rgba(96,165,250,0.35)]'
-                    : 'border-border/60 bg-surface/70 hover:border-border hover:bg-surface'
-                )}
+              <div
+                key={section.key}
+                className={clsx('min-w-0', isActive ? 'block' : 'hidden')}
+                aria-hidden={!isActive}
               >
-                <input
-                  type="radio"
-                  name="theme-preference"
-                  value={option.value}
-                  checked={checked}
-                  onChange={handleChange}
-                  className="sr-only"
-                />
-                <span className="flex items-center gap-3 text-sm font-medium text-text">
-                  <span
-                    className={clsx(
-                      'grid h-5 w-5 place-content-center rounded-full border-2 transition-colors duration-200',
-                      checked
-                        ? 'border-primary bg-primary/20 text-primary'
-                        : 'border-border/70 bg-surface text-transparent'
-                    )}
-                  >
-                    <span
-                      className={clsx(
-                        'h-2.5 w-2.5 rounded-full bg-primary transition-opacity duration-200',
-                        checked ? 'opacity-100' : 'opacity-0'
-                      )}
-                    />
-                  </span>
-                  {option.label}
-                </span>
-                <p className="text-xs leading-relaxed text-muted">{option.description}</p>
-              </label>
+                {section.render()}
+              </div>
             )
           })}
-        </fieldset>
-      </section>
+        </div>
+      </div>
     </div>
+  )
+}
+
+function ThemeModeSection() {
+  const { mode, setMode } = useTheme()
+  const effectiveTheme = resolveEffectiveTheme(mode)
+
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const next = event.currentTarget.value as ThemeMode
+    setMode(next)
+  }
+
+  return (
+    <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
+      <div className="space-y-1">
+        <h2 className="text-lg font-medium text-text">主题模式</h2>
+        <p className="text-sm text-muted">
+          当前显示：{effectiveTheme === 'dark' ? '深色主题' : '浅色主题'}
+        </p>
+      </div>
+      <fieldset className="grid gap-3 sm:grid-cols-3" aria-label="主题模式">
+        {THEME_OPTIONS.map(option => {
+          const checked = mode === option.value
+          return (
+            <label
+              key={option.value}
+              className={clsx(
+                'group relative flex cursor-pointer flex-col gap-2 rounded-xl border p-4 transition-colors duration-200',
+                'focus-within:ring-2 focus-within:ring-primary/40 focus-within:ring-offset-2 focus-within:ring-offset-background',
+                checked
+                  ? 'border-primary/70 bg-primary/10 shadow-[0_0_0_1px_rgba(96,165,250,0.35)]'
+                  : 'border-border/60 bg-surface/70 hover:border-border hover:bg-surface',
+              )}
+            >
+              <input
+                type="radio"
+                name="theme-preference"
+                value={option.value}
+                checked={checked}
+                onChange={handleChange}
+                className="sr-only"
+              />
+              <span className="flex items-center gap-3 text-sm font-medium text-text">
+                <span
+                  className={clsx(
+                    'grid h-5 w-5 place-content-center rounded-full border-2 transition-colors duration-200',
+                    checked
+                      ? 'border-primary bg-primary/20 text-primary'
+                      : 'border-border/70 bg-surface text-transparent',
+                  )}
+                >
+                  <span
+                    className={clsx(
+                      'h-2.5 w-2.5 rounded-full bg-primary transition-opacity duration-200',
+                      checked ? 'opacity-100' : 'opacity-0',
+                    )}
+                  />
+                </span>
+                {option.label}
+              </span>
+              <p className="text-xs leading-relaxed text-muted">{option.description}</p>
+            </label>
+          )
+        })}
+      </fieldset>
+    </section>
   )
 }
 
