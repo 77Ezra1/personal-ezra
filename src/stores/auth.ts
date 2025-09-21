@@ -18,7 +18,7 @@ function fromBase64(str: string) {
   return result
 }
 
-type AuthResult = { success: boolean; message?: string }
+type AuthResult = { success: boolean; message?: string; mustChangePassword?: boolean }
 
 const MIN_DISPLAY_NAME_LENGTH = 2
 const MAX_DISPLAY_NAME_LENGTH = 30
@@ -40,6 +40,7 @@ type AuthState = {
   encryptionKey: Uint8Array | null
   initialized: boolean
   profile: UserProfile | null
+  mustChangePassword: boolean
   init: () => Promise<void>
   register: (email: string, password: string) => Promise<AuthResult>
   login: (email: string, password: string) => Promise<AuthResult>
@@ -159,6 +160,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   encryptionKey: null,
   initialized: false,
   profile: null,
+  mustChangePassword: false,
   async init() {
     try {
       await db.open()
@@ -170,18 +172,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             email: session.email,
             encryptionKey: session.key,
             profile: mapRecordToProfile(record),
+            mustChangePassword: Boolean(record.mustChangePassword),
             initialized: true,
           })
         } else {
           clearSession()
-          set({ email: null, encryptionKey: null, profile: null, initialized: true })
+          set({ email: null, encryptionKey: null, profile: null, mustChangePassword: false, initialized: true })
         }
       } else {
-        set({ email: null, encryptionKey: null, profile: null, initialized: true })
+        set({ email: null, encryptionKey: null, profile: null, mustChangePassword: false, initialized: true })
       }
     } catch (error) {
       console.error('Failed to initialize auth store', error)
-      set({ email: null, encryptionKey: null, profile: null, initialized: true })
+      set({ email: null, encryptionKey: null, profile: null, mustChangePassword: false, initialized: true })
     }
   },
   async register(rawEmail, password) {
@@ -205,13 +208,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       keyHash: toBase64(key),
       displayName: fallbackDisplayName(email),
       avatar: null,
+      mustChangePassword: true,
       createdAt: now,
       updatedAt: now,
     }
     await db.users.put(record)
     saveSession(email, key)
-    set({ email, encryptionKey: key, profile: mapRecordToProfile(record) })
-    return { success: true }
+    set({
+      email,
+      encryptionKey: key,
+      profile: mapRecordToProfile(record),
+      mustChangePassword: true,
+    })
+    return { success: true, mustChangePassword: true }
   },
   async login(rawEmail, password) {
     const email = rawEmail.trim().toLowerCase()
@@ -229,12 +238,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return { success: false, message: '密码错误' }
     }
     saveSession(email, key)
-    set({ email, encryptionKey: key, profile: mapRecordToProfile(record) })
-    return { success: true }
+    const mustChangePassword = Boolean(record.mustChangePassword)
+    set({
+      email,
+      encryptionKey: key,
+      profile: mapRecordToProfile(record),
+      mustChangePassword,
+    })
+    return { success: true, mustChangePassword }
   },
   async logout() {
     clearSession()
-    set({ email: null, encryptionKey: null, profile: null })
+    set({ email: null, encryptionKey: null, profile: null, mustChangePassword: false })
   },
   async loadProfile() {
     const { email } = get()
@@ -242,7 +257,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const record = await db.users.get(email)
       if (!record) {
-        set({ profile: null })
+        set({ profile: null, mustChangePassword: false })
         return null
       }
       const profile = mapRecordToProfile(record)
@@ -366,11 +381,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         ...record,
         salt: toBase64(newSalt),
         keyHash: newHash,
+        mustChangePassword: false,
         updatedAt: now,
       }
       await db.users.put(nextRecord)
       saveSession(email, newKey)
-      set({ encryptionKey: newKey, profile: mapRecordToProfile(nextRecord) })
+      set({
+        encryptionKey: newKey,
+        profile: mapRecordToProfile(nextRecord),
+        mustChangePassword: false,
+      })
       return { success: true }
     } catch (error) {
       console.error('Failed to change password', error)
@@ -458,7 +478,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       clearSession()
-      set({ email: null, encryptionKey: null, profile: null })
+      set({ email: null, encryptionKey: null, profile: null, mustChangePassword: false })
       return { success: true }
     } catch (error) {
       console.error('Failed to delete account', error)
@@ -470,3 +490,4 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 export const selectAuthProfile = (state: AuthState) => state.profile
 export const selectAuthEmail = (state: AuthState) => state.email
 export const selectAuthInitialized = (state: AuthState) => state.initialized
+export const selectAuthMustChangePassword = (state: AuthState) => state.mustChangePassword

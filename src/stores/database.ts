@@ -18,6 +18,7 @@ export interface UserRecord {
   keyHash: string
   displayName: string
   avatar: UserAvatarMeta | null
+  mustChangePassword: boolean
   createdAt: number
   updatedAt: number
 }
@@ -180,9 +181,15 @@ class AppDatabase extends Dexie {
         docs: '++id, ownerEmail, updatedAt',
       })
       .upgrade(async tx => {
-        type LegacyUserRecord = Omit<UserRecord, 'displayName' | 'avatar'> & {
+        type LegacyUserRecord = {
+          email: string
+          salt: string
+          keyHash: string
           displayName?: string
           avatar?: UserRecord['avatar']
+          createdAt?: number
+          updatedAt?: number
+          mustChangePassword?: boolean
         }
         const usersTable = tx.table('users') as Table<LegacyUserRecord, string>
         const users = await usersTable.toArray()
@@ -194,13 +201,55 @@ class AppDatabase extends Dexie {
             const existing = typeof legacy.displayName === 'string' ? legacy.displayName.trim() : ''
             const fallback = email.split('@')[0]?.trim()
             const displayName = existing || fallback || email || '用户'
+            const createdAt =
+              typeof legacy.createdAt === 'number' && Number.isFinite(legacy.createdAt)
+                ? legacy.createdAt
+                : Date.now()
+            const updatedAt =
+              typeof legacy.updatedAt === 'number' && Number.isFinite(legacy.updatedAt)
+                ? legacy.updatedAt
+                : createdAt
+            const mustChangePassword =
+              typeof legacy.mustChangePassword === 'boolean' ? legacy.mustChangePassword : false
             const next: UserRecord = {
-              ...legacy,
+              email,
+              salt: typeof legacy.salt === 'string' ? legacy.salt : '',
+              keyHash: typeof legacy.keyHash === 'string' ? legacy.keyHash : '',
               displayName,
               avatar: legacy.avatar ?? null,
-              updatedAt: legacy.updatedAt ?? Date.now(),
+              mustChangePassword,
+              createdAt,
+              updatedAt,
             }
-            await usersTable.put(next)
+            await usersTable.put(next as unknown as LegacyUserRecord)
+          }),
+        )
+      })
+    this.version(5)
+      .stores({
+        users: '&email',
+        passwords: '++id, ownerEmail, updatedAt',
+        sites: '++id, ownerEmail, updatedAt',
+        docs: '++id, ownerEmail, updatedAt',
+      })
+      .upgrade(async tx => {
+        type LegacyUserRecordV4 = Omit<UserRecord, 'mustChangePassword'> & {
+          mustChangePassword?: boolean
+        }
+        const usersTable = tx.table('users') as Table<LegacyUserRecordV4, string>
+        const users = await usersTable.toArray()
+        if (users.length === 0) return
+
+        await Promise.all(
+          users.map(async legacy => {
+            if (typeof legacy.mustChangePassword === 'boolean') {
+              return
+            }
+            const next: UserRecord = {
+              ...legacy,
+              mustChangePassword: false,
+            }
+            await usersTable.put(next as unknown as LegacyUserRecordV4)
           }),
         )
       })

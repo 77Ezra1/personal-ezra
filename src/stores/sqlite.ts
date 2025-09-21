@@ -51,6 +51,22 @@ function toOptionalString(value: unknown): string | undefined {
   return String(value)
 }
 
+function toBoolean(value: unknown): boolean {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (!normalized) return false
+    if (normalized === 'true') return true
+    if (normalized === 'false') return false
+    const parsed = Number(normalized)
+    if (Number.isFinite(parsed)) {
+      return parsed !== 0
+    }
+  }
+  return false
+}
+
 function serializeDocument(document: DocRecord['document']): string | null {
   if (!document) return null
   try {
@@ -195,11 +211,17 @@ const MIGRATIONS: Migration[] = [
       type ColumnInfo = { name: string }
       const hasDisplayName = (columns as ColumnInfo[]).some(column => column.name === 'displayName')
       const hasAvatar = (columns as ColumnInfo[]).some(column => column.name === 'avatar')
+      const hasMustChangePassword = (columns as ColumnInfo[]).some(
+        column => column.name === 'mustChangePassword',
+      )
       if (!hasDisplayName) {
         await connection.execute('ALTER TABLE users ADD COLUMN displayName TEXT')
       }
       if (!hasAvatar) {
         await connection.execute('ALTER TABLE users ADD COLUMN avatar TEXT')
+      }
+      if (!hasMustChangePassword) {
+        await connection.execute('ALTER TABLE users ADD COLUMN mustChangePassword INTEGER NOT NULL DEFAULT 0')
       }
 
       const rows = await connection.select<{ email?: string; displayName?: string }[]>(
@@ -210,6 +232,19 @@ const MIGRATIONS: Migration[] = [
         if (!email) continue
         const normalized = fallbackDisplayName(email, row.displayName ? String(row.displayName) : undefined)
         await connection.execute('UPDATE users SET displayName = ? WHERE email = ?', [normalized, email])
+      }
+    },
+  },
+  {
+    version: 5,
+    async run(connection) {
+      const columns = await connection.select<{ name?: string }[]>(`PRAGMA table_info(users)`)
+      type ColumnInfo = { name: string }
+      const hasMustChangePassword = (columns as ColumnInfo[]).some(
+        column => column.name === 'mustChangePassword',
+      )
+      if (!hasMustChangePassword) {
+        await connection.execute('ALTER TABLE users ADD COLUMN mustChangePassword INTEGER NOT NULL DEFAULT 0')
       }
     },
   },
@@ -232,7 +267,7 @@ function createUsersCollection(connection: Database): UsersTable {
   return {
     async get(key) {
       const rows = await connection.select<SqliteRow[]>(
-        'SELECT email, salt, keyHash, displayName, avatar, createdAt, updatedAt FROM users WHERE email = ? LIMIT 1',
+        'SELECT email, salt, keyHash, displayName, avatar, mustChangePassword, createdAt, updatedAt FROM users WHERE email = ? LIMIT 1',
         [key],
       )
       const row = rows[0]
@@ -243,19 +278,21 @@ function createUsersCollection(connection: Database): UsersTable {
         keyHash: String(row.keyHash ?? ''),
         displayName: fallbackDisplayName(String(row.email ?? ''), row.displayName ? String(row.displayName) : undefined),
         avatar: parseAvatar(row.avatar),
+        mustChangePassword: toBoolean(row.mustChangePassword),
         createdAt: toNumber(row.createdAt),
         updatedAt: toNumber(row.updatedAt),
       }
     },
     async put(record) {
       await connection.execute(
-        'INSERT OR REPLACE INTO users (email, salt, keyHash, displayName, avatar, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT OR REPLACE INTO users (email, salt, keyHash, displayName, avatar, mustChangePassword, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         [
           record.email,
           record.salt,
           record.keyHash,
           record.displayName,
           serializeAvatar(record.avatar),
+          record.mustChangePassword ? 1 : 0,
           record.createdAt,
           record.updatedAt,
         ],
