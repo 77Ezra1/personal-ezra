@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import Fuse from 'fuse.js'
 import { Copy, ExternalLink, Pencil } from 'lucide-react'
 import { AppLayout } from '../components/AppLayout'
+import PasswordFieldWithStrength from '../components/PasswordFieldWithStrength'
 import { DetailsDrawer } from '../components/DetailsDrawer'
 import { Empty } from '../components/Empty'
 import { Skeleton } from '../components/Skeleton'
@@ -10,6 +11,7 @@ import { VaultItemList } from '../components/VaultItemList'
 import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyTextAutoClear } from '../lib/clipboard'
 import { BACKUP_IMPORTED_EVENT } from '../lib/backup'
 import { decryptString, encryptString } from '../lib/crypto'
+import { estimatePasswordStrength, PASSWORD_STRENGTH_REQUIREMENT } from '../lib/password-utils'
 import { useToast } from '../components/ToastProvider'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 import { useAuthStore } from '../stores/auth'
@@ -268,6 +270,15 @@ export default function Passwords() {
       return
     }
 
+    if (passwordInput) {
+      const strength = estimatePasswordStrength(passwordInput)
+      if (!strength.meetsRequirement) {
+        const [firstSuggestion] = strength.suggestions
+        setFormError(firstSuggestion ?? PASSWORD_STRENGTH_REQUIREMENT)
+        return
+      }
+    }
+
     setFormError(null)
     setSubmitting(true)
     try {
@@ -519,18 +530,30 @@ export default function Passwords() {
                 placeholder="可选"
               />
             </label>
-            <label className="block space-y-2">
-              <span className="text-xs uppercase tracking-wide text-muted">
-                {drawerMode === 'edit' ? '新密码（留空保持不变）' : '密码'}
-              </span>
-              <input
-                value={draft.password}
-                onChange={event => setDraft(prev => ({ ...prev, password: event.target.value }))}
-                type="password"
-                className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
-                placeholder={drawerMode === 'edit' ? '如需更新密码，请在此输入' : '请输入密码'}
-              />
-            </label>
+            <PasswordFieldWithStrength
+              label={drawerMode === 'edit' ? '新密码（留空保持不变）' : '密码'}
+              labelClassName="text-xs uppercase tracking-wide text-muted font-medium"
+              containerClassName="space-y-2"
+              value={draft.password}
+              onChange={next => {
+                setDraft(prev => ({ ...prev, password: next }))
+                setFormError(null)
+              }}
+              disabled={submitting}
+              autoComplete="new-password"
+              placeholder={drawerMode === 'edit' ? '如需更新密码，请在此输入' : '请输入密码'}
+              hint={
+                drawerMode === 'edit'
+                  ? (
+                      <span className="block">
+                        {PASSWORD_STRENGTH_REQUIREMENT}
+                        <br />
+                        留空将保持原密码不变。
+                      </span>
+                    )
+                  : PASSWORD_STRENGTH_REQUIREMENT
+              }
+            />
             <label className="block space-y-2">
               <span className="text-xs uppercase tracking-wide text-muted">关联网址</span>
               <input

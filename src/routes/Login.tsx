@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { generateCaptcha } from '../lib/captcha'
+import { estimatePasswordStrength, PASSWORD_STRENGTH_REQUIREMENT } from '../lib/password-utils'
 import { useAuthStore } from '../stores/auth'
 
 type RecoveryMessage = { type: 'error' | 'success'; text: string } | null
@@ -129,8 +130,10 @@ export default function Login() {
       setRecoveryMessage({ type: 'error', text: '请输入新密码' })
       return
     }
-    if (recoveryNewPassword.length < 6) {
-      setRecoveryMessage({ type: 'error', text: '新密码至少需要 6 位字符' })
+    const strength = estimatePasswordStrength(recoveryNewPassword)
+    if (!strength.meetsRequirement) {
+      const [firstSuggestion] = strength.suggestions
+      setRecoveryMessage({ type: 'error', text: firstSuggestion ?? PASSWORD_STRENGTH_REQUIREMENT })
       return
     }
     if (recoveryNewPassword !== recoveryConfirmPassword) {

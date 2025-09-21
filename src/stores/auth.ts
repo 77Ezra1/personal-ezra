@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { decryptString, encryptString, deriveKey } from '../lib/crypto'
 import { generateMnemonicPhrase } from '../lib/mnemonic'
 import { detectSensitiveWords } from '../lib/sensitive-words'
+import { estimatePasswordStrength, PASSWORD_STRENGTH_REQUIREMENT } from '../lib/password-utils'
 import { db, type DocDocument, type PasswordRecord, type UserAvatarMeta, type UserRecord } from './database'
 
 export const SESSION_STORAGE_KEY = 'pms-web-session'
@@ -213,6 +214,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!password) {
       return { success: false, message: '请输入密码' }
     }
+    const strength = estimatePasswordStrength(password)
+    if (!strength.meetsRequirement) {
+      const [firstSuggestion] = strength.suggestions
+      return { success: false, message: firstSuggestion ?? PASSWORD_STRENGTH_REQUIREMENT }
+    }
     const existing = await db.users.get(email)
     if (existing) {
       return { success: false, message: '该邮箱已注册' }
@@ -341,8 +347,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!newPassword) {
       return { success: false, message: '请输入新密码' }
     }
-    if (newPassword.length < 6) {
-      return { success: false, message: '新密码至少需要 6 位字符' }
+    const strength = estimatePasswordStrength(newPassword)
+    if (!strength.meetsRequirement) {
+      const [firstSuggestion] = strength.suggestions
+      return { success: false, message: firstSuggestion ?? PASSWORD_STRENGTH_REQUIREMENT }
     }
     if (newPassword === currentPassword) {
       return { success: false, message: '新密码不能与旧密码相同' }
@@ -439,8 +447,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!newPassword) {
       return { success: false, message: '请输入新密码' }
     }
-    if (newPassword.length < 6) {
-      return { success: false, message: '新密码至少需要 6 位字符' }
+    const strength = estimatePasswordStrength(newPassword)
+    if (!strength.meetsRequirement) {
+      const [firstSuggestion] = strength.suggestions
+      return { success: false, message: firstSuggestion ?? PASSWORD_STRENGTH_REQUIREMENT }
     }
     if (normalizedAnswers.size === 0) {
       return { success: false, message: '请输入助记词单词' }

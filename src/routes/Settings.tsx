@@ -13,9 +13,9 @@ import {
 import AvatarUploader from '../components/AvatarUploader'
 import ConfirmDialog from '../components/ConfirmDialog'
 import CopyButton from '../components/CopyButton'
+import PasswordFieldWithStrength from '../components/PasswordFieldWithStrength'
 import { generateCaptcha } from '../lib/captcha'
-import { useToast } from '../components/ToastProvider'
-import { BACKUP_IMPORTED_EVENT, exportUserData, importUserData } from '../lib/backup'
+import { estimatePasswordStrength, PASSWORD_STRENGTH_REQUIREMENT } from '../lib/password-utils'
 import { DEFAULT_TIMEOUT, IDLE_TIMEOUT_OPTIONS, useIdleTimeoutStore } from '../features/lock/IdleLock'
 import { selectAuthProfile, useAuthStore } from '../stores/auth'
 import type { UserAvatarMeta } from '../stores/database'
@@ -541,8 +541,14 @@ function ChangePasswordSection() {
       setFormMessage({ type: 'error', text: '请输入新密码' })
       return
     }
-    if (newPassword.length < 6) {
-      setFormMessage({ type: 'error', text: '新密码至少需要 6 位字符' })
+    if (newPassword === currentPassword) {
+      setFormMessage({ type: 'error', text: '新密码不能与旧密码相同' })
+      return
+    }
+    const strength = estimatePasswordStrength(newPassword)
+    if (!strength.meetsRequirement) {
+      const [firstSuggestion] = strength.suggestions
+      setFormMessage({ type: 'error', text: firstSuggestion ?? PASSWORD_STRENGTH_REQUIREMENT })
       return
     }
     if (newPassword !== confirmPassword) {
@@ -614,27 +620,19 @@ function ChangePasswordSection() {
           />
         </div>
 
-        <div className="space-y-2">
-          <label htmlFor="change-password-new" className="text-sm font-medium text-text">
-            新密码
-          </label>
-          <input
-            id="change-password-new"
-            type="password"
-            autoComplete="new-password"
-            value={newPassword}
-            onChange={event => {
-              setNewPassword(event.currentTarget.value)
-              setFormMessage(null)
-            }}
-            placeholder="不少于 6 位"
-            disabled={inputsDisabled}
-            className={clsx(
-              'w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover',
-              inputsDisabled && 'disabled:cursor-not-allowed disabled:opacity-60',
-            )}
-          />
-        </div>
+        <PasswordFieldWithStrength
+          id="change-password-new"
+          label="新密码"
+          value={newPassword}
+          onChange={next => {
+            setNewPassword(next)
+            setFormMessage(null)
+          }}
+          onGenerate={next => setConfirmPassword(next)}
+          disabled={inputsDisabled}
+          autoComplete="new-password"
+          successHint="新密码强度已达标"
+        />
 
         <div className="space-y-2">
           <label htmlFor="change-password-confirm" className="text-sm font-medium text-text">
