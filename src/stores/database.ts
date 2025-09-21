@@ -1,4 +1,5 @@
 import Dexie, { Table } from 'dexie'
+import { generateMnemonicPhrase } from '../lib/mnemonic'
 import type { StoredDocument, VaultFileMeta } from '../lib/vault'
 
 export type DocDocument = StoredDocument
@@ -18,6 +19,7 @@ export interface UserRecord {
   keyHash: string
   displayName: string
   avatar: UserAvatarMeta | null
+  mnemonic: string
   createdAt: number
   updatedAt: number
 }
@@ -183,6 +185,7 @@ class AppDatabase extends Dexie {
         type LegacyUserRecord = Omit<UserRecord, 'displayName' | 'avatar'> & {
           displayName?: string
           avatar?: UserRecord['avatar']
+          mnemonic?: string
         }
         const usersTable = tx.table('users') as Table<LegacyUserRecord, string>
         const users = await usersTable.toArray()
@@ -198,6 +201,35 @@ class AppDatabase extends Dexie {
               ...legacy,
               displayName,
               avatar: legacy.avatar ?? null,
+              mnemonic: typeof legacy.mnemonic === 'string' ? legacy.mnemonic : '',
+              updatedAt: legacy.updatedAt ?? Date.now(),
+            }
+            await usersTable.put(next)
+          }),
+        )
+      })
+    this.version(5)
+      .stores({
+        users: '&email',
+        passwords: '++id, ownerEmail, updatedAt',
+        sites: '++id, ownerEmail, updatedAt',
+        docs: '++id, ownerEmail, updatedAt',
+      })
+      .upgrade(async tx => {
+        type LegacyUserRecord = Omit<UserRecord, 'mnemonic'> & { mnemonic?: string }
+        const usersTable = tx.table('users') as Table<LegacyUserRecord, string>
+        const users = await usersTable.toArray()
+        if (users.length === 0) return
+
+        await Promise.all(
+          users.map(async legacy => {
+            if (typeof legacy.mnemonic === 'string' && legacy.mnemonic.trim()) {
+              return
+            }
+            const mnemonic = generateMnemonicPhrase()
+            const next: UserRecord = {
+              ...legacy,
+              mnemonic,
               updatedAt: legacy.updatedAt ?? Date.now(),
             }
             await usersTable.put(next)

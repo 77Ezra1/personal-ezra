@@ -6,6 +6,7 @@ import {
   type ChangeEvent,
   type Dispatch,
   type FormEvent,
+  type KeyboardEvent,
   type SetStateAction,
 } from 'react'
 import AvatarUploader from '../components/AvatarUploader'
@@ -233,6 +234,8 @@ export default function Settings() {
       </section>
 
       <ChangePasswordSection />
+
+      <MnemonicRecoverySection />
 
       <IdleTimeoutSettingsSection />
 
@@ -554,6 +557,232 @@ function ChangePasswordSection() {
           </button>
         </div>
       </form>
+    </section>
+  )
+}
+
+function MnemonicRecoverySection() {
+  const email = useAuthStore(state => state.email)
+  const revealMnemonic = useAuthStore(state => state.revealMnemonic)
+  const loggedIn = Boolean(email)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [dialogMode, setDialogMode] = useState<'verify' | 'display'>('verify')
+  const [password, setPassword] = useState('')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [mnemonicWords, setMnemonicWords] = useState<string[]>([])
+  const [copyFeedback, setCopyFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const passwordInputId = useId()
+
+  useEffect(() => {
+    if (!dialogOpen) {
+      setDialogMode('verify')
+      setPassword('')
+      setErrorMessage(null)
+      setIsProcessing(false)
+      setMnemonicWords([])
+      setCopyFeedback(null)
+    }
+  }, [dialogOpen])
+
+  useEffect(() => {
+    if (!copyFeedback) return undefined
+    const timer = window.setTimeout(() => {
+      setCopyFeedback(current => (current === copyFeedback ? null : current))
+    }, 3000)
+    return () => window.clearTimeout(timer)
+  }, [copyFeedback])
+
+  const handleOpenDialog = () => {
+    if (!loggedIn) return
+    setDialogOpen(true)
+  }
+
+  const handleCloseDialog = () => {
+    setDialogOpen(false)
+  }
+
+  const copyMnemonicToClipboard = async (phrase: string) => {
+    if (!phrase) return false
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(phrase)
+        return true
+      }
+    } catch (error) {
+      console.error('Failed to copy mnemonic via clipboard API', error)
+    }
+    if (typeof document === 'undefined') return false
+    const textarea = document.createElement('textarea')
+    textarea.value = phrase
+    textarea.setAttribute('readonly', 'true')
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    let succeeded = false
+    try {
+      succeeded = document.execCommand('copy')
+    } catch (error) {
+      console.error('Failed to copy mnemonic via execCommand', error)
+      succeeded = false
+    } finally {
+      document.body.removeChild(textarea)
+    }
+    return succeeded
+  }
+
+  const handleDialogConfirm = async () => {
+    if (dialogMode === 'verify') {
+      const normalized = password.trim()
+      if (!normalized) {
+        setErrorMessage('请输入当前登录密码')
+        return
+      }
+      try {
+        setIsProcessing(true)
+        setErrorMessage(null)
+        const result = await revealMnemonic(normalized)
+        if (result.success && result.mnemonic) {
+          setMnemonicWords(result.mnemonic.split(/\s+/).filter(Boolean))
+          setDialogMode('display')
+          setPassword('')
+          setCopyFeedback(null)
+        } else {
+          setErrorMessage(result.message ?? '验证失败，请稍后重试')
+        }
+      } catch (error) {
+        console.error('Failed to verify password for mnemonic reveal', error)
+        setErrorMessage('验证失败，请稍后重试')
+      } finally {
+        setIsProcessing(false)
+      }
+      return
+    }
+
+    if (mnemonicWords.length === 0) return
+    const phrase = mnemonicWords.join(' ')
+    const success = await copyMnemonicToClipboard(phrase)
+    if (success) {
+      setCopyFeedback({ type: 'success', text: '助记词已复制，请妥善保存。' })
+    } else {
+      setCopyFeedback({ type: 'error', text: '复制失败，请手动记录助记词。' })
+    }
+  }
+
+  const handlePasswordInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setPassword(event.currentTarget.value)
+    setErrorMessage(null)
+  }
+
+  const handlePasswordInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      if (!isProcessing) {
+        void handleDialogConfirm()
+      }
+    }
+  }
+
+  const confirmLabel = dialogMode === 'verify' ? '验证密码' : '复制助记词'
+  const cancelLabel = dialogMode === 'verify' ? '取消' : '关闭'
+  const confirmButtonProps =
+    dialogMode === 'verify'
+      ? { disabled: !password.trim(), className: 'min-w-[112px]' }
+      : { className: 'min-w-[112px]' }
+
+  return (
+    <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
+      <div className="space-y-1">
+        <h2 className="text-lg font-medium text-text">通过助记词找回密码</h2>
+        <p className="text-sm text-muted">助记词可用于找回主密码，需验证当前密码后才能查看。</p>
+      </div>
+      <div className="space-y-3 text-sm text-muted">
+        <p>请妥善保管助记词，切勿与他人分享或在不安全环境中展示。</p>
+        <p>若遗失助记词，将无法在忘记密码时恢复账户。</p>
+      </div>
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={handleOpenDialog}
+          disabled={!loggedIn}
+          className={clsx(
+            'inline-flex items-center rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-background shadow-sm transition',
+            'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50',
+          )}
+        >
+          查看助记词
+        </button>
+      </div>
+      <ConfirmDialog
+        open={dialogOpen}
+        title={dialogMode === 'verify' ? '验证身份以查看助记词' : '助记词仅供本人保存'}
+        description={
+          dialogMode === 'verify' ? (
+            <div className="mt-4 space-y-3 text-left">
+              <div className="space-y-2">
+                <label htmlFor={passwordInputId} className="text-sm font-medium text-text">
+                  当前登录密码
+                </label>
+                <input
+                  id={passwordInputId}
+                  type="password"
+                  value={password}
+                  onChange={handlePasswordInputChange}
+                  onKeyDown={handlePasswordInputKeyDown}
+                  autoComplete="current-password"
+                  placeholder="请输入当前登录密码"
+                  className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+                />
+                <p className="text-xs text-muted">验证成功后将在此弹窗内展示助记词，请确保四周环境安全。</p>
+              </div>
+              {errorMessage ? (
+                <p className="text-sm text-red-400">{errorMessage}</p>
+              ) : null}
+            </div>
+          ) : (
+            <div className="mt-4 space-y-4 text-left">
+              <div className="rounded-xl border border-amber-400/70 bg-amber-500/10 px-3 py-2 text-sm text-amber-500">
+                请勿截图、拍照或通过网络发送助记词。建议手写或通过密码管理工具安全保存。
+              </div>
+              <ol className="grid grid-cols-2 gap-2 text-sm text-text sm:grid-cols-3">
+                {mnemonicWords.map((word, index) => (
+                  <li
+                    key={`${word}-${index}`}
+                    className="flex items-center gap-2 rounded-xl border border-border/60 bg-surface-hover px-3 py-2 font-medium"
+                  >
+                    <span className="text-xs font-semibold text-muted">{index + 1}.</span>
+                    <span className="tracking-wide">{word}</span>
+                  </li>
+                ))}
+              </ol>
+              {copyFeedback ? (
+                <div
+                  className={clsx(
+                    'rounded-xl border px-3 py-2 text-sm',
+                    copyFeedback.type === 'success'
+                      ? 'border-emerald-400/70 bg-emerald-500/10 text-emerald-400'
+                      : 'border-red-400/70 bg-red-500/10 text-red-400',
+                  )}
+                >
+                  {copyFeedback.text}
+                </div>
+              ) : (
+                <p className="text-xs text-muted">复制后请及时转写至安全位置，避免长时间在屏幕上暴露。</p>
+              )}
+            </div>
+          )
+        }
+        confirmLabel={confirmLabel}
+        cancelLabel={cancelLabel}
+        onConfirm={() => {
+          void handleDialogConfirm()
+        }}
+        onCancel={handleCloseDialog}
+        confirmButtonProps={confirmButtonProps}
+        disableConfirm={dialogMode === 'display' && mnemonicWords.length === 0}
+        loading={dialogMode === 'verify' && isProcessing}
+      />
     </section>
   )
 }

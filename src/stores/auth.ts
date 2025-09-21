@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { decryptString, encryptString, deriveKey } from '../lib/crypto'
+import { generateMnemonicPhrase } from '../lib/mnemonic'
 import { detectSensitiveWords } from '../lib/sensitive-words'
 import { db, type DocDocument, type PasswordRecord, type UserAvatarMeta, type UserRecord } from './database'
 
@@ -19,6 +20,7 @@ function fromBase64(str: string) {
 }
 
 type AuthResult = { success: boolean; message?: string }
+type MnemonicResult = AuthResult & { mnemonic?: string }
 
 const MIN_DISPLAY_NAME_LENGTH = 2
 const MAX_DISPLAY_NAME_LENGTH = 30
@@ -48,6 +50,7 @@ type AuthState = {
   updateProfile: (payload: ProfileUpdatePayload) => Promise<AuthResult>
   changePassword: (payload: { currentPassword: string; newPassword: string }) => Promise<AuthResult>
   deleteAccount: (password: string) => Promise<AuthResult>
+  revealMnemonic: (password: string) => Promise<MnemonicResult>
 }
 
 function saveSession(email: string, key: Uint8Array) {
@@ -199,12 +202,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const saltBytes = crypto.getRandomValues(new Uint8Array(16))
     const key = await deriveKey(password, saltBytes)
     const now = Date.now()
+    const mnemonic = generateMnemonicPhrase()
     const record: UserRecord = {
       email,
       salt: toBase64(saltBytes),
       keyHash: toBase64(key),
       displayName: fallbackDisplayName(email),
       avatar: null,
+      mnemonic,
       createdAt: now,
       updatedAt: now,
     }
@@ -463,6 +468,40 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (error) {
       console.error('Failed to delete account', error)
       return { success: false, message: '注销账号失败，请稍后重试' }
+    }
+  },
+  async revealMnemonic(password) {
+    const { email } = get()
+    if (!email) {
+      return { success: false, message: '请先登录后再操作' }
+    }
+    const normalizedPassword = password.trim()
+    if (!normalizedPassword) {
+      return { success: false, message: '请输入当前登录密码' }
+    }
+
+    try {
+      const record = await db.users.get(email)
+      if (!record) {
+        return { success: false, message: '账号不存在或已被删除' }
+      }
+
+      const salt = fromBase64(record.salt)
+      const key = await deriveKey(normalizedPassword, salt)
+      const hash = toBase64(key)
+      if (hash !== record.keyHash) {
+        return { success: false, message: '密码错误' }
+      }
+
+      const mnemonic = typeof record.mnemonic === 'string' ? record.mnemonic.trim() : ''
+      if (!mnemonic) {
+        return { success: false, message: '尚未为该账号生成助记词' }
+      }
+
+      return { success: true, mnemonic }
+    } catch (error) {
+      console.error('Failed to reveal mnemonic', error)
+      return { success: false, message: '获取助记词失败，请稍后重试' }
     }
   },
 }))

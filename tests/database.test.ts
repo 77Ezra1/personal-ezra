@@ -30,6 +30,7 @@ describe('sqlite database helpers', () => {
       keyHash: 'hash',
       displayName: 'User',
       avatar: null,
+      mnemonic: 'alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu',
       createdAt: now,
       updatedAt: now,
     }
