@@ -1,7 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Lock as LockIcon } from 'lucide-react'
-import { BrowserRouter, Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
 import { SESSION_STORAGE_KEY, useAuthStore } from './stores/auth'
 import Login from './routes/Login'
 import Register from './routes/Register'
@@ -11,6 +11,7 @@ import Sites from './routes/Sites'
 import Docs from './routes/Docs'
 import Settings from './routes/Settings'
 import { useLock } from './features/lock/LockProvider'
+import ConfirmDialog from './components/ConfirmDialog'
 
 function GuestLayout({ children }: { children: ReactNode }) {
   return (
@@ -26,12 +27,32 @@ function AuthenticatedLayout() {
   const email = useAuthStore(s => s.email)
   const profile = useAuthStore(s => s.profile)
   const logout = useAuthStore(s => s.logout)
+  const mustChangePassword = useAuthStore(s => s.mustChangePassword)
   const { lock, locked } = useLock()
+  const navigate = useNavigate()
+  const [showPasswordReminder, setShowPasswordReminder] = useState(false)
 
   const displayName = (profile?.displayName || email || '用户').trim()
   const avatarUrl = profile?.avatar?.dataUrl ?? null
   const avatarInitial = displayName ? displayName.charAt(0).toUpperCase() : '用'
   const avatarAlt = displayName ? `${displayName}的头像` : '用户头像'
+
+  useEffect(() => {
+    if (mustChangePassword) {
+      setShowPasswordReminder(true)
+    } else {
+      setShowPasswordReminder(false)
+    }
+  }, [mustChangePassword])
+
+  const handlePasswordReminderConfirm = () => {
+    setShowPasswordReminder(false)
+    navigate('/dashboard/settings')
+  }
+
+  const handlePasswordReminderCancel = () => {
+    setShowPasswordReminder(false)
+  }
 
   return (
     <div className="min-h-screen bg-background text-text transition-colors">
@@ -148,6 +169,15 @@ function AuthenticatedLayout() {
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
         <Outlet />
       </main>
+      <ConfirmDialog
+        open={showPasswordReminder}
+        title="首次登录需要修改密码"
+        description="为了保障账户安全，请尽快前往设置页面修改主密码。"
+        confirmLabel="立即前往"
+        cancelLabel="稍后再说"
+        onConfirm={handlePasswordReminderConfirm}
+        onCancel={handlePasswordReminderCancel}
+      />
     </div>
   )
 }

@@ -30,6 +30,7 @@ describe('sqlite database helpers', () => {
       keyHash: 'hash',
       displayName: 'User',
       avatar: null,
+      mustChangePassword: false,
       createdAt: now,
       updatedAt: now,
     }
