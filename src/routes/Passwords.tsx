@@ -270,20 +270,26 @@ export default function Passwords() {
       {
         icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
         label: '复制密码',
-        onClick: () => handleCopyPassword(item),
+        onClick: () => {
+          void handleCopyPassword(item)
+        },
       },
     ]
     if (item.url) {
       actions.push({
         icon: <ExternalLink className="h-3.5 w-3.5" aria-hidden />,
         label: '打开链接',
-        onClick: () => handleOpenUrl(item),
+        onClick: () => {
+          handleOpenUrl(item)
+        },
       })
     }
     actions.push({
       icon: <Pencil className="h-3.5 w-3.5" aria-hidden />,
       label: '编辑',
-      onClick: () => handleEdit(item),
+      onClick: () => {
+        handleEdit(item)
+      },
     })
     return actions
   }
