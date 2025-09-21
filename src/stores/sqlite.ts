@@ -12,6 +12,7 @@ import type {
   UserRecord,
   UsersTable,
 } from './database'
+import { generateMnemonicPhrase } from '../lib/mnemonic'
 
 type SqliteRow = Record<string, unknown>
 
@@ -240,11 +241,26 @@ const MIGRATIONS: Migration[] = [
     async run(connection) {
       const columns = await connection.select<{ name?: string }[]>(`PRAGMA table_info(users)`)
       type ColumnInfo = { name: string }
-      const hasMustChangePassword = (columns as ColumnInfo[]).some(
-        column => column.name === 'mustChangePassword',
-      )
-      if (!hasMustChangePassword) {
-        await connection.execute('ALTER TABLE users ADD COLUMN mustChangePassword INTEGER NOT NULL DEFAULT 0')
+      const hasMnemonic = (columns as ColumnInfo[]).some(column => column.name === 'mnemonic')
+      if (!hasMnemonic) {
+        await connection.execute('ALTER TABLE users ADD COLUMN mnemonic TEXT')
+      }
+
+      const rows = await connection.select<
+        { email?: string; mnemonic?: string; updatedAt?: number | string | null }[]
+      >('SELECT email, mnemonic, updatedAt FROM users')
+
+      for (const row of rows) {
+        const email = String(row.email ?? '')
+        if (!email) continue
+        const existing = typeof row.mnemonic === 'string' ? row.mnemonic.trim() : ''
+        if (existing) continue
+        const mnemonic = generateMnemonicPhrase()
+        const previousUpdatedAt = toOptionalNumber(row.updatedAt)
+        const timestamp = typeof previousUpdatedAt === 'number' && Number.isFinite(previousUpdatedAt)
+          ? previousUpdatedAt
+          : Date.now()
+        await connection.execute('UPDATE users SET mnemonic = ?, updatedAt = ? WHERE email = ?', [mnemonic, timestamp, email])
       }
     },
   },
@@ -267,7 +283,7 @@ function createUsersCollection(connection: Database): UsersTable {
   return {
     async get(key) {
       const rows = await connection.select<SqliteRow[]>(
-        'SELECT email, salt, keyHash, displayName, avatar, mustChangePassword, createdAt, updatedAt FROM users WHERE email = ? LIMIT 1',
+        'SELECT email, salt, keyHash, displayName, avatar, mnemonic, createdAt, updatedAt FROM users WHERE email = ? LIMIT 1',
         [key],
       )
       const row = rows[0]
@@ -278,21 +294,21 @@ function createUsersCollection(connection: Database): UsersTable {
         keyHash: String(row.keyHash ?? ''),
         displayName: fallbackDisplayName(String(row.email ?? ''), row.displayName ? String(row.displayName) : undefined),
         avatar: parseAvatar(row.avatar),
-        mustChangePassword: toBoolean(row.mustChangePassword),
+        mnemonic: String(row.mnemonic ?? ''),
         createdAt: toNumber(row.createdAt),
         updatedAt: toNumber(row.updatedAt),
       }
     },
     async put(record) {
       await connection.execute(
-        'INSERT OR REPLACE INTO users (email, salt, keyHash, displayName, avatar, mustChangePassword, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT OR REPLACE INTO users (email, salt, keyHash, displayName, avatar, mnemonic, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         [
           record.email,
           record.salt,
           record.keyHash,
           record.displayName,
           serializeAvatar(record.avatar),
-          record.mustChangePassword ? 1 : 0,
+          record.mnemonic,
           record.createdAt,
           record.updatedAt,
         ],

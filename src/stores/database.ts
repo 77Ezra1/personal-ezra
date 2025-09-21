@@ -1,4 +1,5 @@
 import Dexie, { Table } from 'dexie'
+import { generateMnemonicPhrase } from '../lib/mnemonic'
 import type { StoredDocument, VaultFileMeta } from '../lib/vault'
 
 export type DocDocument = StoredDocument
@@ -18,7 +19,7 @@ export interface UserRecord {
   keyHash: string
   displayName: string
   avatar: UserAvatarMeta | null
-  mustChangePassword: boolean
+  mnemonic: string
   createdAt: number
   updatedAt: number
 }
@@ -187,9 +188,7 @@ class AppDatabase extends Dexie {
           keyHash: string
           displayName?: string
           avatar?: UserRecord['avatar']
-          createdAt?: number
-          updatedAt?: number
-          mustChangePassword?: boolean
+          mnemonic?: string
         }
         const usersTable = tx.table('users') as Table<LegacyUserRecord, string>
         const users = await usersTable.toArray()
@@ -217,11 +216,10 @@ class AppDatabase extends Dexie {
               keyHash: typeof legacy.keyHash === 'string' ? legacy.keyHash : '',
               displayName,
               avatar: legacy.avatar ?? null,
-              mustChangePassword,
-              createdAt,
-              updatedAt,
+              mnemonic: typeof legacy.mnemonic === 'string' ? legacy.mnemonic : '',
+              updatedAt: legacy.updatedAt ?? Date.now(),
             }
-            await usersTable.put(next as unknown as LegacyUserRecord)
+            await usersTable.put(next)
           }),
         )
       })
@@ -233,21 +231,21 @@ class AppDatabase extends Dexie {
         docs: '++id, ownerEmail, updatedAt',
       })
       .upgrade(async tx => {
-        type LegacyUserRecordV4 = Omit<UserRecord, 'mustChangePassword'> & {
-          mustChangePassword?: boolean
-        }
-        const usersTable = tx.table('users') as Table<LegacyUserRecordV4, string>
+        type LegacyUserRecord = Omit<UserRecord, 'mnemonic'> & { mnemonic?: string }
+        const usersTable = tx.table('users') as Table<LegacyUserRecord, string>
         const users = await usersTable.toArray()
         if (users.length === 0) return
 
         await Promise.all(
           users.map(async legacy => {
-            if (typeof legacy.mustChangePassword === 'boolean') {
+            if (typeof legacy.mnemonic === 'string' && legacy.mnemonic.trim()) {
               return
             }
+            const mnemonic = generateMnemonicPhrase()
             const next: UserRecord = {
               ...legacy,
-              mustChangePassword: false,
+              mnemonic,
+              updatedAt: legacy.updatedAt ?? Date.now(),
             }
             await usersTable.put(next as unknown as LegacyUserRecordV4)
           }),
