@@ -136,7 +136,7 @@ export default function Docs() {
       try {
         const rows = await docsDb.docs.where('ownerEmail').equals(currentEmail).toArray()
         rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-        setItems(rows)
+        setItems(rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) })))
       } finally {
         if (showLoading) {
           setLoading(false)
@@ -154,26 +154,19 @@ export default function Docs() {
       return
     }
 
-    async function load(currentEmail: string) {
-      setLoading(true)
-      try {
-        const rows = await docsDb.docs.where('ownerEmail').equals(currentEmail).toArray()
-        rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-        setItems(rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) })))
-      } finally {
-        setLoading(false)
+    void reloadItems(email)
+
+    const handleImported = () => {
+      if (email) {
+        void reloadItems(email, { showLoading: false })
       }
     }
 
-    const handleImported = () => {
-      void reloadItems(email)
+    window.addEventListener(BACKUP_IMPORTED_EVENT, handleImported)
+    return () => {
+      window.removeEventListener(BACKUP_IMPORTED_EVENT, handleImported)
     }
-
-  async function reloadItems(currentEmail: string) {
-    const rows = await docsDb.docs.where('ownerEmail').equals(currentEmail).toArray()
-    rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-    setItems(rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) })))
-  }
+  }, [email, reloadItems])
 
   /* ------------------------------ 列表派生 ------------------------------ */
 
