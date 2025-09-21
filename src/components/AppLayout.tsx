@@ -25,7 +25,6 @@ type AppLayoutProps = {
   actions?: ReactNode
   viewMode?: 'card' | 'list'
   onViewModeChange?: (mode: 'card' | 'list') => void
-  viewModeLabel?: string
 }
 
 export function AppLayout({
@@ -41,7 +40,6 @@ export function AppLayout({
   actions,
   viewMode = 'card',
   onViewModeChange,
-  viewModeLabel = '视图',
 }: AppLayoutProps) {
   const viewModes: Array<{ value: 'card' | 'list'; label: string; icon: ReactNode }> = [
     { value: 'card', label: '卡片视图', icon: <LayoutGrid className="h-3.5 w-3.5" aria-hidden /> },
@@ -80,28 +78,25 @@ export function AppLayout({
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
             {onViewModeChange && (
-              <div className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 shadow-inner shadow-black/5">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted">{viewModeLabel}</span>
-                <div className="flex items-center gap-1">
-                  {viewModes.map(mode => (
-                    <button
-                      key={mode.value}
-                      type="button"
-                      onClick={() => onViewModeChange(mode.value)}
-                      className={clsx(
-                        'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
-                        viewMode === mode.value
-                          ? 'bg-primary text-background shadow'
-                          : 'text-muted hover:text-text',
-                      )}
-                      aria-pressed={viewMode === mode.value}
-                      aria-label={`切换到${mode.label}`}
-                    >
-                      {mode.icon}
-                      <span className="hidden sm:inline">{mode.value === 'card' ? '卡片' : '列表'}</span>
-                    </button>
-                  ))}
-                </div>
+              <div className="flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-1 shadow-inner shadow-black/5">
+                {viewModes.map(mode => (
+                  <button
+                    key={mode.value}
+                    type="button"
+                    onClick={() => onViewModeChange(mode.value)}
+                    className={clsx(
+                      'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+                      viewMode === mode.value
+                        ? 'bg-primary text-background shadow'
+                        : 'text-muted hover:text-text',
+                    )}
+                    aria-pressed={viewMode === mode.value}
+                    aria-label={`切换到${mode.label}`}
+                  >
+                    {mode.icon}
+                    <span className="hidden sm:inline">{mode.value === 'card' ? '卡片' : '列表'}</span>
+                  </button>
+                ))}
               </div>
             )}
             {onCreate && (
