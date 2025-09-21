@@ -107,6 +107,8 @@ export default function Passwords() {
       }
     }
 
+    void load(email)
+
     const handleImported = () => {
       void reloadItems(email)
     }
