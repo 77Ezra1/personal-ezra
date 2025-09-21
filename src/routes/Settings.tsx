@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import {
   useEffect,
   useId,
+  useRef,
   useState,
   type ChangeEvent,
   type Dispatch,
@@ -13,6 +14,8 @@ import AvatarUploader from '../components/AvatarUploader'
 import ConfirmDialog from '../components/ConfirmDialog'
 import CopyButton from '../components/CopyButton'
 import { generateCaptcha } from '../lib/captcha'
+import { useToast } from '../components/ToastProvider'
+import { BACKUP_IMPORTED_EVENT, exportUserData, importUserData } from '../lib/backup'
 import { DEFAULT_TIMEOUT, IDLE_TIMEOUT_OPTIONS, useIdleTimeoutStore } from '../features/lock/IdleLock'
 import { selectAuthProfile, useAuthStore } from '../stores/auth'
 import type { UserAvatarMeta } from '../stores/database'
@@ -239,6 +242,8 @@ export default function Settings() {
 
       <MnemonicRecoverySection />
 
+      <DataBackupSection />
+
       <IdleTimeoutSettingsSection />
 
       <DeleteAccountSection />
@@ -297,6 +302,143 @@ export default function Settings() {
         </fieldset>
       </section>
     </div>
+  )
+}
+
+function DataBackupSection() {
+  const email = useAuthStore(state => state.email)
+  const encryptionKey = useAuthStore(state => state.encryptionKey)
+  const { showToast } = useToast()
+  const [exporting, setExporting] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const backupDisabled = !email || !encryptionKey
+
+  const formatTimestamp = (date: Date) => {
+    const pad = (value: number) => value.toString().padStart(2, '0')
+    const year = date.getFullYear()
+    const month = pad(date.getMonth() + 1)
+    const day = pad(date.getDate())
+    const hour = pad(date.getHours())
+    const minute = pad(date.getMinutes())
+    const second = pad(date.getSeconds())
+    return `${year}${month}${day}-${hour}${minute}${second}`
+  }
+
+  const handleExport = async () => {
+    if (!email || !encryptionKey) {
+      showToast({ title: '无法导出备份', description: '请先登录并解锁账号后再试。', variant: 'error' })
+      return
+    }
+    try {
+      setExporting(true)
+      const blob = await exportUserData(email, encryptionKey)
+      const timestamp = formatTimestamp(new Date())
+      const fileName = `pms-backup-${timestamp}.json`
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      showToast({
+        title: '备份已导出',
+        description: '请妥善保管下载的备份文件。',
+        variant: 'success',
+      })
+    } catch (error) {
+      console.error('Failed to export user backup', error)
+      const message = error instanceof Error ? error.message : '导出备份失败，请稍后再试。'
+      showToast({ title: '导出失败', description: message, variant: 'error' })
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleImportClick = () => {
+    if (!email || !encryptionKey) {
+      showToast({ title: '无法导入备份', description: '请先登录并解锁账号后再试。', variant: 'error' })
+      return
+    }
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const [file] = event.currentTarget.files ?? []
+    event.currentTarget.value = ''
+    if (!file) return
+    if (!email || !encryptionKey) {
+      showToast({ title: '无法导入备份', description: '请先登录并解锁账号后再试。', variant: 'error' })
+      return
+    }
+    try {
+      setImporting(true)
+      const result = await importUserData(file, encryptionKey)
+      showToast({
+        title: '导入成功',
+        description: `密码 ${result.passwords} 条｜网站 ${result.sites} 个｜文档 ${result.docs} 条`,
+        variant: 'success',
+      })
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(BACKUP_IMPORTED_EVENT))
+      }
+    } catch (error) {
+      console.error('Failed to import user backup', error)
+      const message = error instanceof Error ? error.message : '导入备份失败，请确认文件无误后重试。'
+      showToast({ title: '导入失败', description: message, variant: 'error' })
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  return (
+    <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
+      <div className="space-y-1">
+        <h2 className="text-lg font-medium text-text">数据备份</h2>
+        <p className="text-sm text-muted">导出或导入当前账号的密码、网站与文档数据。</p>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={backupDisabled || exporting}
+          className={clsx(
+            'inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-background shadow-sm transition',
+            'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50',
+          )}
+        >
+          {exporting ? '导出中…' : '导出备份'}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleImportClick}
+          disabled={backupDisabled || importing}
+          className={clsx(
+            'inline-flex items-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-sm transition',
+            'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+          )}
+        >
+          {importing ? '导入中…' : '导入备份'}
+        </button>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+      </div>
+
+      <p className="text-xs leading-relaxed text-muted">
+        备份文件会使用当前主密码派生的密钥进行加密。请妥善保管文件并避免在不受信任的设备上导入。
+      </p>
+    </section>
   )
 }
 
