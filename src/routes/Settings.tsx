@@ -1,5 +1,8 @@
 import clsx from 'clsx'
-import type { ChangeEvent } from 'react'
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
+import AvatarUploader from '../components/AvatarUploader'
+import { selectAuthProfile, useAuthStore } from '../stores/auth'
+import type { UserAvatarMeta } from '../stores/database'
 import { resolveEffectiveTheme, type ThemeMode, useTheme } from '../stores/theme'
 
 type ThemeOption = {
@@ -29,10 +32,79 @@ const THEME_OPTIONS: ThemeOption[] = [
 export default function Settings() {
   const { mode, setMode } = useTheme()
   const effectiveTheme = resolveEffectiveTheme(mode)
+  const email = useAuthStore(state => state.email)
+  const profile = useAuthStore(selectAuthProfile)
+  const initialized = useAuthStore(state => state.initialized)
+  const updateProfile = useAuthStore(state => state.updateProfile)
+  const loadProfile = useAuthStore(state => state.loadProfile)
+  const [displayName, setDisplayName] = useState(profile?.displayName ?? '')
+  const [avatar, setAvatar] = useState<UserAvatarMeta | null>(profile?.avatar ?? null)
+  const [formMessage, setFormMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const profileDisabled = !email
+  const normalizedDisplayName = displayName.replace(/\s+/g, ' ').trim()
+  const profileDisplayName = profile?.displayName ?? ''
+  const profileAvatarData = profile?.avatar?.dataUrl ?? null
+  const nextAvatarData = avatar?.dataUrl ?? null
+  const hasChanges = profile
+    ? profileDisplayName !== normalizedDisplayName || profileAvatarData !== nextAvatarData
+    : Boolean(normalizedDisplayName || nextAvatarData)
+  const canSubmit = !profileDisabled && !isSaving && hasChanges
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const next = event.currentTarget.value as ThemeMode
     setMode(next)
+  }
+
+  useEffect(() => {
+    if (initialized && email && !profile) {
+      loadProfile().catch(error => {
+        console.error('Failed to load profile in settings', error)
+      })
+    }
+  }, [initialized, email, profile, loadProfile])
+
+  useEffect(() => {
+    setDisplayName(profile?.displayName ?? '')
+    setAvatar(profile?.avatar ?? null)
+  }, [profile?.displayName, profile?.avatar])
+
+  const handleDisplayNameChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setDisplayName(event.currentTarget.value)
+    setFormMessage(null)
+  }
+
+  const handleAvatarChange = (next: UserAvatarMeta | null) => {
+    if (profileDisabled) return
+    setAvatar(next)
+    setFormMessage(null)
+  }
+
+  const handleAvatarError = (message: string) => {
+    setFormMessage({ type: 'error', text: message })
+  }
+
+  const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (profileDisabled) {
+      setFormMessage({ type: 'error', text: '请先登录后再更新资料' })
+      return
+    }
+    try {
+      setIsSaving(true)
+      setFormMessage(null)
+      const result = await updateProfile({ displayName, avatar })
+      if (result.success) {
+        setFormMessage({ type: 'success', text: '已保存用户资料' })
+      } else if (result.message) {
+        setFormMessage({ type: 'error', text: result.message })
+      }
+    } catch (error) {
+      console.error('Failed to submit profile form', error)
+      setFormMessage({ type: 'error', text: '保存资料失败，请稍后重试' })
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -41,6 +113,91 @@ export default function Settings() {
         <h1 className="text-2xl font-semibold text-text">设置</h1>
         <p className="text-sm text-muted">调整主题外观与个性化选项。</p>
       </header>
+
+      <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
+        <div className="space-y-1">
+          <h2 className="text-lg font-medium text-text">用户资料</h2>
+          <p className="text-sm text-muted">
+            更新显示名称与头像{profileDisabled ? '，请先登录后再编辑。' : '。邮箱仅用于登录验证。'}
+          </p>
+        </div>
+        <form className="space-y-6" onSubmit={handleProfileSubmit}>
+          <div className="space-y-2">
+            <label htmlFor="profile-email" className="text-sm font-medium text-text">
+              登录邮箱
+            </label>
+            <input
+              id="profile-email"
+              type="email"
+              value={email ?? ''}
+              readOnly
+              placeholder={profileDisabled ? '尚未登录' : undefined}
+              className={clsx(
+                'w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover',
+                profileDisabled && 'bg-surface/60 text-muted',
+              )}
+            />
+            <p className="text-xs text-muted">邮箱仅用于登录与数据加密，不会对外展示。</p>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="profile-displayName" className="text-sm font-medium text-text">
+              用户名
+            </label>
+            <input
+              id="profile-displayName"
+              type="text"
+              value={displayName}
+              onChange={handleDisplayNameChange}
+              maxLength={30}
+              disabled={profileDisabled || isSaving}
+              placeholder="例如：小明"
+              className={clsx(
+                'w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+                !profileDisabled && 'placeholder:text-muted',
+              )}
+            />
+            <p className="text-xs text-muted">2-30 个字符，支持中英文、数字，将自动过滤敏感词。</p>
+          </div>
+
+          <div className="space-y-2">
+            <span className="text-sm font-medium text-text">头像</span>
+            <AvatarUploader
+              value={avatar}
+              onChange={handleAvatarChange}
+              onError={handleAvatarError}
+              disabled={profileDisabled || isSaving}
+            />
+          </div>
+
+          {formMessage ? (
+            <div
+              role="alert"
+              className={clsx(
+                'rounded-xl border px-3 py-2 text-sm shadow-sm',
+                formMessage.type === 'success'
+                  ? 'border-primary/50 bg-primary/10 text-primary'
+                  : 'border-red-400/70 bg-red-500/10 text-red-400',
+              )}
+            >
+              {formMessage.text}
+            </div>
+          ) : null}
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              className={clsx(
+                'inline-flex items-center rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-background shadow-sm transition',
+                'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50',
+              )}
+            >
+              {isSaving ? '保存中…' : '保存资料'}
+            </button>
+          </div>
+        </form>
+      </section>
 
       <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
         <div className="space-y-1">

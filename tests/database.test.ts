@@ -28,6 +28,8 @@ describe('sqlite database helpers', () => {
       email: 'user@example.com',
       salt: 'salt',
       keyHash: 'hash',
+      displayName: 'User',
+      avatar: null,
       createdAt: now,
       updatedAt: now,
     }

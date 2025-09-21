@@ -3,10 +3,21 @@ import type { StoredDocument, VaultFileMeta } from '../lib/vault'
 
 export type DocDocument = StoredDocument
 
+export interface UserAvatarMeta {
+  dataUrl: string
+  mime: string
+  size: number
+  width: number
+  height: number
+  updatedAt: number
+}
+
 export interface UserRecord {
   email: string
   salt: string
   keyHash: string
+  displayName: string
+  avatar: UserAvatarMeta | null
   createdAt: number
   updatedAt: number
 }
@@ -157,6 +168,38 @@ class AppDatabase extends Dexie {
             } else {
               await docsTable.add(next as unknown as LegacyDocRecord)
             }
+          }),
+        )
+      })
+    this.version(4)
+      .stores({
+        users: '&email',
+        passwords: '++id, ownerEmail, updatedAt',
+        sites: '++id, ownerEmail, updatedAt',
+        docs: '++id, ownerEmail, updatedAt',
+      })
+      .upgrade(async tx => {
+        type LegacyUserRecord = Omit<UserRecord, 'displayName' | 'avatar'> & {
+          displayName?: string
+          avatar?: UserRecord['avatar']
+        }
+        const usersTable = tx.table('users') as Table<LegacyUserRecord, string>
+        const users = await usersTable.toArray()
+        if (users.length === 0) return
+
+        await Promise.all(
+          users.map(async legacy => {
+            const email = typeof legacy.email === 'string' ? legacy.email : ''
+            const existing = typeof legacy.displayName === 'string' ? legacy.displayName.trim() : ''
+            const fallback = email.split('@')[0]?.trim()
+            const displayName = existing || fallback || email || '用户'
+            const next: UserRecord = {
+              ...legacy,
+              displayName,
+              avatar: legacy.avatar ?? null,
+              updatedAt: legacy.updatedAt ?? Date.now(),
+            }
+            await usersTable.put(next)
           }),
         )
       })
