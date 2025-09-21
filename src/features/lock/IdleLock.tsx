@@ -4,9 +4,19 @@ import { useAuthStore } from '../../stores/auth'
 import { useLock } from './LockProvider'
 
 const STORAGE_KEY = 'pms-web-idle-timeout'
-const DEFAULT_TIMEOUT = 5 * 60 * 1000
+export const DEFAULT_TIMEOUT = 5 * 60 * 1000
 
-type IdleDuration = number | 'off'
+export type IdleDuration = number | 'off'
+
+type IdleTimeoutOption = { label: string; value: IdleDuration }
+
+export const IDLE_TIMEOUT_OPTIONS: IdleTimeoutOption[] = [
+  { label: '不自动锁定', value: 'off' },
+  { label: '1 分钟', value: 60_000 },
+  { label: '5 分钟', value: 5 * 60_000 },
+  { label: '10 分钟', value: 10 * 60_000 },
+  { label: '30 分钟', value: 30 * 60_000 },
+]
 
 type IdleTimeoutState = {
   duration: IdleDuration
@@ -77,11 +87,14 @@ export function IdleLockSelector() {
         onChange={event => handleChange(event.target.value)}
         className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
       >
-        <option value="off">不自动锁定</option>
-        <option value={60_000}>1 分钟</option>
-        <option value={5 * 60_000}>5 分钟</option>
-        <option value={10 * 60_000}>10 分钟</option>
-        <option value={30 * 60_000}>30 分钟</option>
+        {IDLE_TIMEOUT_OPTIONS.map(option => (
+          <option
+            key={String(option.value)}
+            value={option.value === 'off' ? 'off' : String(option.value)}
+          >
+            {option.label}
+          </option>
+        ))}
       </select>
     </label>
   )

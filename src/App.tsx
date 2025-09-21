@@ -10,7 +10,6 @@ import Passwords from './routes/Passwords'
 import Sites from './routes/Sites'
 import Docs from './routes/Docs'
 import Settings from './routes/Settings'
-import { IdleLockSelector } from './features/lock/IdleLock'
 import { useLock } from './features/lock/LockProvider'
 
 function GuestLayout({ children }: { children: ReactNode }) {
@@ -65,10 +64,7 @@ function AuthenticatedLayout() {
               </button>
             </div>
             {email && !locked && (
-              <div className="flex w-full min-w-[220px] flex-col items-end gap-2 text-xs text-text/80">
-                <div className="w-full">
-                  <IdleLockSelector />
-                </div>
+              <div className="flex w-full min-w-[220px] justify-end">
                 <button
                   type="button"
                   onClick={() => {
