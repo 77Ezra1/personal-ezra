@@ -1,10 +1,124 @@
-import { decryptString, encryptString } from './crypto'
+import { decryptString, encryptString, deriveKey } from './crypto'
 import { db, type DocRecord, type PasswordRecord, type SiteRecord } from '../stores/database'
 import { useAuthStore } from '../stores/auth'
 
 export const BACKUP_IMPORTED_EVENT = 'pms-backup-imported'
 
 const BACKUP_VERSION = 1
+const BACKUP_FILE_VERSION = 2
+const BACKUP_FILE_MAGIC = 'pms-backup'
+
+const KDF_PARAMETERS = {
+  algorithm: 'argon2id' as const,
+  version: 1,
+  iterations: 3,
+  memory: 64 * 1024,
+  parallelism: 1,
+}
+
+type LegacyEncryptedPayload = {
+  ciphertext: string
+  nonce: string
+}
+
+type BackupFileKdfMetadata = {
+  algorithm: string
+  version: number
+  salt: string
+  iterations: number
+  memory: number
+  parallelism: number
+}
+
+type BackupFileEnvelope = {
+  format: typeof BACKUP_FILE_MAGIC
+  version: number
+  kdf: BackupFileKdfMetadata
+  payload: LegacyEncryptedPayload
+}
+
+function toBase64(bytes: Uint8Array) {
+  return btoa(String.fromCharCode(...bytes))
+}
+
+function fromBase64(str: string) {
+  const decoded = atob(str)
+  const result = new Uint8Array(decoded.length)
+  for (let i = 0; i < decoded.length; i += 1) {
+    result[i] = decoded.charCodeAt(i)
+  }
+  return result
+}
+
+function sanitizeEncryptedPayload(value: unknown): LegacyEncryptedPayload | null {
+  if (!isObject(value)) return null
+  const ciphertext = sanitizeOptionalString((value as { ciphertext?: unknown }).ciphertext)
+  const nonce = sanitizeOptionalString((value as { nonce?: unknown }).nonce)
+  if (!ciphertext || !nonce) {
+    return null
+  }
+  return { ciphertext, nonce }
+}
+
+function sanitizeKdfMetadata(value: unknown): BackupFileKdfMetadata | null {
+  if (!isObject(value)) return null
+  const algorithm = sanitizeOptionalString((value as { algorithm?: unknown }).algorithm)
+  const salt = sanitizeOptionalString((value as { salt?: unknown }).salt)
+  const version = Number((value as { version?: unknown }).version)
+  const iterations = Number((value as { iterations?: unknown }).iterations)
+  const memory = Number((value as { memory?: unknown }).memory)
+  const parallelism = Number((value as { parallelism?: unknown }).parallelism)
+  if (!algorithm || !salt) {
+    return null
+  }
+  if (!Number.isInteger(version) || version <= 0) {
+    return null
+  }
+  if (!Number.isInteger(iterations) || iterations <= 0) {
+    return null
+  }
+  if (!Number.isInteger(memory) || memory <= 0) {
+    return null
+  }
+  if (!Number.isInteger(parallelism) || parallelism <= 0) {
+    return null
+  }
+  return { algorithm, salt, version, iterations, memory, parallelism }
+}
+
+function parseBackupEnvelope(value: unknown): BackupFileEnvelope | null {
+  if (!isObject(value)) return null
+  const format = sanitizeOptionalString((value as { format?: unknown }).format)
+  const version = Number((value as { version?: unknown }).version)
+  if (format !== BACKUP_FILE_MAGIC) {
+    return null
+  }
+  if (!Number.isInteger(version) || version <= 0) {
+    return null
+  }
+  const kdf = sanitizeKdfMetadata((value as { kdf?: unknown }).kdf)
+  const payload = sanitizeEncryptedPayload((value as { payload?: unknown }).payload)
+  if (!kdf || !payload) {
+    return null
+  }
+  return { format: BACKUP_FILE_MAGIC, version, kdf, payload }
+}
+
+function ensureSupportedKdf(meta: BackupFileKdfMetadata) {
+  if (meta.algorithm !== KDF_PARAMETERS.algorithm) {
+    throw new Error('该备份文件使用了不受支持的加密算法，无法导入。')
+  }
+  if (meta.version !== KDF_PARAMETERS.version) {
+    throw new Error('该备份文件使用了不受支持的密钥派生版本，无法导入。')
+  }
+  if (
+    meta.iterations !== KDF_PARAMETERS.iterations ||
+    meta.memory !== KDF_PARAMETERS.memory ||
+    meta.parallelism !== KDF_PARAMETERS.parallelism
+  ) {
+    throw new Error('该备份文件使用了不受支持的密钥派生参数，无法导入。')
+  }
+}
 
 type PasswordBackupEntry = {
   title: string
@@ -202,13 +316,43 @@ function mapDocs(records: DocRecord[]): DocBackupEntry[] {
   })
 }
 
-export async function exportUserData(email: string | null | undefined, encryptionKey: Uint8Array | null | undefined) {
+export async function exportUserData(
+  email: string | null | undefined,
+  encryptionKey: Uint8Array | null | undefined,
+  masterPassword: string | null | undefined,
+) {
   const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : ''
   if (!normalizedEmail) {
     throw new Error('请先登录后再导出备份。')
   }
   if (!encryptionKey || encryptionKey.length === 0) {
     throw new Error('缺少有效的加密密钥，无法导出数据。')
+  }
+
+  const passwordInput = typeof masterPassword === 'string' ? masterPassword : ''
+  if (!passwordInput) {
+    throw new Error('导出备份前请输入主密码。')
+  }
+
+  const userRecord = await db.users.get(normalizedEmail)
+  if (!userRecord) {
+    throw new Error('无法获取当前账号信息，请重新登录后再试。')
+  }
+  if (typeof userRecord.salt !== 'string' || !userRecord.salt || typeof userRecord.keyHash !== 'string') {
+    throw new Error('当前账号缺少密钥参数，无法导出备份。')
+  }
+
+  let derivedKey: Uint8Array
+  try {
+    const saltBytes = fromBase64(userRecord.salt)
+    derivedKey = await deriveKey(passwordInput, saltBytes)
+  } catch (error) {
+    console.error('Failed to derive key for backup export', error)
+    throw new Error('计算备份密钥失败，请稍后重试。')
+  }
+
+  if (toBase64(derivedKey) !== userRecord.keyHash) {
+    throw new Error('主密码错误，请确认后再试。')
   }
 
   const [passwordRows, siteRows, docRows] = await Promise.all([
@@ -226,9 +370,34 @@ export async function exportUserData(email: string | null | undefined, encryptio
     docs: mapDocs(docRows),
   }
 
-  const json = JSON.stringify(payload)
-  const encrypted = await encryptString(encryptionKey, json)
-  return new Blob([encrypted], { type: 'application/json' })
+  let encryptedPayload: LegacyEncryptedPayload
+  try {
+    const encrypted = await encryptString(derivedKey, JSON.stringify(payload))
+    const parsed = sanitizeEncryptedPayload(JSON.parse(encrypted))
+    if (!parsed) {
+      throw new Error('Invalid encrypted payload')
+    }
+    encryptedPayload = parsed
+  } catch (error) {
+    console.error('Failed to encrypt backup payload', error)
+    throw new Error('导出备份失败，请稍后重试。')
+  }
+
+  const envelope: BackupFileEnvelope = {
+    format: BACKUP_FILE_MAGIC,
+    version: BACKUP_FILE_VERSION,
+    kdf: {
+      algorithm: KDF_PARAMETERS.algorithm,
+      version: KDF_PARAMETERS.version,
+      salt: userRecord.salt,
+      iterations: KDF_PARAMETERS.iterations,
+      memory: KDF_PARAMETERS.memory,
+      parallelism: KDF_PARAMETERS.parallelism,
+    },
+    payload: encryptedPayload,
+  }
+
+  return new Blob([JSON.stringify(envelope)], { type: 'application/json' })
 }
 
 function parseBackupPayload(data: unknown): BackupPayload {
@@ -425,6 +594,7 @@ async function persistRecords(
 export async function importUserData(
   payload: Blob | File | string,
   encryptionKey: Uint8Array | null | undefined,
+  masterPassword: string | null | undefined,
 ): Promise<ImportResult> {
   if (!encryptionKey || encryptionKey.length === 0) {
     throw new Error('缺少有效的加密密钥，无法导入备份。')
@@ -439,12 +609,64 @@ export async function importUserData(
     throw new Error('无法解析备份文件内容。')
   }
 
-  let decrypted: string
+  let parsedRaw: unknown
   try {
-    decrypted = await decryptString(encryptionKey, raw)
+    parsedRaw = JSON.parse(raw)
   } catch (error) {
-    console.error('Failed to decrypt backup payload', error)
-    throw new Error('解密备份失败，请确认选择了正确的文件和账号。')
+    console.error('Failed to parse backup file content', error)
+    throw new Error('备份文件格式不正确。')
+  }
+
+  const envelope = parseBackupEnvelope(parsedRaw)
+
+  let decrypted: string
+  if (envelope) {
+    if (envelope.version > BACKUP_FILE_VERSION) {
+      throw new Error('备份文件版本过新，请更新应用后再试。')
+    }
+    const passwordInput = typeof masterPassword === 'string' ? masterPassword : ''
+    if (!passwordInput) {
+      throw new Error('导入备份前请输入主密码。')
+    }
+
+    try {
+      ensureSupportedKdf(envelope.kdf)
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error
+      }
+      throw new Error('该备份文件使用了不受支持的密钥派生参数，无法导入。')
+    }
+
+    let saltBytes: Uint8Array
+    try {
+      saltBytes = fromBase64(envelope.kdf.salt)
+    } catch (error) {
+      console.error('Failed to decode salt from backup payload', error)
+      throw new Error('备份文件的密钥信息无效，无法导入。')
+    }
+
+    let derivedKey: Uint8Array
+    try {
+      derivedKey = await deriveKey(passwordInput, saltBytes)
+    } catch (error) {
+      console.error('Failed to derive key for backup import', error)
+      throw new Error('计算备份密钥失败，请稍后重试。')
+    }
+
+    try {
+      decrypted = await decryptString(derivedKey, JSON.stringify(envelope.payload))
+    } catch (error) {
+      console.error('Failed to decrypt password-based backup payload', error)
+      throw new Error('主密码不正确，无法解密备份。')
+    }
+  } else {
+    try {
+      decrypted = await decryptString(encryptionKey, raw)
+    } catch (error) {
+      console.error('Failed to decrypt backup payload', error)
+      throw new Error('解密备份失败，请确认选择了正确的文件和账号。')
+    }
   }
 
   let parsed: BackupPayload

@@ -311,11 +311,20 @@ function DataBackupSection() {
   const email = useAuthStore(state => state.email)
   const encryptionKey = useAuthStore(state => state.encryptionKey)
   const { showToast } = useToast()
+  const passwordInputId = useId()
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [masterPassword, setMasterPassword] = useState('')
+  const [passwordError, setPasswordError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const backupDisabled = !email || !encryptionKey
+  const passwordDisabled = backupDisabled || exporting || importing
+
+  const handlePasswordChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setMasterPassword(event.currentTarget.value)
+    setPasswordError(null)
+  }
 
   const formatTimestamp = (date: Date) => {
     const pad = (value: number) => value.toString().padStart(2, '0')
@@ -333,9 +342,13 @@ function DataBackupSection() {
       showToast({ title: '无法导出备份', description: '请先登录并解锁账号后再试。', variant: 'error' })
       return
     }
+    if (!masterPassword) {
+      setPasswordError('请先输入主密码再导出备份。')
+      return
+    }
     try {
       setExporting(true)
-      const blob = await exportUserData(email, encryptionKey)
+      const blob = await exportUserData(email, encryptionKey, masterPassword)
       const timestamp = formatTimestamp(new Date())
       const fileName = `pms-backup-${timestamp}.json`
       const url = URL.createObjectURL(blob)
@@ -351,9 +364,14 @@ function DataBackupSection() {
         description: '请妥善保管下载的备份文件。',
         variant: 'success',
       })
+      setPasswordError(null)
+      setMasterPassword('')
     } catch (error) {
       console.error('Failed to export user backup', error)
       const message = error instanceof Error ? error.message : '导出备份失败，请稍后再试。'
+      if (message.includes('密码')) {
+        setPasswordError(message)
+      }
       showToast({ title: '导出失败', description: message, variant: 'error' })
     } finally {
       setExporting(false)
@@ -363,6 +381,10 @@ function DataBackupSection() {
   const handleImportClick = () => {
     if (!email || !encryptionKey) {
       showToast({ title: '无法导入备份', description: '请先登录并解锁账号后再试。', variant: 'error' })
+      return
+    }
+    if (!masterPassword) {
+      setPasswordError('请先输入主密码再导入备份。')
       return
     }
     fileInputRef.current?.click()
@@ -376,20 +398,29 @@ function DataBackupSection() {
       showToast({ title: '无法导入备份', description: '请先登录并解锁账号后再试。', variant: 'error' })
       return
     }
+    if (!masterPassword) {
+      setPasswordError('请先输入主密码再导入备份。')
+      return
+    }
     try {
       setImporting(true)
-      const result = await importUserData(file, encryptionKey)
+      const result = await importUserData(file, encryptionKey, masterPassword)
       showToast({
         title: '导入成功',
         description: `密码 ${result.passwords} 条｜网站 ${result.sites} 个｜文档 ${result.docs} 条`,
         variant: 'success',
       })
+      setPasswordError(null)
+      setMasterPassword('')
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent(BACKUP_IMPORTED_EVENT))
       }
     } catch (error) {
       console.error('Failed to import user backup', error)
       const message = error instanceof Error ? error.message : '导入备份失败，请确认文件无误后重试。'
+      if (message.includes('密码')) {
+        setPasswordError(message)
+      }
       showToast({ title: '导入失败', description: message, variant: 'error' })
     } finally {
       setImporting(false)
@@ -401,6 +432,29 @@ function DataBackupSection() {
       <div className="space-y-1">
         <h2 className="text-lg font-medium text-text">数据备份</h2>
         <p className="text-sm text-muted">导出或导入当前账号的密码、网站与文档数据。</p>
+      </div>
+
+      <div className="space-y-2">
+        <label htmlFor={passwordInputId} className="text-sm font-medium text-text">
+          主密码
+        </label>
+        <input
+          id={passwordInputId}
+          type="password"
+          value={masterPassword}
+          onChange={handlePasswordChange}
+          placeholder="请输入当前主密码"
+          autoComplete="current-password"
+          disabled={passwordDisabled}
+          className={clsx(
+            'w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+            !passwordDisabled && 'placeholder:text-muted',
+          )}
+        />
+        <p className="text-xs leading-relaxed text-muted">
+          导出与导入备份时会使用该密码派生密钥，请确保输入正确的当前主密码。
+        </p>
+        {passwordError ? <p className="text-xs text-red-500">{passwordError}</p> : null}
       </div>
 
       <div className="flex flex-wrap gap-3">
