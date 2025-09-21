@@ -50,6 +50,7 @@ type AuthState = {
   loadProfile: () => Promise<UserProfile | null>
   updateProfile: (payload: ProfileUpdatePayload) => Promise<AuthResult>
   changePassword: (payload: { currentPassword: string; newPassword: string }) => Promise<AuthResult>
+  recoverPassword: (payload: { email: string; mnemonic: string; newPassword: string }) => Promise<AuthResult>
   deleteAccount: (password: string) => Promise<AuthResult>
   revealMnemonic: (password: string) => Promise<MnemonicResult>
 }
@@ -97,6 +98,14 @@ function clearSession() {
 
 function normalizeDisplayName(value: string) {
   return value.replace(/\s+/g, ' ').trim()
+}
+
+function normalizeMnemonic(value: string) {
+  return value
+    .split(/\s+/)
+    .map(part => part.trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ')
 }
 
 function fallbackDisplayName(email: string, displayName?: string) {
@@ -399,6 +408,110 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (error) {
       console.error('Failed to change password', error)
       return { success: false, message: '修改密码失败，请稍后重试' }
+    }
+  },
+  async recoverPassword(payload) {
+    const email = payload.email.trim().toLowerCase()
+    const mnemonic = normalizeMnemonic(payload.mnemonic ?? '')
+    const { newPassword } = payload
+
+    if (!email) {
+      return { success: false, message: '请输入注册邮箱' }
+    }
+    if (!mnemonic) {
+      return { success: false, message: '请输入助记词' }
+    }
+    if (!newPassword) {
+      return { success: false, message: '请输入新密码' }
+    }
+    if (newPassword.length < 6) {
+      return { success: false, message: '新密码至少需要 6 位字符' }
+    }
+
+    try {
+      const record = await db.users.get(email)
+      if (!record) {
+        return { success: false, message: '账号不存在或助记词不匹配' }
+      }
+
+      const storedMnemonic = normalizeMnemonic(typeof record.mnemonic === 'string' ? record.mnemonic : '')
+      if (!storedMnemonic) {
+        return { success: false, message: '该账号尚未设置助记词，无法找回密码' }
+      }
+      if (storedMnemonic !== mnemonic) {
+        return { success: false, message: '助记词不正确' }
+      }
+
+      const saltBytes = fromBase64(record.salt)
+      const existingKey = fromBase64(record.keyHash)
+      if (!existingKey || existingKey.length === 0) {
+        return { success: false, message: '账号密钥数据异常，请稍后重试' }
+      }
+
+      const candidateKey = await deriveKey(newPassword, saltBytes)
+      const candidateHash = toBase64(candidateKey)
+      if (candidateHash === record.keyHash) {
+        return { success: false, message: '新密码不能与旧密码相同' }
+      }
+
+      const passwordRecords = await db.passwords.where('ownerEmail').equals(email).toArray()
+      const now = Date.now()
+      const decrypted: { record: PasswordRecord; plain: string }[] = []
+
+      for (const row of passwordRecords) {
+        if (typeof row.id !== 'number') {
+          console.error('Password record missing identifier during password recovery, aborting update')
+          return { success: false, message: '密码数据异常，请稍后重试' }
+        }
+        try {
+          const plain = await decryptString(existingKey, row.passwordCipher)
+          decrypted.push({ record: row, plain })
+        } catch (error) {
+          console.error('Failed to decrypt password record during password recovery', error)
+          return { success: false, message: '解密密码数据失败，请稍后再试' }
+        }
+      }
+
+      const newSalt = crypto.getRandomValues(new Uint8Array(16))
+      const newKey = await deriveKey(newPassword, newSalt)
+      const newHash = toBase64(newKey)
+
+      const updatedRecords: PasswordRecord[] = []
+      for (const item of decrypted) {
+        try {
+          const cipher = await encryptString(newKey, item.plain)
+          updatedRecords.push({ ...item.record, passwordCipher: cipher, updatedAt: now })
+        } catch (error) {
+          console.error('Failed to encrypt password record with recovered key', error)
+          return { success: false, message: '重新加密密码数据失败，请稍后再试' }
+        }
+      }
+
+      await Promise.all(updatedRecords.map(row => db.passwords.put(row)))
+
+      const nextRecord: UserRecord = {
+        ...record,
+        salt: toBase64(newSalt),
+        keyHash: newHash,
+        mustChangePassword: false,
+        updatedAt: now,
+      }
+      await db.users.put(nextRecord)
+
+      const { email: loggedInEmail } = get()
+      if (loggedInEmail && loggedInEmail === email) {
+        set({
+          encryptionKey: newKey,
+          profile: mapRecordToProfile(nextRecord),
+          mustChangePassword: false,
+        })
+        saveSession(email, newKey)
+      }
+
+      return { success: true }
+    } catch (error) {
+      console.error('Failed to recover password', error)
+      return { success: false, message: '重置密码失败，请稍后再试' }
     }
   },
   async deleteAccount(password) {
