@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import Fuse from 'fuse.js'
 import { Copy, ExternalLink, Pencil } from 'lucide-react'
 import { AppLayout } from '../components/AppLayout'
@@ -8,6 +8,7 @@ import { Skeleton } from '../components/Skeleton'
 import { VaultItemCard } from '../components/VaultItemCard'
 import { VaultItemList } from '../components/VaultItemList'
 import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyTextAutoClear } from '../lib/clipboard'
+import { BACKUP_IMPORTED_EVENT } from '../lib/backup'
 import { useToast } from '../components/ToastProvider'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 import { useAuthStore } from '../stores/auth'
@@ -47,6 +48,25 @@ export default function Sites() {
     return stored === 'list' ? 'list' : 'card'
   })
 
+  const reloadItems = useCallback(
+    async (currentEmail: string, options: { showLoading?: boolean } = {}) => {
+      const { showLoading = true } = options
+      if (showLoading) {
+        setLoading(true)
+      }
+      try {
+        const rows = await db.sites.where('ownerEmail').equals(currentEmail).toArray()
+        rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+        setItems(rows)
+      } finally {
+        if (showLoading) {
+          setLoading(false)
+        }
+      }
+    },
+    [setItems, setLoading],
+  )
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     try {
@@ -63,19 +83,23 @@ export default function Sites() {
       return
     }
 
-    async function load(currentEmail: string) {
-      setLoading(true)
-      try {
-        const rows = await db.sites.where('ownerEmail').equals(currentEmail).toArray()
-        rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-        setItems(rows)
-      } finally {
-        setLoading(false)
-      }
+    void reloadItems(email)
+  }, [email, reloadItems])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !email) {
+      return undefined
     }
 
-    void load(email)
-  }, [email])
+    const handleImported = () => {
+      void reloadItems(email)
+    }
+
+    window.addEventListener(BACKUP_IMPORTED_EVENT, handleImported)
+    return () => {
+      window.removeEventListener(BACKUP_IMPORTED_EVENT, handleImported)
+    }
+  }, [email, reloadItems])
 
   const fuse = useMemo(() => {
     return new Fuse(items, {
@@ -192,9 +216,7 @@ export default function Sites() {
       await db.sites.delete(item.id)
       showToast({ title: '网站已删除', variant: 'success' })
       if (email) {
-        const rows = await db.sites.where('ownerEmail').equals(email).toArray()
-        rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-        setItems(rows)
+        await reloadItems(email, { showLoading: false })
       }
       closeDrawer()
     } catch (error) {
@@ -249,9 +271,7 @@ export default function Sites() {
       }
 
       if (email) {
-        const rows = await db.sites.where('ownerEmail').equals(email).toArray()
-        rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-        setItems(rows)
+        await reloadItems(email, { showLoading: false })
       }
 
       closeDrawer()

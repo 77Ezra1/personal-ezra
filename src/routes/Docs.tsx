@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useMemo, useState, ChangeEvent, ReactNode, useId } from 'react'
+import React, { FormEvent, useCallback, useEffect, useMemo, useState, ChangeEvent, ReactNode, useId } from 'react'
 import {
   importFileToVault,
   openDocument,
@@ -8,6 +8,7 @@ import {
 } from '../lib/vault'
 import { db as docsDb, type DocRecord } from '../stores/database'
 import { useAuthStore } from '../stores/auth'
+import { BACKUP_IMPORTED_EVENT } from '../lib/backup'
 
 import { useToast } from '../components/ToastProvider'
 
@@ -121,6 +122,25 @@ export default function Docs() {
     }
   }, [viewMode])
 
+  const reloadItems = useCallback(
+    async (currentEmail: string, options: { showLoading?: boolean } = {}) => {
+      const { showLoading = true } = options
+      if (showLoading) {
+        setLoading(true)
+      }
+      try {
+        const rows = await docsDb.docs.where('ownerEmail').equals(currentEmail).toArray()
+        rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+        setItems(rows)
+      } finally {
+        if (showLoading) {
+          setLoading(false)
+        }
+      }
+    },
+    [setItems, setLoading],
+  )
+
   // 加载列表
   useEffect(() => {
     if (!email) {
@@ -129,25 +149,23 @@ export default function Docs() {
       return
     }
 
-    async function load(currentEmail: string) {
-      setLoading(true)
-      try {
-        const rows = await docsDb.docs.where('ownerEmail').equals(currentEmail).toArray()
-        rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-        setItems(rows)
-      } finally {
-        setLoading(false)
-      }
+    void reloadItems(email)
+  }, [email, reloadItems])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !email) {
+      return undefined
     }
 
-    void load(email)
-  }, [email])
+    const handleImported = () => {
+      void reloadItems(email)
+    }
 
-  async function reloadItems(currentEmail: string) {
-    const rows = await docsDb.docs.where('ownerEmail').equals(currentEmail).toArray()
-    rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-    setItems(rows)
-  }
+    window.addEventListener(BACKUP_IMPORTED_EVENT, handleImported)
+    return () => {
+      window.removeEventListener(BACKUP_IMPORTED_EVENT, handleImported)
+    }
+  }, [email, reloadItems])
 
   /* ------------------------------ 列表派生 ------------------------------ */
 
@@ -291,7 +309,7 @@ export default function Docs() {
         })
       }
       showToast({ title: '文档已删除', variant: 'success' })
-      if (email) await reloadItems(email)
+      if (email) await reloadItems(email, { showLoading: false })
       closeDrawer()
     } catch (error) {
       console.error('Failed to delete document', error)
@@ -403,7 +421,7 @@ export default function Docs() {
         showToast({ title: '文档已更新', variant: 'success' })
       }
 
-      if (email) await reloadItems(email)
+      if (email) await reloadItems(email, { showLoading: false })
       closeDrawer()
     } catch (error) {
       console.error('Failed to save or update document', error)
