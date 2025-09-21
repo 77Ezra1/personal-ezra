@@ -164,6 +164,14 @@ class MockSqliteDatabase {
       return results
     }
 
+    const simpleMatch = trimmed.match(/^SELECT\s+(.+?)\s+FROM\s+(\w+)$/i)
+    if (simpleMatch) {
+      const [, columnSection, table] = simpleMatch
+      const rows = [...this.ensureTable(table)]
+      const columns = columnSection.split(',').map(part => part.trim())
+      return rows.map(row => this.pickColumns(row, columns)) as T[]
+    }
+
     throw new Error(`Unhandled SQL select mock: ${query}`)
   }
 

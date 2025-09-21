@@ -1,4 +1,5 @@
-import Database from '@tauri-apps/plugin-sql'
+import * as SqlPlugin from '@tauri-apps/plugin-sql'
+import type { default as Database } from '@tauri-apps/plugin-sql'
 import { mkdir } from '@tauri-apps/plugin-fs'
 import { appDataDir, join } from '@tauri-apps/api/path'
 import type {
@@ -7,6 +8,7 @@ import type {
   OwnedCollection,
   PasswordRecord,
   SiteRecord,
+  UserAvatarMeta,
   UserRecord,
   UsersTable,
 } from './database'
@@ -16,6 +18,13 @@ type SqliteRow = Record<string, unknown>
 type Migration = {
   version: number
   run(connection: Database): Promise<void>
+}
+
+function fallbackDisplayName(email: string, displayName?: string) {
+  const trimmed = (displayName ?? '').trim()
+  if (trimmed) return trimmed
+  const prefix = email.split('@')[0]?.trim()
+  return prefix || email || '用户'
 }
 
 function toNumber(value: unknown): number {
@@ -59,6 +68,36 @@ function parseDocument(value: unknown): DocRecord['document'] {
   } catch (error) {
     console.warn('Failed to parse stored document payload from SQLite', error)
     return undefined
+  }
+}
+
+function serializeAvatar(meta: UserRecord['avatar']): string | null {
+  if (!meta) return null
+  try {
+    return JSON.stringify(meta)
+  } catch (error) {
+    console.warn('Failed to serialize avatar payload for SQLite storage', error)
+    return null
+  }
+}
+
+function parseAvatar(value: unknown): UserAvatarMeta | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  try {
+    const parsed = JSON.parse(value) as UserAvatarMeta
+    if (!parsed || typeof parsed !== 'object') return null
+    if (typeof parsed.dataUrl !== 'string' || !parsed.dataUrl) return null
+    return {
+      dataUrl: parsed.dataUrl,
+      mime: typeof parsed.mime === 'string' ? parsed.mime : 'image/png',
+      size: typeof parsed.size === 'number' ? parsed.size : 0,
+      width: typeof parsed.width === 'number' ? parsed.width : 0,
+      height: typeof parsed.height === 'number' ? parsed.height : 0,
+      updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now(),
+    }
+  } catch (error) {
+    console.warn('Failed to parse avatar payload from SQLite', error)
+    return null
   }
 }
 
@@ -149,6 +188,31 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 4,
+    async run(connection) {
+      const columns = await connection.select<{ name?: string }[]>(`PRAGMA table_info(users)`)
+      type ColumnInfo = { name: string }
+      const hasDisplayName = (columns as ColumnInfo[]).some(column => column.name === 'displayName')
+      const hasAvatar = (columns as ColumnInfo[]).some(column => column.name === 'avatar')
+      if (!hasDisplayName) {
+        await connection.execute('ALTER TABLE users ADD COLUMN displayName TEXT')
+      }
+      if (!hasAvatar) {
+        await connection.execute('ALTER TABLE users ADD COLUMN avatar TEXT')
+      }
+
+      const rows = await connection.select<{ email?: string; displayName?: string }[]>(
+        'SELECT email, displayName FROM users',
+      )
+      for (const row of rows) {
+        const email = String(row.email ?? '')
+        if (!email) continue
+        const normalized = fallbackDisplayName(email, row.displayName ? String(row.displayName) : undefined)
+        await connection.execute('UPDATE users SET displayName = ? WHERE email = ?', [normalized, email])
+      }
+    },
+  },
 ]
 
 async function runMigrations(connection: Database) {
@@ -168,7 +232,7 @@ function createUsersCollection(connection: Database): UsersTable {
   return {
     async get(key) {
       const rows = await connection.select<SqliteRow[]>(
-        'SELECT email, salt, keyHash, createdAt, updatedAt FROM users WHERE email = ? LIMIT 1',
+        'SELECT email, salt, keyHash, displayName, avatar, createdAt, updatedAt FROM users WHERE email = ? LIMIT 1',
         [key],
       )
       const row = rows[0]
@@ -177,14 +241,24 @@ function createUsersCollection(connection: Database): UsersTable {
         email: String(row.email ?? ''),
         salt: String(row.salt ?? ''),
         keyHash: String(row.keyHash ?? ''),
+        displayName: fallbackDisplayName(String(row.email ?? ''), row.displayName ? String(row.displayName) : undefined),
+        avatar: parseAvatar(row.avatar),
         createdAt: toNumber(row.createdAt),
         updatedAt: toNumber(row.updatedAt),
       }
     },
     async put(record) {
       await connection.execute(
-        'INSERT OR REPLACE INTO users (email, salt, keyHash, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
-        [record.email, record.salt, record.keyHash, record.createdAt, record.updatedAt],
+        'INSERT OR REPLACE INTO users (email, salt, keyHash, displayName, avatar, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [
+          record.email,
+          record.salt,
+          record.keyHash,
+          record.displayName,
+          serializeAvatar(record.avatar),
+          record.createdAt,
+          record.updatedAt,
+        ],
       )
       return record.email
     },
@@ -354,7 +428,7 @@ function prepareDocUpdate(record: DocRecord) {
   }
 }
 
-type SqlDatabaseConstructor = { load: (identifier: string) => Promise<unknown> }
+type SqlDatabaseConstructor = { load: (identifier: string) => Promise<Database> }
 
 function resolveSqlDatabase(): SqlDatabaseConstructor {
   const plugin = SqlPlugin as unknown as Record<string, unknown>
