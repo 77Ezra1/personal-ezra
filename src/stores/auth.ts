@@ -233,6 +233,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       keyHash: toBase64(key),
       displayName: fallbackDisplayName(email),
       avatar: null,
+      mustChangePassword: true,
       mnemonic,
       createdAt: now,
       updatedAt: now,

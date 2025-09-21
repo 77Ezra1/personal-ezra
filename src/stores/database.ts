@@ -19,6 +19,7 @@ export interface UserRecord {
   keyHash: string
   displayName: string
   avatar: UserAvatarMeta | null
+  mustChangePassword: boolean
   mnemonic: string
   createdAt: number
   updatedAt: number
@@ -192,6 +193,9 @@ class AppDatabase extends Dexie {
           displayName?: string
           avatar?: UserRecord['avatar']
           mnemonic?: string
+          createdAt?: number
+          updatedAt?: number
+          mustChangePassword?: boolean
         }
         const usersTable = tx.table('users') as Table<LegacyUserRecord, string>
         const users = await usersTable.toArray()
@@ -219,8 +223,10 @@ class AppDatabase extends Dexie {
               keyHash: typeof legacy.keyHash === 'string' ? legacy.keyHash : '',
               displayName,
               avatar: legacy.avatar ?? null,
+              mustChangePassword,
               mnemonic: typeof legacy.mnemonic === 'string' ? legacy.mnemonic : '',
-              updatedAt: legacy.updatedAt ?? Date.now(),
+              createdAt,
+              updatedAt,
             }
             await usersTable.put(next)
           }),
@@ -250,7 +256,7 @@ class AppDatabase extends Dexie {
               mnemonic,
               updatedAt: legacy.updatedAt ?? Date.now(),
             }
-            await usersTable.put(next as unknown as LegacyUserRecordV4)
+            await usersTable.put(next as LegacyUserRecord)
           }),
         )
       })

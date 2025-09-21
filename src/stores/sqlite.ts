@@ -328,7 +328,7 @@ function createUsersCollection(connection: Database): UsersTable {
   return {
     async get(key) {
       const rows = await connection.select<SqliteRow[]>(
-        'SELECT email, salt, keyHash, displayName, avatar, mnemonic, createdAt, updatedAt FROM users WHERE email = ? LIMIT 1',
+        'SELECT email, salt, keyHash, displayName, avatar, mnemonic, mustChangePassword, createdAt, updatedAt FROM users WHERE email = ? LIMIT 1',
         [key],
       )
       const row = rows[0]
@@ -340,13 +340,14 @@ function createUsersCollection(connection: Database): UsersTable {
         displayName: fallbackDisplayName(String(row.email ?? ''), row.displayName ? String(row.displayName) : undefined),
         avatar: parseAvatar(row.avatar),
         mnemonic: String(row.mnemonic ?? ''),
+        mustChangePassword: toBoolean(row.mustChangePassword),
         createdAt: toNumber(row.createdAt),
         updatedAt: toNumber(row.updatedAt),
       }
     },
     async put(record) {
       await connection.execute(
-        'INSERT OR REPLACE INTO users (email, salt, keyHash, displayName, avatar, mnemonic, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT OR REPLACE INTO users (email, salt, keyHash, displayName, avatar, mnemonic, mustChangePassword, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           record.email,
           record.salt,
@@ -354,6 +355,7 @@ function createUsersCollection(connection: Database): UsersTable {
           record.displayName,
           serializeAvatar(record.avatar),
           record.mnemonic,
+          record.mustChangePassword ? 1 : 0,
           record.createdAt,
           record.updatedAt,
         ],
