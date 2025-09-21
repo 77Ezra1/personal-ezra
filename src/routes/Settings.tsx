@@ -1,6 +1,7 @@
 import clsx from 'clsx'
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useId, useState, type ChangeEvent, type FormEvent } from 'react'
 import AvatarUploader from '../components/AvatarUploader'
+import ConfirmDialog from '../components/ConfirmDialog'
 import { DEFAULT_TIMEOUT, IDLE_TIMEOUT_OPTIONS, useIdleTimeoutStore } from '../features/lock/IdleLock'
 import { selectAuthProfile, useAuthStore } from '../stores/auth'
 import type { UserAvatarMeta } from '../stores/database'
@@ -29,6 +30,8 @@ const THEME_OPTIONS: ThemeOption[] = [
     description: '在所有页面中使用深色界面。',
   },
 ]
+
+const ACCOUNT_DELETE_CONFIRMATION_PHRASE = '我已了解注销后账号及所有数据将被永久删除，且无法恢复。'
 
 export default function Settings() {
   const { mode, setMode } = useTheme()
@@ -531,18 +534,22 @@ function DeleteAccountSection() {
   const [captchaCode, setCaptchaCode] = useState(() => generateCaptcha())
   const [captchaInput, setCaptchaInput] = useState('')
   const [acknowledged, setAcknowledged] = useState(false)
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
+  const [confirmationPhraseInput, setConfirmationPhraseInput] = useState('')
   const [formMessage, setFormMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  const confirmationInputId = useId()
   const loggedIn = Boolean(email)
   const inputsDisabled = !loggedIn || isSubmitting
+  const canConfirmDeletion = confirmationPhraseInput.trim() === ACCOUNT_DELETE_CONFIRMATION_PHRASE
 
   const refreshCaptcha = () => {
     setCaptchaCode(generateCaptcha())
     setCaptchaInput('')
   }
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!email) {
       setFormMessage({ type: 'error', text: '请先登录后再执行注销操作' })
@@ -567,6 +574,22 @@ function DeleteAccountSection() {
       return
     }
 
+    setFormMessage(null)
+    setConfirmationPhraseInput('')
+    setIsConfirmDialogOpen(true)
+  }
+
+  const handleConfirmDialogCancel = () => {
+    setIsConfirmDialogOpen(false)
+    setConfirmationPhraseInput('')
+  }
+
+  const handleConfirmDialogConfirm = async () => {
+    if (confirmationPhraseInput.trim() !== ACCOUNT_DELETE_CONFIRMATION_PHRASE) {
+      return
+    }
+
+    setIsConfirmDialogOpen(false)
     try {
       setIsSubmitting(true)
       setFormMessage(null)
@@ -586,11 +609,12 @@ function DeleteAccountSection() {
       refreshCaptcha()
     } finally {
       setIsSubmitting(false)
+      setConfirmationPhraseInput('')
     }
   }
 
   return (
-    <section className="space-y-5 rounded-2xl border border-red-400/60 bg-red-500/5 p-6 shadow-sm">
+    <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
       <div className="space-y-1">
         <h2 className="text-lg font-medium text-text">注销账号</h2>
         <p className="text-sm text-muted">
@@ -700,6 +724,37 @@ function DeleteAccountSection() {
           </button>
         </div>
       </form>
+      <ConfirmDialog
+        open={isConfirmDialogOpen}
+        title="确认注销账号"
+        description={
+          <div className="space-y-3">
+            <p>为了确认注销操作，请完整输入以下语句：</p>
+            <p className="rounded-xl bg-surface-hover px-3 py-2 text-sm text-text">
+              {ACCOUNT_DELETE_CONFIRMATION_PHRASE}
+            </p>
+            <div className="space-y-1 text-left">
+              <label htmlFor={confirmationInputId} className="text-sm font-medium text-text">
+                输入确认语句
+              </label>
+              <input
+                id={confirmationInputId}
+                type="text"
+                value={confirmationPhraseInput}
+                onChange={event => setConfirmationPhraseInput(event.currentTarget.value)}
+                placeholder="请完整输入上方语句"
+                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-red-500/70 focus:bg-surface-hover"
+              />
+            </div>
+          </div>
+        }
+        confirmLabel="确认注销"
+        cancelLabel="返回"
+        tone="danger"
+        disableConfirm={!canConfirmDeletion}
+        onConfirm={handleConfirmDialogConfirm}
+        onCancel={handleConfirmDialogCancel}
+      />
     </section>
   )
 }
