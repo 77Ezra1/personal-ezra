@@ -19,7 +19,9 @@ export interface UserRecord {
   keyHash: string
   displayName: string
   avatar: UserAvatarMeta | null
+  mustChangePassword?: boolean
   mnemonic: string
+  mustChangePassword?: boolean
   createdAt: number
   updatedAt: number
   mustChangePassword?: boolean
