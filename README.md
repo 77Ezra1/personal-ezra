@@ -20,8 +20,6 @@ npm install && npm run dev
 yarn && yarn dev
 ```
 
-如需调用外部大模型 API，请复制 `.env.example` 为 `.env` 并配置 `VITE_LLM_API_URL` 与 `VITE_LLM_API_KEY`。
-
 ## Docker 部署
 
 使用 Docker 手动构建镜像：
