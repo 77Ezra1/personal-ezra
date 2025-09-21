@@ -1,5 +1,13 @@
 import clsx from 'clsx'
-import { useEffect, useId, useState, type ChangeEvent, type FormEvent } from 'react'
+import {
+  useEffect,
+  useId,
+  useState,
+  type ChangeEvent,
+  type Dispatch,
+  type FormEvent,
+  type SetStateAction,
+} from 'react'
 import AvatarUploader from '../components/AvatarUploader'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { DEFAULT_TIMEOUT, IDLE_TIMEOUT_OPTIONS, useIdleTimeoutStore } from '../features/lock/IdleLock'
@@ -11,6 +19,25 @@ type ThemeOption = {
   label: string
   value: ThemeMode
   description: string
+}
+
+type FormMessage = { type: 'success' | 'error'; text: string } | null
+
+const FORM_MESSAGE_DISPLAY_DURATION = 5000
+
+function useAutoDismissFormMessage(
+  message: FormMessage,
+  setMessage: Dispatch<SetStateAction<FormMessage>>,
+) {
+  useEffect(() => {
+    if (!message) return
+
+    const timer = window.setTimeout(() => {
+      setMessage(current => (current === message ? null : current))
+    }, FORM_MESSAGE_DISPLAY_DURATION)
+
+    return () => window.clearTimeout(timer)
+  }, [message, setMessage])
 }
 
 const THEME_OPTIONS: ThemeOption[] = [
@@ -43,7 +70,7 @@ export default function Settings() {
   const loadProfile = useAuthStore(state => state.loadProfile)
   const [displayName, setDisplayName] = useState(profile?.displayName ?? '')
   const [avatar, setAvatar] = useState<UserAvatarMeta | null>(profile?.avatar ?? null)
-  const [formMessage, setFormMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [formMessage, setFormMessage] = useState<FormMessage>(null)
   const [isSaving, setIsSaving] = useState(false)
   const profileDisabled = !email
   const normalizedDisplayName = displayName.replace(/\s+/g, ' ').trim()
@@ -54,6 +81,8 @@ export default function Settings() {
     ? profileDisplayName !== normalizedDisplayName || profileAvatarData !== nextAvatarData
     : Boolean(normalizedDisplayName || nextAvatarData)
   const canSubmit = !profileDisabled && !isSaving && hasChanges
+
+  useAutoDismissFormMessage(formMessage, setFormMessage)
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const next = event.currentTarget.value as ThemeMode
@@ -319,11 +348,13 @@ function ChangePasswordSection() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [captchaCode, setCaptchaCode] = useState(() => generateCaptcha())
   const [captchaInput, setCaptchaInput] = useState('')
-  const [formMessage, setFormMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [formMessage, setFormMessage] = useState<FormMessage>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const loggedIn = Boolean(email)
   const inputsDisabled = !loggedIn || isSubmitting
+
+  useAutoDismissFormMessage(formMessage, setFormMessage)
 
   const refreshCaptcha = () => {
     setCaptchaCode(generateCaptcha())
@@ -536,13 +567,15 @@ function DeleteAccountSection() {
   const [acknowledged, setAcknowledged] = useState(false)
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
   const [confirmationPhraseInput, setConfirmationPhraseInput] = useState('')
-  const [formMessage, setFormMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [formMessage, setFormMessage] = useState<FormMessage>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const confirmationInputId = useId()
   const loggedIn = Boolean(email)
   const inputsDisabled = !loggedIn || isSubmitting
   const canConfirmDeletion = confirmationPhraseInput.trim() === ACCOUNT_DELETE_CONFIRMATION_PHRASE
+
+  useAutoDismissFormMessage(formMessage, setFormMessage)
 
   const refreshCaptcha = () => {
     setCaptchaCode(generateCaptcha())
