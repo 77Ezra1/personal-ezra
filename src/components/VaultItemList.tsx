@@ -87,11 +87,6 @@ export function VaultItemList({ items, className }: VaultItemListProps) {
         className,
       )}
     >
-      <div className="hidden border-b border-border/60 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-muted md:grid md:grid-cols-[minmax(0,3fr)_minmax(0,1.5fr)_auto] md:items-center md:gap-4">
-        <span>条目</span>
-        <span className="text-center md:text-left">最近更新</span>
-        <span className="text-right">操作</span>
-      </div>
       <ul className="divide-y divide-border/60">
         {items.map(item => {
           const { key, title, description, metadata, badges, tags, updatedAt, onOpen, actions } = item
@@ -116,12 +111,7 @@ export function VaultItemList({ items, className }: VaultItemListProps) {
                   {renderTags(tags)}
                 </Wrapper>
                 <div className="text-xs text-muted md:text-sm md:text-center">
-                  <span className="md:hidden">
-                    最近更新：{formattedUpdatedAt === '—' ? '未知' : formattedUpdatedAt}
-                  </span>
-                  <span className="hidden md:inline">
-                    {formattedUpdatedAt === '—' ? '未知' : formattedUpdatedAt}
-                  </span>
+                  {formattedUpdatedAt === '—' ? '未知' : formattedUpdatedAt}
                 </div>
                 {actions && actions.length > 0 ? (
                   <div className="flex flex-wrap gap-2 md:justify-end">
