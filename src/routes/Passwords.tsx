@@ -1,8 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import Fuse from 'fuse.js'
-import { Copy, ExternalLink, Pencil } from 'lucide-react'
+import { Copy, ExternalLink, Eye, EyeOff, Pencil } from 'lucide-react'
 import { AppLayout } from '../components/AppLayout'
-import PasswordFieldWithStrength from '../components/PasswordFieldWithStrength'
 import { DetailsDrawer } from '../components/DetailsDrawer'
 import { Empty } from '../components/Empty'
 import { Skeleton } from '../components/Skeleton'
@@ -12,8 +11,8 @@ import { VaultItemList } from '../components/VaultItemList'
 import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyTextAutoClear } from '../lib/clipboard'
 import { BACKUP_IMPORTED_EVENT } from '../lib/backup'
 import { decryptString, encryptString } from '../lib/crypto'
-import { estimatePasswordStrength, PASSWORD_STRENGTH_REQUIREMENT } from '../lib/password-utils'
 import { useToast } from '../components/ToastProvider'
+import CopyButton from '../components/CopyButton'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 import { useAuthStore } from '../stores/auth'
 import { db, type PasswordRecord } from '../stores/database'
@@ -53,6 +52,7 @@ export default function Passwords() {
   const [draft, setDraft] = useState<PasswordDraft>(EMPTY_DRAFT)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [passwordVisible, setPasswordVisible] = useState(false)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [viewMode, setViewMode] = useState<'card' | 'list'>(() => {
     if (typeof window === 'undefined') return 'card'
@@ -206,6 +206,7 @@ export default function Passwords() {
     setDraft(EMPTY_DRAFT)
     setFormError(null)
     setSubmitting(false)
+    setPasswordVisible(false)
   }
 
   function handleCreate() {
@@ -213,6 +214,7 @@ export default function Passwords() {
     setDrawerMode('create')
     setActiveItem(null)
     setDrawerOpen(true)
+    setPasswordVisible(false)
   }
 
   function handleView(item: PasswordRecord) {
@@ -226,6 +228,7 @@ export default function Passwords() {
       tags: ensureTagsArray(item.tags).join(', '),
     })
     setDrawerOpen(true)
+    setPasswordVisible(false)
   }
 
   function handleEdit(item: PasswordRecord) {
@@ -239,6 +242,7 @@ export default function Passwords() {
       tags: ensureTagsArray(item.tags).join(', '),
     })
     setDrawerOpen(true)
+    setPasswordVisible(false)
   }
 
   async function handleCopyPassword(item: PasswordRecord) {
@@ -337,15 +341,6 @@ export default function Passwords() {
     if (drawerMode === 'create' && !passwordInput) {
       setFormError('请填写密码')
       return
-    }
-
-    if (passwordInput) {
-      const strength = estimatePasswordStrength(passwordInput)
-      if (!strength.meetsRequirement) {
-        const [firstSuggestion] = strength.suggestions
-        setFormError(firstSuggestion ?? PASSWORD_STRENGTH_REQUIREMENT)
-        return
-      }
     }
 
     setFormError(null)
@@ -638,30 +633,45 @@ export default function Passwords() {
                 placeholder="可选"
               />
             </label>
-            <PasswordFieldWithStrength
-              label={drawerMode === 'edit' ? '新密码（留空保持不变）' : '密码'}
-              labelClassName="text-xs uppercase tracking-wide text-muted font-medium"
-              containerClassName="space-y-2"
-              value={draft.password}
-              onChange={next => {
-                setDraft(prev => ({ ...prev, password: next }))
-                setFormError(null)
-              }}
-              disabled={submitting}
-              autoComplete="new-password"
-              placeholder={drawerMode === 'edit' ? '如需更新密码，请在此输入' : '请输入密码'}
-              hint={
-                drawerMode === 'edit'
-                  ? (
-                      <span className="block">
-                        {PASSWORD_STRENGTH_REQUIREMENT}
-                        <br />
-                        留空将保持原密码不变。
-                      </span>
-                    )
-                  : PASSWORD_STRENGTH_REQUIREMENT
-              }
-            />
+            <label className="block space-y-2">
+              <span className="text-xs uppercase tracking-wide text-muted">{drawerMode === 'edit' ? '新密码（留空保持不变）' : '密码'}</span>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type={passwordVisible ? 'text' : 'password'}
+                      value={draft.password}
+                      onChange={event => {
+                        setDraft(prev => ({ ...prev, password: event.target.value }))
+                        setFormError(null)
+                      }}
+                      disabled={submitting}
+                      autoComplete="new-password"
+                      className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
+                      placeholder={drawerMode === 'edit' ? '如需更新密码，请在此输入' : '请输入密码'}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPasswordVisible(current => !current)}
+                      disabled={submitting || !draft.password}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted transition hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary/50 disabled:pointer-events-none disabled:opacity-60"
+                      aria-label={passwordVisible ? '隐藏密码' : '显示密码'}
+                    >
+                      {passwordVisible ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+                    </button>
+                  </div>
+                  <CopyButton
+                    text={() => draft.password}
+                    idleLabel="复制"
+                    className="shrink-0 px-3 py-2"
+                    disabled={submitting || !draft.password}
+                  />
+                </div>
+                {drawerMode === 'edit' ? (
+                  <p className="text-xs text-muted">留空将保持原密码不变。</p>
+                ) : null}
+              </div>
+            </label>
             <label className="block space-y-2">
               <span className="text-xs uppercase tracking-wide text-muted">关联网址</span>
               <input
