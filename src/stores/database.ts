@@ -21,8 +21,10 @@ export interface UserRecord {
   avatar: UserAvatarMeta | null
   mustChangePassword: boolean
   mnemonic: string
+  mustChangePassword?: boolean
   createdAt: number
   updatedAt: number
+  mustChangePassword?: boolean
 }
 
 export interface PasswordRecord {
