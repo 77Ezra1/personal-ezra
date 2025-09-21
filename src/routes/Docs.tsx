@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useMemo, useState, ChangeEvent, ReactNode } from 'react'
+import React, { FormEvent, useEffect, useMemo, useState, ChangeEvent, ReactNode, useId } from 'react'
 import {
   importFileToVault,
   openDocument,
@@ -105,6 +105,7 @@ export default function Docs() {
   const [draft, setDraft] = useState<DocDraft>(EMPTY_DRAFT)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const fileInputId = useId()
   const [viewMode, setViewMode] = useState<'card' | 'list'>(() => {
     if (typeof window === 'undefined') return 'card'
     const stored = window.localStorage.getItem(DOC_VIEW_MODE_STORAGE_KEY)
@@ -171,6 +172,8 @@ export default function Docs() {
       })),
     [items]
   )
+
+  const existingFileMeta = extractFileMeta(activeItem?.document)
 
   /* ------------------------------ 基础动作 ------------------------------ */
 
@@ -681,14 +684,21 @@ export default function Docs() {
                 placeholder="https://docs.example.com"
               />
             </label>
-            <label className="block space-y-2">
-              <span className="text-xs uppercase tracking-wide text-muted">上传文件</span>
-              <input type="file" onChange={handleFileChange} className="block w-full text-sm text-text" />
+            <div className="space-y-2">
+              <label className="block text-xs uppercase tracking-wide text-muted" htmlFor={fileInputId}>
+                上传文件
+              </label>
+              <input
+                id={fileInputId}
+                type="file"
+                onChange={handleFileChange}
+                className="block w-full text-sm text-text"
+              />
               <p className="text-xs text-muted">
                 {draft.file
                   ? `已选择：${draft.file.name}`
-                  : extractFileMeta(activeItem?.document)
-                  ? `当前文件：${extractFileMeta(activeItem?.document)?.name ?? ''}`
+                  : existingFileMeta
+                  ? `当前文件：${existingFileMeta.name ?? ''}`
                   : '尚未选择文件'}
               </p>
               {draft.file && (
@@ -700,7 +710,7 @@ export default function Docs() {
                   清除已选文件
                 </button>
               )}
-            </label>
+            </div>
             <label className="block space-y-2">
               <span className="text-xs uppercase tracking-wide text-muted">备注</span>
               <textarea
