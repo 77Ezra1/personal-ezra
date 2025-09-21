@@ -50,6 +50,20 @@ export default function ConfirmDialog({
   const restoreFocusRef = useRef<HTMLElement | null>(null)
   const titleId = useId()
   const descriptionId = useId()
+  const descriptionContent =
+    description == null
+      ? null
+      : typeof description === 'string' || typeof description === 'number'
+        ? (
+            <p id={descriptionId} className="mt-2 text-sm text-muted">
+              {description}
+            </p>
+          )
+        : (
+            <div id={descriptionId} className="mt-2 text-sm text-muted">
+              {description}
+            </div>
+          )
 
   useEffect(() => {
     if (!open) return undefined
@@ -57,7 +71,12 @@ export default function ConfirmDialog({
     restoreFocusRef.current = (document.activeElement as HTMLElement) ?? null
 
     const timer = window.setTimeout(() => {
-      confirmButtonRef.current?.focus()
+      const focusables = getFocusableElements(dialogRef.current)
+      if (focusables.length > 0) {
+        focusables[0].focus()
+      } else {
+        confirmButtonRef.current?.focus()
+      }
     }, 0)
 
     return () => {
@@ -108,9 +127,9 @@ export default function ConfirmDialog({
 
   const confirmToneClass = useMemo(() => {
     if (tone === 'danger') {
-      return 'bg-surface text-text border border-border'
+      return 'border border-red-500 bg-red-500 text-background hover:bg-red-500/90 focus-visible:ring-red-500/60'
     }
-    return 'bg-primary text-background'
+    return 'bg-primary text-background hover:bg-primary/90 focus-visible:ring-primary/60'
   }, [tone])
 
   if (!open || typeof document === 'undefined') {
@@ -123,7 +142,7 @@ export default function ConfirmDialog({
       role="alertdialog"
       aria-modal="true"
       aria-labelledby={titleId}
-      aria-describedby={description ? descriptionId : undefined}
+      aria-describedby={descriptionContent ? descriptionId : undefined}
       onMouseDown={event => {
         if (event.target === event.currentTarget) {
           onCancel()
@@ -137,11 +156,7 @@ export default function ConfirmDialog({
         <h2 id={titleId} className="text-lg font-semibold">
           {title}
         </h2>
-        {description ? (
-          <p id={descriptionId} className="mt-2 text-sm text-muted">
-            {description}
-          </p>
-        ) : null}
+        {descriptionContent}
         <div className="mt-6 flex justify-end gap-3">
           <button
             type="button"
@@ -157,7 +172,7 @@ export default function ConfirmDialog({
             onClick={onConfirm}
             disabled={disableConfirm || loading || confirmButtonProps?.disabled}
             className={clsx(
-              'inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
+              'inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2',
               confirmToneClass,
               (disableConfirm || loading || confirmButtonProps?.disabled) && 'opacity-70 pointer-events-none',
               confirmButtonProps?.className,
