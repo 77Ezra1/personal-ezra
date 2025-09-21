@@ -15,6 +15,7 @@ import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 import { useAuthStore } from '../stores/auth'
 import { db, type SiteRecord } from '../stores/database'
 import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
+import { MAX_LINK_DISPLAY_LENGTH, truncateLink } from '../lib/strings'
 
 type SiteDraft = {
   title: string
@@ -440,12 +441,13 @@ export default function Sites() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredItems.map(item => {
             const actions = buildItemActions(item)
+            const truncatedUrl = truncateLink(item.url, MAX_LINK_DISPLAY_LENGTH)
             return (
               <VaultItemCard
                 key={item.id ?? item.title}
                 title={item.title}
                 description={item.description || '未填写简介'}
-                badges={[{ label: item.url, tone: 'info' }]}
+                badges={[{ label: truncatedUrl, tone: 'info', title: item.url }]}
                 tags={ensureTagsArray(item.tags).map(tag => ({ id: tag, name: tag }))}
                 updatedAt={item.updatedAt}
                 onOpen={() => handleView(item)}
@@ -456,16 +458,26 @@ export default function Sites() {
         </div>
       ) : (
         <VaultItemList
-          items={filteredItems.map(item => ({
-            key: item.id ?? item.title,
-            title: item.title,
-            description: item.description || '未填写简介',
-            metadata: item.url ? [`链接：${item.url}`] : undefined,
-            tags: ensureTagsArray(item.tags).map(tag => ({ id: tag, name: tag })),
-            updatedAt: item.updatedAt,
-            onOpen: () => handleView(item),
-            actions: buildItemActions(item),
-          }))}
+          items={filteredItems.map(item => {
+            const truncatedUrl = truncateLink(item.url, MAX_LINK_DISPLAY_LENGTH)
+            return {
+              key: item.id ?? item.title,
+              title: item.title,
+              description: item.description || '未填写简介',
+              metadata: item.url
+                ? [
+                    {
+                      content: `链接：${truncatedUrl}`,
+                      title: item.url,
+                    },
+                  ]
+                : undefined,
+              tags: ensureTagsArray(item.tags).map(tag => ({ id: tag, name: tag })),
+              updatedAt: item.updatedAt,
+              onOpen: () => handleView(item),
+              actions: buildItemActions(item),
+            }
+          })}
         />
       )}
 
@@ -530,7 +542,12 @@ export default function Sites() {
           <div className="space-y-4 text-sm text-text">
             <div>
               <p className="text-xs text-muted">链接地址</p>
-              <p className="mt-1 break-all text-base text-primary">{activeItem.url}</p>
+              <p
+                className="mt-1 max-w-full truncate text-base text-primary"
+                title={activeItem.url}
+              >
+                {truncateLink(activeItem.url, MAX_LINK_DISPLAY_LENGTH)}
+              </p>
             </div>
             <div>
               <p className="text-xs text-muted">简介</p>

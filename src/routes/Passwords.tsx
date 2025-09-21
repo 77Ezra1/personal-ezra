@@ -17,6 +17,7 @@ import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 import { useAuthStore } from '../stores/auth'
 import { db, type PasswordRecord } from '../stores/database'
 import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
+import { MAX_LINK_DISPLAY_LENGTH, truncateLink } from '../lib/strings'
 
 const CLIPBOARD_CLEAR_DELAY_SECONDS = Math.round(DEFAULT_CLIPBOARD_CLEAR_DELAY / 1_000)
 const PASSWORD_VIEW_MODE_STORAGE_KEY = 'pms:view:passwords'
@@ -493,12 +494,23 @@ export default function Passwords() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredItems.map(item => {
             const actions = buildItemActions(item)
+            const truncatedUrl = item.url ? truncateLink(item.url, MAX_LINK_DISPLAY_LENGTH) : null
             return (
               <VaultItemCard
                 key={item.id ?? item.title}
                 title={item.title}
                 description={item.username ? `用户名：${item.username}` : '未填写用户名'}
-                badges={item.url ? [{ label: item.url, tone: 'info' as const }] : undefined}
+                badges={
+                  item.url
+                    ? [
+                        {
+                          label: truncatedUrl ?? item.url,
+                          tone: 'info' as const,
+                          title: item.url,
+                        },
+                      ]
+                    : undefined
+                }
                 tags={ensureTagsArray(item.tags).map(tag => ({ id: tag, name: tag }))}
                 updatedAt={item.updatedAt}
                 onOpen={() => handleView(item)}
@@ -513,7 +525,14 @@ export default function Passwords() {
             key: item.id ?? item.title,
             title: item.title,
             description: item.username ? `用户名：${item.username}` : '未填写用户名',
-            metadata: item.url ? [`网址：${item.url}`] : undefined,
+            metadata: item.url
+              ? [
+                  {
+                    content: `网址：${truncateLink(item.url, MAX_LINK_DISPLAY_LENGTH)}`,
+                    title: item.url,
+                  },
+                ]
+              : undefined,
             tags: ensureTagsArray(item.tags).map(tag => ({ id: tag, name: tag })),
             updatedAt: item.updatedAt,
             onOpen: () => handleView(item),
@@ -589,7 +608,12 @@ export default function Passwords() {
             </div>
             <div>
               <p className="text-xs text-muted">关联网址</p>
-              <p className="mt-1 break-all text-base text-primary">{activeItem.url || '未填写'}</p>
+              <p
+                className="mt-1 max-w-full truncate text-base text-primary"
+                title={activeItem.url ?? undefined}
+              >
+                {activeItem.url ? truncateLink(activeItem.url, MAX_LINK_DISPLAY_LENGTH) : '未填写'}
+              </p>
             </div>
             <div>
               <p className="text-xs text-muted">标签</p>

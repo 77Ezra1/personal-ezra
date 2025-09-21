@@ -17,12 +17,13 @@ import { Skeleton } from '../components/Skeleton'
 import { TagFilter } from '../components/TagFilter'
 import { Empty } from '../components/Empty'
 import { VaultItemCard } from '../components/VaultItemCard'
-import { VaultItemList } from '../components/VaultItemList'
+import { VaultItemList, type VaultItemMetadataItem } from '../components/VaultItemList'
 import { DetailsDrawer } from '../components/DetailsDrawer'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 
 import { Copy, ExternalLink, FileText, Pencil } from 'lucide-react'
 import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
+import { MAX_LINK_DISPLAY_LENGTH, truncateLink } from '../lib/strings'
 
 /* ---------------------- 本文件内的小工具，减少外部依赖 --------------------- */
 
@@ -620,12 +621,15 @@ export default function Docs() {
             if (linkMeta) {
               badges.push({ label: '在线链接', tone: 'info' as const })
             }
-            const metadata: ReactNode[] = []
+            const metadata: VaultItemMetadataItem[] = []
             if (linkMeta) {
-              metadata.push(`链接：${linkMeta.url}`)
+              metadata.push({
+                content: `链接：${truncateLink(linkMeta.url, MAX_LINK_DISPLAY_LENGTH)}`,
+                title: linkMeta.url,
+              })
             }
             if (fileMeta) {
-              metadata.push(`文件大小：${formatSize(fileMeta.size)}`)
+              metadata.push({ content: `文件大小：${formatSize(fileMeta.size)}` })
             }
             const tags = ensureTagsArray(item.tags)
             return {
@@ -748,7 +752,12 @@ export default function Docs() {
               return (
                 <div>
                   <p className="text-xs text-muted">在线链接</p>
-                  <p className="mt-1 break-all text-base text-primary">{linkMeta.url}</p>
+                  <p
+                    className="mt-1 max-w-full truncate text-base text-primary"
+                    title={linkMeta.url}
+                  >
+                    {truncateLink(linkMeta.url, MAX_LINK_DISPLAY_LENGTH)}
+                  </p>
                 </div>
               )
             })()}

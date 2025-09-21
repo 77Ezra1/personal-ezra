@@ -18,7 +18,12 @@ describe('VaultItemList', () => {
             key: 'item-1',
             title: '示例条目',
             description: '描述信息',
-            metadata: ['链接：https://example.com'],
+            metadata: [
+              {
+                content: '链接：https://example.com',
+                title: 'https://example.com',
+              },
+            ],
             badges: [{ label: '在线链接', tone: 'info' }],
             updatedAt: UPDATED_AT,
             onOpen,
