@@ -262,6 +262,9 @@ function createUsersCollection(connection: Database): UsersTable {
       )
       return record.email
     },
+    async delete(key) {
+      await connection.execute('DELETE FROM users WHERE email = ?', [key])
+    },
   }
 }
 

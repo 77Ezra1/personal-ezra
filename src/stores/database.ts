@@ -67,6 +67,7 @@ export interface OwnedCollection<T extends { ownerEmail: string }> {
 export interface UsersTable {
   get(key: string): Promise<UserRecord | undefined>
   put(record: UserRecord): Promise<string>
+  delete(key: string): Promise<void>
 }
 
 export interface DatabaseClient {
@@ -230,6 +231,7 @@ function createDexieClient(): DatabaseClient {
     users: {
       get: key => database.users.get(key),
       put: record => database.users.put(record),
+      delete: key => database.users.delete(key),
     },
     passwords: createDexieOwnedCollection(database.passwords),
     sites: createDexieOwnedCollection(database.sites),

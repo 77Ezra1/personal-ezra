@@ -1,7 +1,7 @@
 import { create } from 'zustand'
-import { deriveKey } from '../lib/crypto'
+import { decryptString, encryptString, deriveKey } from '../lib/crypto'
 import { detectSensitiveWords } from '../lib/sensitive-words'
-import { db, type UserAvatarMeta, type UserRecord } from './database'
+import { db, type DocDocument, type PasswordRecord, type UserAvatarMeta, type UserRecord } from './database'
 
 export const SESSION_STORAGE_KEY = 'pms-web-session'
 
@@ -46,6 +46,8 @@ type AuthState = {
   logout: () => Promise<void>
   loadProfile: () => Promise<UserProfile | null>
   updateProfile: (payload: ProfileUpdatePayload) => Promise<AuthResult>
+  changePassword: (payload: { currentPassword: string; newPassword: string }) => Promise<AuthResult>
+  deleteAccount: (password: string) => Promise<AuthResult>
 }
 
 function saveSession(email: string, key: Uint8Array) {
@@ -106,6 +108,14 @@ function mapRecordToProfile(record: UserRecord): UserProfile {
     displayName: fallbackDisplayName(record.email, record.displayName),
     avatar: record.avatar ?? null,
   }
+}
+
+function getDocumentFilePath(document: DocDocument | null | undefined) {
+  if (!document) return null
+  if (document.kind === 'file' || document.kind === 'file+link') {
+    return document.file.relPath
+  }
+  return null
 }
 
 type AvatarValidationResult =
@@ -283,6 +293,176 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (error) {
       console.error('Failed to update user profile', error)
       return { success: false, message: '保存资料失败，请稍后重试' }
+    }
+  },
+  async changePassword(payload) {
+    const { email } = get()
+    const { currentPassword, newPassword } = payload
+    if (!email) {
+      return { success: false, message: '请先登录后再修改密码' }
+    }
+    if (!currentPassword) {
+      return { success: false, message: '请输入旧密码' }
+    }
+    if (!newPassword) {
+      return { success: false, message: '请输入新密码' }
+    }
+    if (newPassword.length < 6) {
+      return { success: false, message: '新密码至少需要 6 位字符' }
+    }
+    if (newPassword === currentPassword) {
+      return { success: false, message: '新密码不能与旧密码相同' }
+    }
+
+    try {
+      const record = await db.users.get(email)
+      if (!record) {
+        return { success: false, message: '账号不存在或已被删除' }
+      }
+
+      const saltBytes = fromBase64(record.salt)
+      const currentKey = await deriveKey(currentPassword, saltBytes)
+      const currentHash = toBase64(currentKey)
+      if (currentHash !== record.keyHash) {
+        return { success: false, message: '旧密码不正确' }
+      }
+
+      const passwordRecords = await db.passwords.where('ownerEmail').equals(email).toArray()
+      const now = Date.now()
+      const decrypted: { record: PasswordRecord; plain: string }[] = []
+
+      for (const row of passwordRecords) {
+        if (typeof row.id !== 'number') {
+          console.error('Password record missing identifier during password change, aborting update')
+          return { success: false, message: '密码数据异常，请稍后重试' }
+        }
+        try {
+          const plain = await decryptString(currentKey, row.passwordCipher)
+          decrypted.push({ record: row, plain })
+        } catch (error) {
+          console.error('Failed to decrypt password record during password change', error)
+          return { success: false, message: '解密密码数据失败，请稍后再试' }
+        }
+      }
+
+      const newSalt = crypto.getRandomValues(new Uint8Array(16))
+      const newKey = await deriveKey(newPassword, newSalt)
+      const newHash = toBase64(newKey)
+
+      const updatedRecords: PasswordRecord[] = []
+      for (const item of decrypted) {
+        try {
+          const cipher = await encryptString(newKey, item.plain)
+          updatedRecords.push({ ...item.record, passwordCipher: cipher, updatedAt: now })
+        } catch (error) {
+          console.error('Failed to encrypt password record with new key', error)
+          return { success: false, message: '重新加密密码数据失败，请稍后再试' }
+        }
+      }
+
+      await Promise.all(updatedRecords.map(row => db.passwords.put(row)))
+
+      const nextRecord: UserRecord = {
+        ...record,
+        salt: toBase64(newSalt),
+        keyHash: newHash,
+        updatedAt: now,
+      }
+      await db.users.put(nextRecord)
+      saveSession(email, newKey)
+      set({ encryptionKey: newKey, profile: mapRecordToProfile(nextRecord) })
+      return { success: true }
+    } catch (error) {
+      console.error('Failed to change password', error)
+      return { success: false, message: '修改密码失败，请稍后重试' }
+    }
+  },
+  async deleteAccount(password) {
+    const { email } = get()
+    if (!email) {
+      return { success: false, message: '请先登录后再操作' }
+    }
+    if (!password) {
+      return { success: false, message: '请输入密码' }
+    }
+
+    try {
+      const record = await db.users.get(email)
+      if (record) {
+        const saltBytes = fromBase64(record.salt)
+        const key = await deriveKey(password, saltBytes)
+        const hash = toBase64(key)
+        if (hash !== record.keyHash) {
+          return { success: false, message: '密码错误' }
+        }
+      }
+
+      const [passwordRecords, siteRecords, docRecords] = await Promise.all([
+        db.passwords.where('ownerEmail').equals(email).toArray(),
+        db.sites.where('ownerEmail').equals(email).toArray(),
+        db.docs.where('ownerEmail').equals(email).toArray(),
+      ])
+
+      const filePaths = new Set<string>()
+      for (const doc of docRecords) {
+        const path = getDocumentFilePath(doc.document)
+        if (path) {
+          filePaths.add(path)
+        }
+      }
+
+      if (filePaths.size > 0) {
+        try {
+          const module = await import('../lib/vault')
+          if (typeof module.removeVaultFile === 'function') {
+            await Promise.all(
+              Array.from(filePaths).map(relPath =>
+                module.removeVaultFile(relPath).catch(error => {
+                  console.warn('Failed to remove vault file during account deletion', error)
+                }),
+              ),
+            )
+          }
+        } catch (error) {
+          console.warn('Vault module unavailable during account deletion', error)
+        }
+      }
+
+      await Promise.all(
+        passwordRecords.map(record => {
+          if (typeof record.id === 'number') {
+            return db.passwords.delete(record.id)
+          }
+          return Promise.resolve()
+        }),
+      )
+      await Promise.all(
+        siteRecords.map(record => {
+          if (typeof record.id === 'number') {
+            return db.sites.delete(record.id)
+          }
+          return Promise.resolve()
+        }),
+      )
+      await Promise.all(
+        docRecords.map(record => {
+          if (typeof record.id === 'number') {
+            return db.docs.delete(record.id)
+          }
+          return Promise.resolve()
+        }),
+      )
+
+      if (typeof db.users.delete === 'function') {
+        await db.users.delete(email)
+      }
+
+      clearSession()
+      set({ email: null, encryptionKey: null, profile: null })
+      return { success: true }
+    } catch (error) {
+      console.error('Failed to delete account', error)
+      return { success: false, message: '注销账号失败，请稍后重试' }
     }
   },
 }))
