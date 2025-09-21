@@ -270,7 +270,9 @@ export default function Passwords() {
       {
         icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
         label: '复制密码',
-        onClick: () => handleCopyPassword(item),
+        onClick: () => {
+          void handleCopyPassword(item)
+        },
       },
     ]
     if (item.url) {
@@ -564,7 +566,9 @@ export default function Passwords() {
                 <div className="flex flex-wrap gap-3">
                   <button
                     type="button"
-                    onClick={() => handleCopyPassword(activeItem)}
+                    onClick={() => {
+                      void handleCopyPassword(activeItem)
+                    }}
                     className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-text transition hover:bg-surface-hover"
                   >
                     <Copy className="h-4 w-4" />
@@ -590,7 +594,9 @@ export default function Passwords() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleDelete(activeItem)}
+                    onClick={() => {
+                      void handleDelete(activeItem)
+                    }}
                     className="inline-flex items-center justify-center gap-2 rounded-full border border-rose-300/40 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:border-rose-200 hover:bg-rose-500/20"
                   >
                     删除

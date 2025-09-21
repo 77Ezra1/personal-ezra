@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Fuse from 'fuse.js'
+import Fuse, { type IFuseOptions } from 'fuse.js'
 import clsx from 'clsx'
 
 export type CommandItem = {
@@ -17,7 +17,7 @@ type CommandPaletteProps = {
   placeholder?: string
 }
 
-const fuseOptions: Fuse.IFuseOptions<CommandItem> = {
+const fuseOptions: IFuseOptions<CommandItem> = {
   includeScore: true,
   threshold: 0.3,
   keys: [
