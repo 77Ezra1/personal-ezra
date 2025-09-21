@@ -1,4 +1,30 @@
 import { vi } from 'vitest'
+import { webcrypto } from 'node:crypto'
+import { indexedDB as fakeIndexedDB, IDBKeyRange } from 'fake-indexeddb'
+
+if (typeof globalThis.crypto === 'undefined') {
+  Object.defineProperty(globalThis, 'crypto', {
+    value: webcrypto,
+    configurable: true,
+    writable: false,
+  })
+}
+
+if (typeof globalThis.indexedDB === 'undefined') {
+  Object.defineProperty(globalThis, 'indexedDB', {
+    value: fakeIndexedDB,
+    configurable: true,
+    writable: false,
+  })
+}
+
+if (typeof globalThis.IDBKeyRange === 'undefined') {
+  Object.defineProperty(globalThis, 'IDBKeyRange', {
+    value: IDBKeyRange,
+    configurable: true,
+    writable: false,
+  })
+}
 
 type RowRecord = Record<string, unknown>
 
@@ -256,11 +282,6 @@ vi.mock('@tauri-apps/plugin-sql', () => {
   ;(globalThis as Record<string, unknown>).SqlPlugin = api
   return api
 })
-
-vi.mock('../src/lib/crypto', () => ({
-  encryptString: vi.fn(async (_k: Uint8Array, v: string) => v),
-  decryptString: vi.fn(async (_k: Uint8Array, v: string) => v),
-}))
 
 vi.mock('react-dom/test-utils', async () => {
   const actual = await vi.importActual<any>('react-dom/test-utils')
