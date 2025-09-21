@@ -17,11 +17,16 @@ function formatTimestamp(timestamp?: number) {
   }
 }
 
+export type VaultItemMetadataItem = {
+  content: ReactNode
+  title?: string
+}
+
 export type VaultItemListItem = {
   key: string | number
   title: string
   description?: string
-  metadata?: ReactNode[]
+  metadata?: VaultItemMetadataItem[]
   badges?: VaultItemBadge[]
   tags?: VaultItemTag[]
   updatedAt?: number
@@ -34,13 +39,17 @@ type VaultItemListProps = {
   className?: string
 }
 
-function renderMetadata(metadata?: ReactNode[]) {
+function renderMetadata(metadata?: VaultItemMetadataItem[]) {
   if (!metadata || metadata.length === 0) return null
   return (
     <div className="flex flex-wrap gap-2 text-xs text-muted">
       {metadata.map((item, index) => (
-        <span key={index} className="inline-flex items-center rounded-full bg-surface-hover px-2 py-0.5">
-          {item}
+        <span
+          key={index}
+          title={item.title ?? (typeof item.content === 'string' ? item.content : undefined)}
+          className="inline-flex max-w-full items-center truncate rounded-full bg-surface-hover px-2 py-0.5"
+        >
+          {item.content}
         </span>
       ))}
     </div>
@@ -54,8 +63,9 @@ function renderBadges(badges?: VaultItemBadge[]) {
       {badges.map((badge, index) => (
         <span
           key={`${badge.label}-${index}`}
+          title={badge.title ?? badge.label}
           className={clsx(
-            'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors',
+            'inline-flex max-w-full items-center truncate rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors',
             VAULT_BADGE_STYLES[badge.tone ?? 'neutral'],
           )}
         >

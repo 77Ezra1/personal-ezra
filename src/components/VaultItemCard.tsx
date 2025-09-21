@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 export type VaultItemBadge = {
   label: string
   tone?: 'info' | 'success' | 'warning' | 'neutral'
+  title?: string
 }
 
 export type VaultItemTag = {
@@ -70,8 +71,9 @@ export function VaultItemCard({ title, description, badges, tags, updatedAt, onO
             {badges.map((badge, index) => (
               <span
                 key={`${badge.label}-${index}`}
+                title={badge.title ?? badge.label}
                 className={clsx(
-                  'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors',
+                  'inline-flex max-w-full items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors truncate',
                   VAULT_BADGE_STYLES[badge.tone ?? 'neutral'],
                 )}
               >
