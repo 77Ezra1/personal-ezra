@@ -21,6 +21,8 @@ function fromBase64(str: string) {
 
 type AuthResult = { success: boolean; message?: string }
 type MnemonicResult = AuthResult & { mnemonic?: string }
+type MnemonicAnswerPayload = { index: number; word: string }
+type RecoverPasswordPayload = { email: string; newPassword: string; mnemonicAnswers: MnemonicAnswerPayload[] }
 
 const MIN_DISPLAY_NAME_LENGTH = 2
 const MAX_DISPLAY_NAME_LENGTH = 30
@@ -50,7 +52,7 @@ type AuthState = {
   loadProfile: () => Promise<UserProfile | null>
   updateProfile: (payload: ProfileUpdatePayload) => Promise<AuthResult>
   changePassword: (payload: { currentPassword: string; newPassword: string }) => Promise<AuthResult>
-  recoverPassword: (payload: { email: string; mnemonic: string; newPassword: string }) => Promise<AuthResult>
+  recoverPassword: (payload: RecoverPasswordPayload) => Promise<AuthResult>
   deleteAccount: (password: string) => Promise<AuthResult>
   revealMnemonic: (password: string) => Promise<MnemonicResult>
 }
@@ -100,10 +102,14 @@ function normalizeDisplayName(value: string) {
   return value.replace(/\s+/g, ' ').trim()
 }
 
+function normalizeMnemonicWord(value: string) {
+  return value.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
 function normalizeMnemonic(value: string) {
   return value
     .split(/\s+/)
-    .map(part => part.trim().toLowerCase())
+    .map(normalizeMnemonicWord)
     .filter(Boolean)
     .join(' ')
 }
@@ -412,20 +418,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
   async recoverPassword(payload) {
     const email = payload.email.trim().toLowerCase()
-    const mnemonic = normalizeMnemonic(payload.mnemonic ?? '')
     const { newPassword } = payload
+    const answersInput = Array.isArray(payload.mnemonicAnswers) ? payload.mnemonicAnswers : []
+    const normalizedAnswers = new Map<number, string>()
+
+    for (const entry of answersInput) {
+      const index = Number(entry.index)
+      const normalizedWord = normalizeMnemonicWord(entry.word)
+      if (!Number.isInteger(index) || index < 0 || !normalizedWord) {
+        continue
+      }
+      if (!normalizedAnswers.has(index)) {
+        normalizedAnswers.set(index, normalizedWord)
+      }
+    }
 
     if (!email) {
       return { success: false, message: '请输入注册邮箱' }
-    }
-    if (!mnemonic) {
-      return { success: false, message: '请输入助记词' }
     }
     if (!newPassword) {
       return { success: false, message: '请输入新密码' }
     }
     if (newPassword.length < 6) {
       return { success: false, message: '新密码至少需要 6 位字符' }
+    }
+    if (normalizedAnswers.size === 0) {
+      return { success: false, message: '请输入助记词单词' }
     }
 
     try {
@@ -438,8 +456,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (!storedMnemonic) {
         return { success: false, message: '该账号尚未设置助记词，无法找回密码' }
       }
-      if (storedMnemonic !== mnemonic) {
-        return { success: false, message: '助记词不正确' }
+      const storedWords = storedMnemonic.split(' ')
+
+      for (const [index, word] of normalizedAnswers.entries()) {
+        const storedWord = storedWords[index]
+        if (!storedWord || storedWord !== word) {
+          return { success: false, message: '助记词不正确' }
+        }
       }
 
       const saltBytes = fromBase64(record.salt)

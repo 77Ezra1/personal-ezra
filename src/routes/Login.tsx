@@ -6,6 +6,38 @@ import { useAuthStore } from '../stores/auth'
 
 type RecoveryMessage = { type: 'error' | 'success'; text: string } | null
 
+const DEFAULT_MNEMONIC_WORD_COUNT = 12
+const RECOVERY_CHALLENGE_SIZE = 8
+
+function normalizeMnemonicWord(value: string) {
+  return value.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+function createEmptyMnemonicWords(wordCount: number) {
+  const count = Number.isFinite(wordCount) && wordCount > 0 ? Math.floor(wordCount) : DEFAULT_MNEMONIC_WORD_COUNT
+  return Array.from({ length: count }, () => '')
+}
+
+function getRandomInt(max: number) {
+  if (max <= 0) return 0
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const array = new Uint32Array(1)
+    crypto.getRandomValues(array)
+    return array[0] % max
+  }
+  return Math.floor(Math.random() * max)
+}
+
+function generateMnemonicChallengeIndices(wordCount: number, count: number) {
+  if (wordCount <= 0 || count <= 0) return []
+  const target = Math.min(wordCount, Math.floor(count))
+  const indices = new Set<number>()
+  while (indices.size < target) {
+    indices.add(getRandomInt(wordCount))
+  }
+  return Array.from(indices).sort((a, b) => a - b)
+}
+
 export default function Login() {
   const login = useAuthStore(state => state.login)
   const recoverPassword = useAuthStore(state => state.recoverPassword)
@@ -16,29 +48,40 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false)
   const [recoveryEmail, setRecoveryEmail] = useState('')
-  const [recoveryMnemonic, setRecoveryMnemonic] = useState('')
   const [recoveryNewPassword, setRecoveryNewPassword] = useState('')
   const [recoveryConfirmPassword, setRecoveryConfirmPassword] = useState('')
   const [recoveryCaptchaCode, setRecoveryCaptchaCode] = useState(() => generateCaptcha())
   const [recoveryCaptchaInput, setRecoveryCaptchaInput] = useState('')
   const [recoveryMessage, setRecoveryMessage] = useState<RecoveryMessage>(null)
   const [recoveryLoading, setRecoveryLoading] = useState(false)
+  const [recoveryMnemonicWords, setRecoveryMnemonicWords] = useState(() =>
+    createEmptyMnemonicWords(DEFAULT_MNEMONIC_WORD_COUNT),
+  )
+  const [recoveryMnemonicIndices, setRecoveryMnemonicIndices] = useState<number[]>([])
   const navigate = useNavigate()
+
+  const requiredMnemonicAnswerCount = Math.min(RECOVERY_CHALLENGE_SIZE, recoveryMnemonicWords.length)
 
   const refreshRecoveryCaptcha = () => {
     setRecoveryCaptchaCode(generateCaptcha())
     setRecoveryCaptchaInput('')
   }
 
+  const resetRecoveryMnemonicState = () => {
+    const wordCount = recoveryMnemonicWords.length || DEFAULT_MNEMONIC_WORD_COUNT
+    setRecoveryMnemonicWords(createEmptyMnemonicWords(wordCount))
+    setRecoveryMnemonicIndices(generateMnemonicChallengeIndices(wordCount, RECOVERY_CHALLENGE_SIZE))
+  }
+
   const handleOpenRecoveryDialog = () => {
     setRecoveryEmail(email.trim())
-    setRecoveryMnemonic('')
     setRecoveryNewPassword('')
     setRecoveryConfirmPassword('')
     setRecoveryCaptchaCode(generateCaptcha())
     setRecoveryCaptchaInput('')
     setRecoveryMessage(null)
     setRecoveryLoading(false)
+    resetRecoveryMnemonicState()
     setRecoveryDialogOpen(true)
   }
 
@@ -46,6 +89,7 @@ export default function Login() {
     setRecoveryDialogOpen(false)
     setRecoveryMessage(null)
     setRecoveryLoading(false)
+    resetRecoveryMnemonicState()
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -62,16 +106,23 @@ export default function Login() {
     }
   }
 
+  const handleMnemonicWordChange = (index: number, value: string) => {
+    setRecoveryMnemonicWords(prev => {
+      const next = [...prev]
+      if (index >= 0 && index < next.length) {
+        next[index] = value
+      }
+      return next
+    })
+    setRecoveryMessage(null)
+  }
+
   const handleRecoveryConfirm = async () => {
     if (recoveryLoading) return
 
     const normalizedEmail = recoveryEmail.trim().toLowerCase()
     if (!normalizedEmail) {
       setRecoveryMessage({ type: 'error', text: '请输入注册邮箱' })
-      return
-    }
-    if (!recoveryMnemonic.trim()) {
-      setRecoveryMessage({ type: 'error', text: '请输入助记词' })
       return
     }
     if (!recoveryNewPassword) {
@@ -98,18 +149,35 @@ export default function Login() {
       return
     }
 
+    if (recoveryMnemonicIndices.length === 0) {
+      setRecoveryMessage({ type: 'error', text: '助记词验证信息异常，请重试' })
+      resetRecoveryMnemonicState()
+      return
+    }
+
+    const answers = recoveryMnemonicIndices.map(index => ({
+      index,
+      word: normalizeMnemonicWord(recoveryMnemonicWords[index] ?? ''),
+    }))
+
+    if (answers.some(answer => !answer.word)) {
+      setRecoveryMessage({ type: 'error', text: '请填写所有要求的助记词单词' })
+      return
+    }
+
     setRecoveryLoading(true)
     setRecoveryMessage(null)
     let shouldRefreshCaptcha = false
     try {
       const result = await recoverPassword({
         email: normalizedEmail,
-        mnemonic: recoveryMnemonic,
         newPassword: recoveryNewPassword,
+        mnemonicAnswers: answers,
       })
       if (result.success) {
         setInfo('密码已重置，请使用新密码登录。')
         setError(null)
+        resetRecoveryMnemonicState()
         setRecoveryDialogOpen(false)
         setEmail(normalizedEmail)
         setPassword('')
@@ -134,10 +202,11 @@ export default function Login() {
   const disableRecoveryConfirm =
     recoveryLoading ||
     !recoveryEmail.trim() ||
-    !recoveryMnemonic.trim() ||
     !recoveryNewPassword ||
     !recoveryConfirmPassword ||
-    !recoveryCaptchaInput.trim()
+    !recoveryCaptchaInput.trim() ||
+    recoveryMnemonicIndices.length !== requiredMnemonicAnswerCount ||
+    recoveryMnemonicIndices.some(index => !recoveryMnemonicWords[index]?.trim())
 
   return (
     <div className="space-y-8">
@@ -236,21 +305,35 @@ export default function Login() {
               />
             </div>
 
-            <div className="space-y-2">
-              <label htmlFor="recovery-mnemonic" className="text-sm font-medium text-text">
-                助记词
-              </label>
-              <textarea
-                id="recovery-mnemonic"
-                rows={3}
-                value={recoveryMnemonic}
-                onChange={event => {
-                  setRecoveryMnemonic(event.target.value)
-                  setRecoveryMessage(null)
-                }}
-                placeholder="请输入助记词，按顺序以空格分隔"
-                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
-              />
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-text">助记词验证</p>
+                <p className="text-xs text-muted">
+                  系统已随机选择 8 个编号，请输入助记词中对应位置的单词。
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {recoveryMnemonicIndices.map(index => {
+                  const inputId = `recovery-mnemonic-${index}`
+                  return (
+                    <div key={index} className="space-y-1">
+                      <label htmlFor={inputId} className="text-xs font-medium text-muted">
+                        第 {index + 1} 个单词
+                      </label>
+                      <input
+                        id={inputId}
+                        type="text"
+                        inputMode="text"
+                        autoComplete="off"
+                        value={recoveryMnemonicWords[index] ?? ''}
+                        onChange={event => handleMnemonicWordChange(index, event.target.value)}
+                        placeholder={`请输入第 ${index + 1} 个单词`}
+                        className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+                      />
+                    </div>
+                  )
+                })}
+              </div>
               <p className="text-xs text-muted">助记词可在登录后的设置页面查看，请在安全环境下操作。</p>
             </div>
 
