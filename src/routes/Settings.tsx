@@ -11,6 +11,7 @@ import {
 } from 'react'
 import AvatarUploader from '../components/AvatarUploader'
 import ConfirmDialog from '../components/ConfirmDialog'
+import CopyButton from '../components/CopyButton'
 import { DEFAULT_TIMEOUT, IDLE_TIMEOUT_OPTIONS, useIdleTimeoutStore } from '../features/lock/IdleLock'
 import { selectAuthProfile, useAuthStore } from '../stores/auth'
 import type { UserAvatarMeta } from '../stores/database'
@@ -353,15 +354,34 @@ function ChangePasswordSection() {
   const [captchaInput, setCaptchaInput] = useState('')
   const [formMessage, setFormMessage] = useState<FormMessage>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [revealedPassword, setRevealedPassword] = useState('')
 
   const loggedIn = Boolean(email)
   const inputsDisabled = !loggedIn || isSubmitting
 
-  useAutoDismissFormMessage(formMessage, setFormMessage)
+  const autoDismissMessage = revealedPassword ? null : formMessage
+  useAutoDismissFormMessage(autoDismissMessage, setFormMessage)
+
+  useEffect(() => {
+    if (!formMessage || formMessage.type !== 'success') {
+      setRevealedPassword('')
+    }
+  }, [formMessage])
 
   const refreshCaptcha = () => {
     setCaptchaCode(generateCaptcha())
     setCaptchaInput('')
+    setRevealedPassword('')
+  }
+
+  const handleRefreshCaptcha = () => {
+    setFormMessage(null)
+    refreshCaptcha()
+  }
+
+  const handleDismissMessage = () => {
+    setFormMessage(null)
+    setRevealedPassword('')
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -402,11 +422,13 @@ function ChangePasswordSection() {
       setFormMessage(null)
       const result = await changePassword({ currentPassword, newPassword })
       if (result.success) {
-        setFormMessage({ type: 'success', text: '密码已更新，请记住新密码。' })
+        const passwordToReveal = newPassword
+        refreshCaptcha()
+        setRevealedPassword(passwordToReveal)
+        setFormMessage({ type: 'success', text: '密码仅展示一次，请谨慎保存' })
         setCurrentPassword('')
         setNewPassword('')
         setConfirmPassword('')
-        refreshCaptcha()
       } else {
         setFormMessage({ type: 'error', text: result.message ?? '修改密码失败，请稍后重试' })
         refreshCaptcha()
@@ -503,7 +525,7 @@ function ChangePasswordSection() {
             </span>
             <button
               type="button"
-              onClick={refreshCaptcha}
+              onClick={handleRefreshCaptcha}
               disabled={isSubmitting}
               className="inline-flex items-center rounded-xl border border-border/60 px-3 py-2 text-xs font-medium text-text transition hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -534,13 +556,39 @@ function ChangePasswordSection() {
           <div
             role="alert"
             className={clsx(
-              'rounded-xl border px-3 py-2 text-sm shadow-sm',
+              'space-y-3 rounded-xl border px-3 py-3 text-sm shadow-sm',
               formMessage.type === 'success'
                 ? 'border-primary/50 bg-primary/10 text-primary'
                 : 'border-red-400/70 bg-red-500/10 text-red-400',
             )}
           >
-            {formMessage.text}
+            <div className="flex items-start justify-between gap-3">
+              <p className="flex-1 leading-relaxed">{formMessage.text}</p>
+              <button
+                type="button"
+                onClick={handleDismissMessage}
+                className={clsx(
+                  'rounded-full border px-2.5 py-1 text-xs font-medium text-current transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2',
+                  formMessage.type === 'success'
+                    ? 'border-primary/40 focus-visible:outline-primary/50'
+                    : 'border-white/20 focus-visible:outline-white/40',
+                )}
+              >
+                关闭
+              </button>
+            </div>
+            {formMessage.type === 'success' && revealedPassword ? (
+              <div className="space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex-1 space-y-1 text-primary">
+                    <span className="text-xs font-medium uppercase tracking-[0.2em] text-primary/80">新密码</span>
+                    <span className="block break-all font-mono text-sm tracking-widest">{revealedPassword}</span>
+                  </div>
+                  <CopyButton text={revealedPassword} className="self-start sm:self-auto" />
+                </div>
+                <p className="text-xs text-primary/80">复制后将在 15 秒内自动从剪贴板清除。</p>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

@@ -182,7 +182,10 @@ class AppDatabase extends Dexie {
         docs: '++id, ownerEmail, updatedAt',
       })
       .upgrade(async tx => {
-        type LegacyUserRecord = Omit<UserRecord, 'displayName' | 'avatar'> & {
+        type LegacyUserRecord = {
+          email: string
+          salt: string
+          keyHash: string
           displayName?: string
           avatar?: UserRecord['avatar']
           mnemonic?: string
@@ -197,8 +200,20 @@ class AppDatabase extends Dexie {
             const existing = typeof legacy.displayName === 'string' ? legacy.displayName.trim() : ''
             const fallback = email.split('@')[0]?.trim()
             const displayName = existing || fallback || email || '用户'
+            const createdAt =
+              typeof legacy.createdAt === 'number' && Number.isFinite(legacy.createdAt)
+                ? legacy.createdAt
+                : Date.now()
+            const updatedAt =
+              typeof legacy.updatedAt === 'number' && Number.isFinite(legacy.updatedAt)
+                ? legacy.updatedAt
+                : createdAt
+            const mustChangePassword =
+              typeof legacy.mustChangePassword === 'boolean' ? legacy.mustChangePassword : false
             const next: UserRecord = {
-              ...legacy,
+              email,
+              salt: typeof legacy.salt === 'string' ? legacy.salt : '',
+              keyHash: typeof legacy.keyHash === 'string' ? legacy.keyHash : '',
               displayName,
               avatar: legacy.avatar ?? null,
               mnemonic: typeof legacy.mnemonic === 'string' ? legacy.mnemonic : '',
@@ -232,7 +247,7 @@ class AppDatabase extends Dexie {
               mnemonic,
               updatedAt: legacy.updatedAt ?? Date.now(),
             }
-            await usersTable.put(next)
+            await usersTable.put(next as unknown as LegacyUserRecordV4)
           }),
         )
       })

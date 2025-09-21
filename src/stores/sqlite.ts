@@ -52,6 +52,22 @@ function toOptionalString(value: unknown): string | undefined {
   return String(value)
 }
 
+function toBoolean(value: unknown): boolean {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (!normalized) return false
+    if (normalized === 'true') return true
+    if (normalized === 'false') return false
+    const parsed = Number(normalized)
+    if (Number.isFinite(parsed)) {
+      return parsed !== 0
+    }
+  }
+  return false
+}
+
 function serializeDocument(document: DocRecord['document']): string | null {
   if (!document) return null
   try {
@@ -196,11 +212,17 @@ const MIGRATIONS: Migration[] = [
       type ColumnInfo = { name: string }
       const hasDisplayName = (columns as ColumnInfo[]).some(column => column.name === 'displayName')
       const hasAvatar = (columns as ColumnInfo[]).some(column => column.name === 'avatar')
+      const hasMustChangePassword = (columns as ColumnInfo[]).some(
+        column => column.name === 'mustChangePassword',
+      )
       if (!hasDisplayName) {
         await connection.execute('ALTER TABLE users ADD COLUMN displayName TEXT')
       }
       if (!hasAvatar) {
         await connection.execute('ALTER TABLE users ADD COLUMN avatar TEXT')
+      }
+      if (!hasMustChangePassword) {
+        await connection.execute('ALTER TABLE users ADD COLUMN mustChangePassword INTEGER NOT NULL DEFAULT 0')
       }
 
       const rows = await connection.select<{ email?: string; displayName?: string }[]>(
