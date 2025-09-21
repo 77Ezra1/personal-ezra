@@ -492,7 +492,9 @@ function DataBackupSection() {
     <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
       <div className="space-y-1">
         <h2 className="text-lg font-medium text-text">数据备份</h2>
-        <p className="text-sm text-muted">导出或导入当前账号的密码、网站与文档数据。</p>
+        <p className="text-sm text-muted">
+          导出或导入当前账号的密码、网站、文档数据，以及用户资料（用户名与头像）。
+        </p>
       </div>
 
       <div className="space-y-2">
@@ -553,7 +555,8 @@ function DataBackupSection() {
       </div>
 
       <p className="text-xs leading-relaxed text-muted">
-        备份文件会使用当前主密码派生的密钥进行加密。请妥善保管文件并避免在不受信任的设备上导入。
+        {'备份文件会使用当前主密码派生的密钥进行加密，并包含当前的用户资料信息。' +
+          '导入时会覆盖本地的密码、网站、文档与资料数据，请妥善保管文件并避免在不受信任的设备上操作。'}
       </p>
     </section>
   )
