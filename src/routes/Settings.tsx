@@ -12,6 +12,7 @@ import {
 import AvatarUploader from '../components/AvatarUploader'
 import ConfirmDialog from '../components/ConfirmDialog'
 import CopyButton from '../components/CopyButton'
+import { generateCaptcha } from '../lib/captcha'
 import { DEFAULT_TIMEOUT, IDLE_TIMEOUT_OPTIONS, useIdleTimeoutStore } from '../features/lock/IdleLock'
 import { selectAuthProfile, useAuthStore } from '../stores/auth'
 import type { UserAvatarMeta } from '../stores/database'
@@ -1069,22 +1070,3 @@ function DeleteAccountSection() {
   )
 }
 
-function generateCaptcha(length = 5) {
-  const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  if (length <= 0) return ''
-  const chars: string[] = []
-  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-    const randomValues = new Uint8Array(length)
-    crypto.getRandomValues(randomValues)
-    for (let i = 0; i < randomValues.length; i += 1) {
-      const index = randomValues[i] % charset.length
-      chars.push(charset.charAt(index))
-    }
-  } else {
-    for (let i = 0; i < length; i += 1) {
-      const index = Math.floor(Math.random() * charset.length)
-      chars.push(charset.charAt(index))
-    }
-  }
-  return chars.join('')
-}
