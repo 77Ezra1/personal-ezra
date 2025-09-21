@@ -20,7 +20,7 @@ function fromBase64(str: string) {
   return result
 }
 
-type AuthResult = { success: boolean; message?: string }
+type AuthResult = { success: boolean; message?: string; mustChangePassword?: boolean }
 type MnemonicResult = AuthResult & { mnemonic?: string }
 type MnemonicAnswerPayload = { index: number; word: string }
 type RecoverPasswordPayload = { email: string; newPassword: string; mnemonicAnswers: MnemonicAnswerPayload[] }
@@ -233,6 +233,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       keyHash: toBase64(key),
       displayName: fallbackDisplayName(email),
       avatar: null,
+      mustChangePassword: true,
       mnemonic,
       createdAt: now,
       updatedAt: now,
