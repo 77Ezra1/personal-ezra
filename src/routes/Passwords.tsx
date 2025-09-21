@@ -6,7 +6,7 @@ import { DetailsDrawer } from '../components/DetailsDrawer'
 import { Empty } from '../components/Empty'
 import { Skeleton } from '../components/Skeleton'
 import { TagFilter } from '../components/TagFilter'
-import { VaultItemCard } from '../components/VaultItemCard'
+import { VaultItemCard, type VaultItemAction } from '../components/VaultItemCard'
 import { VaultItemList } from '../components/VaultItemList'
 import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyTextAutoClear } from '../lib/clipboard'
 import { BACKUP_IMPORTED_EVENT } from '../lib/backup'
@@ -265,8 +265,8 @@ export default function Passwords() {
     }
   }
 
-  function buildItemActions(item: PasswordRecord) {
-    const actions = [
+  function buildItemActions(item: PasswordRecord): VaultItemAction[] {
+    const actions: VaultItemAction[] = [
       {
         icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
         label: '复制密码',
