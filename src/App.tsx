@@ -25,8 +25,14 @@ function GuestLayout({ children }: { children: ReactNode }) {
 
 function AuthenticatedLayout() {
   const email = useAuthStore(s => s.email)
+  const profile = useAuthStore(s => s.profile)
   const logout = useAuthStore(s => s.logout)
   const { lock, locked } = useLock()
+
+  const displayName = (profile?.displayName || email || '用户').trim()
+  const avatarUrl = profile?.avatar?.dataUrl ?? null
+  const avatarInitial = displayName ? displayName.charAt(0).toUpperCase() : '用'
+  const avatarAlt = displayName ? `${displayName}的头像` : '用户头像'
 
   return (
     <div className="min-h-screen bg-background text-text transition-colors">
@@ -38,7 +44,16 @@ function AuthenticatedLayout() {
           </div>
           <div className="flex flex-col items-end gap-3 text-sm text-text/80">
             <div className="flex items-center gap-4">
-              <span className="truncate">{email}</span>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border/60 bg-surface text-base font-semibold text-text">
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt={avatarAlt} className="h-full w-full object-cover" />
+                  ) : (
+                    <span>{avatarInitial}</span>
+                  )}
+                </div>
+                <span className="max-w-[140px] truncate text-sm font-medium text-text">{displayName}</span>
+              </div>
               <button
                 type="button"
                 onClick={() => {
