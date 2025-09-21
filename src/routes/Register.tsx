@@ -1,5 +1,7 @@
 import { FormEvent, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import PasswordFieldWithStrength from '../components/PasswordFieldWithStrength'
+import { estimatePasswordStrength, PASSWORD_STRENGTH_REQUIREMENT } from '../lib/password-utils'
 import { useAuthStore } from '../stores/auth'
 
 export default function Register() {
@@ -13,6 +15,12 @@ export default function Register() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const strength = estimatePasswordStrength(password)
+    if (!strength.meetsRequirement) {
+      const [firstSuggestion] = strength.suggestions
+      setError(firstSuggestion ?? PASSWORD_STRENGTH_REQUIREMENT)
+      return
+    }
     if (password !== confirm) {
       setError('两次输入的密码不一致')
       return
@@ -49,27 +57,28 @@ export default function Register() {
             required
             autoComplete="email"
             value={email}
-            onChange={event => setEmail(event.target.value)}
-            className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+            onChange={event => {
+              setEmail(event.target.value)
+              setError(null)
+            }}
+            disabled={loading}
+            className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
             placeholder="you@example.com"
           />
         </div>
 
-        <div className="space-y-2 text-left">
-          <label htmlFor="password" className="text-sm font-medium text-text">
-            登录密码
-          </label>
-          <input
-            id="password"
-            type="password"
-            required
-            autoComplete="new-password"
-            value={password}
-            onChange={event => setPassword(event.target.value)}
-            className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
-            placeholder="不少于 6 位"
-          />
-        </div>
+        <PasswordFieldWithStrength
+          id="password"
+          label="登录密码"
+          value={password}
+          onChange={next => {
+            setPassword(next)
+            setError(null)
+          }}
+          onGenerate={next => setConfirm(next)}
+          disabled={loading}
+          autoComplete="new-password"
+        />
 
         <div className="space-y-2 text-left">
           <label htmlFor="confirm" className="text-sm font-medium text-text">
@@ -80,8 +89,13 @@ export default function Register() {
             type="password"
             required
             value={confirm}
-            onChange={event => setConfirm(event.target.value)}
-            className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+            onChange={event => {
+              setConfirm(event.target.value)
+              setError(null)
+            }}
+            autoComplete="new-password"
+            disabled={loading}
+            className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
             placeholder="再次输入密码"
           />
         </div>

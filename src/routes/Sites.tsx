@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import Fuse from 'fuse.js'
 import { Copy, ExternalLink, Pencil } from 'lucide-react'
 import { AppLayout } from '../components/AppLayout'
@@ -9,6 +9,7 @@ import { TagFilter } from '../components/TagFilter'
 import { VaultItemCard } from '../components/VaultItemCard'
 import { VaultItemList } from '../components/VaultItemList'
 import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyTextAutoClear } from '../lib/clipboard'
+import { BACKUP_IMPORTED_EVENT } from '../lib/backup'
 import { useToast } from '../components/ToastProvider'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 import { useAuthStore } from '../stores/auth'
@@ -52,6 +53,25 @@ export default function Sites() {
     return stored === 'list' ? 'list' : 'card'
   })
 
+  const reloadItems = useCallback(
+    async (currentEmail: string, options: { showLoading?: boolean } = {}) => {
+      const { showLoading = true } = options
+      if (showLoading) {
+        setLoading(true)
+      }
+      try {
+        const rows = await db.sites.where('ownerEmail').equals(currentEmail).toArray()
+        rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+        setItems(rows)
+      } finally {
+        if (showLoading) {
+          setLoading(false)
+        }
+      }
+    },
+    [setItems, setLoading],
+  )
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     try {
@@ -79,8 +99,15 @@ export default function Sites() {
       }
     }
 
-    void load(email)
-  }, [email])
+    const handleImported = () => {
+      void reloadItems(email)
+    }
+
+    window.addEventListener(BACKUP_IMPORTED_EVENT, handleImported)
+    return () => {
+      window.removeEventListener(BACKUP_IMPORTED_EVENT, handleImported)
+    }
+  }, [email, reloadItems])
 
   const availableTags = useMemo(() => {
     const tagSet = new Set<string>()
