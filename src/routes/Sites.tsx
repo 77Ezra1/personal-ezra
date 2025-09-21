@@ -99,6 +99,8 @@ export default function Sites() {
       }
     }
 
+    void load(email)
+
     const handleImported = () => {
       void reloadItems(email)
     }
