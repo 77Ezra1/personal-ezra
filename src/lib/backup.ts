@@ -1,5 +1,20 @@
 import { decryptString, encryptString, deriveKey } from './crypto'
-import { db, type DocRecord, type PasswordRecord, type SiteRecord } from '../stores/database'
+import { detectSensitiveWords } from './sensitive-words'
+import {
+  fallbackDisplayName,
+  MAX_DISPLAY_NAME_LENGTH,
+  MIN_DISPLAY_NAME_LENGTH,
+  normalizeDisplayName,
+  validateAvatarMeta,
+} from './profile'
+import {
+  db,
+  type DocRecord,
+  type PasswordRecord,
+  type SiteRecord,
+  type UserAvatarMeta,
+  type UserRecord,
+} from '../stores/database'
 import { useAuthStore } from '../stores/auth'
 
 export const BACKUP_IMPORTED_EVENT = 'pms-backup-imported'
@@ -145,6 +160,11 @@ type DocBackupEntry = {
   updatedAt: number
 }
 
+type BackupProfile = {
+  displayName: string
+  avatar: UserAvatarMeta | null
+}
+
 type BackupPayloadV1 = {
   version: typeof BACKUP_VERSION
   exportedAt: number
@@ -152,6 +172,7 @@ type BackupPayloadV1 = {
   passwords: PasswordBackupEntry[]
   sites: SiteBackupEntry[]
   docs: DocBackupEntry[]
+  profile?: BackupProfile
 }
 
 type BackupPayload = BackupPayloadV1
@@ -361,6 +382,24 @@ export async function exportUserData(
     db.docs.where('ownerEmail').equals(normalizedEmail).toArray(),
   ])
 
+  const fallbackName = fallbackDisplayName(normalizedEmail)
+  const rawDisplayName = typeof userRecord.displayName === 'string' ? userRecord.displayName : ''
+  const normalizedDisplayName = normalizeDisplayName(rawDisplayName)
+  const bannedWords = normalizedDisplayName ? detectSensitiveWords(normalizedDisplayName) : []
+  const safeDisplayName =
+    normalizedDisplayName &&
+    normalizedDisplayName.length >= MIN_DISPLAY_NAME_LENGTH &&
+    normalizedDisplayName.length <= MAX_DISPLAY_NAME_LENGTH &&
+    bannedWords.length === 0
+      ? normalizedDisplayName
+      : fallbackName
+
+  const avatarResult = validateAvatarMeta(userRecord.avatar)
+  const profile: BackupProfile = {
+    displayName: safeDisplayName,
+    avatar: avatarResult.ok ? avatarResult.value : null,
+  }
+
   const payload: BackupPayloadV1 = {
     version: BACKUP_VERSION,
     exportedAt: Date.now(),
@@ -368,6 +407,7 @@ export async function exportUserData(
     passwords: await decryptPasswords(passwordRows, encryptionKey),
     sites: mapSites(siteRows),
     docs: mapDocs(docRows),
+    profile,
   }
 
   let encryptedPayload: LegacyEncryptedPayload
@@ -487,6 +527,30 @@ function parseBackupPayload(data: unknown): BackupPayload {
     }
   })
 
+  const profileRaw = (data as { profile?: unknown }).profile
+  let profile: BackupProfile | undefined
+  if (isObject(profileRaw)) {
+    const fallbackName = fallbackDisplayName(email)
+    const displayNameInput = sanitizeOptionalString((profileRaw as { displayName?: unknown }).displayName) ?? ''
+    const normalizedDisplayName = normalizeDisplayName(displayNameInput)
+    const bannedWords = normalizedDisplayName ? detectSensitiveWords(normalizedDisplayName) : []
+    const safeDisplayName =
+      normalizedDisplayName &&
+      normalizedDisplayName.length >= MIN_DISPLAY_NAME_LENGTH &&
+      normalizedDisplayName.length <= MAX_DISPLAY_NAME_LENGTH &&
+      bannedWords.length === 0
+        ? normalizedDisplayName
+        : fallbackName
+
+    const avatarInput = (profileRaw as { avatar?: unknown }).avatar
+    const avatarResult = validateAvatarMeta((avatarInput ?? null) as UserAvatarMeta | null)
+
+    profile = {
+      displayName: safeDisplayName,
+      avatar: avatarResult.ok ? avatarResult.value : null,
+    }
+  }
+
   return {
     version: version as typeof BACKUP_VERSION,
     exportedAt,
@@ -494,6 +558,7 @@ function parseBackupPayload(data: unknown): BackupPayload {
     passwords,
     sites,
     docs,
+    profile,
   }
 }
 
@@ -694,6 +759,29 @@ export async function importUserData(
     Promise.resolve(prepareSiteRecords(parsed.sites, ownerEmail)),
     Promise.resolve(prepareDocRecords(parsed.docs, ownerEmail)),
   ])
+
+  if (parsed.profile) {
+    try {
+      const existingUser = await db.users.get(ownerEmail)
+      if (existingUser) {
+        const nextDisplayName = fallbackDisplayName(ownerEmail, parsed.profile.displayName)
+        const nextRecord: UserRecord = {
+          ...existingUser,
+          displayName: nextDisplayName,
+          avatar: parsed.profile.avatar,
+          updatedAt: Date.now(),
+        }
+        await db.users.put(nextRecord)
+        try {
+          await useAuthStore.getState().loadProfile()
+        } catch (error) {
+          console.error('Failed to refresh profile after backup import', error)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to update user profile during backup import', error)
+    }
+  }
 
   await removeExistingRecords(ownerEmail)
   return persistRecords(ownerEmail, passwordRecords, siteRecords, docRecords)
