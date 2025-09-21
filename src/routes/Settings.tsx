@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import AvatarUploader from '../components/AvatarUploader'
+import { DEFAULT_TIMEOUT, IDLE_TIMEOUT_OPTIONS, useIdleTimeoutStore } from '../features/lock/IdleLock'
 import { selectAuthProfile, useAuthStore } from '../stores/auth'
 import type { UserAvatarMeta } from '../stores/database'
 import { resolveEffectiveTheme, type ThemeMode, useTheme } from '../stores/theme'
@@ -199,6 +200,8 @@ export default function Settings() {
         </form>
       </section>
 
+      <IdleTimeoutSettingsSection />
+
       <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
         <div className="space-y-1">
           <h2 className="text-lg font-medium text-text">主题模式</h2>
@@ -253,5 +256,50 @@ export default function Settings() {
         </fieldset>
       </section>
     </div>
+  )
+}
+
+function IdleTimeoutSettingsSection() {
+  const duration = useIdleTimeoutStore(state => state.duration)
+  const setDuration = useIdleTimeoutStore(state => state.setDuration)
+
+  const handleDurationChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const value = event.currentTarget.value
+    if (value === 'off') {
+      setDuration('off')
+      return
+    }
+    const parsed = Number(value)
+    setDuration(Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT)
+  }
+
+  return (
+    <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
+      <div className="space-y-1">
+        <h2 className="text-lg font-medium text-text">安全设置</h2>
+        <p className="text-sm text-muted">选择自动锁定时长，离开时也能保护数据安全。</p>
+      </div>
+      <div className="space-y-2">
+        <label htmlFor="settings-idle-timeout" className="text-sm font-medium text-text">
+          自动锁定时长
+        </label>
+        <select
+          id="settings-idle-timeout"
+          value={duration === 'off' ? 'off' : String(duration)}
+          onChange={handleDurationChange}
+          className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+        >
+          {IDLE_TIMEOUT_OPTIONS.map(option => (
+            <option
+              key={String(option.value)}
+              value={option.value === 'off' ? 'off' : String(option.value)}
+            >
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-muted">未操作超过设定时间后应用会自动锁定，需要重新输入主密码才能继续使用。</p>
+      </div>
+    </section>
   )
 }
