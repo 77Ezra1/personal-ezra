@@ -48,4 +48,19 @@ describe('AppLayout', () => {
     expect(cardButton).toHaveAttribute('aria-pressed', 'false')
     expect(listButton).toHaveAttribute('aria-pressed', 'true')
   })
+
+  it('renders filters when provided', () => {
+    render(
+      <AppLayout
+        title="带筛选"
+        searchValue=""
+        onSearchChange={() => {}}
+        filters={<div data-testid="filters">filters</div>}
+      >
+        <div>内容</div>
+      </AppLayout>,
+    )
+
+    expect(screen.getByTestId('filters')).toBeInTheDocument()
+  })
 })

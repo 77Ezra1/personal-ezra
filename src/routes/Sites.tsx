@@ -5,6 +5,7 @@ import { AppLayout } from '../components/AppLayout'
 import { DetailsDrawer } from '../components/DetailsDrawer'
 import { Empty } from '../components/Empty'
 import { Skeleton } from '../components/Skeleton'
+import { TagFilter } from '../components/TagFilter'
 import { VaultItemCard } from '../components/VaultItemCard'
 import { VaultItemList } from '../components/VaultItemList'
 import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyTextAutoClear } from '../lib/clipboard'
@@ -12,17 +13,20 @@ import { useToast } from '../components/ToastProvider'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 import { useAuthStore } from '../stores/auth'
 import { db, type SiteRecord } from '../stores/database'
+import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
 
 type SiteDraft = {
   title: string
   url: string
   description: string
+  tags: string
 }
 
 const EMPTY_DRAFT: SiteDraft = {
   title: '',
   url: '',
   description: '',
+  tags: '',
 }
 
 const SITE_VIEW_MODE_STORAGE_KEY = 'pms:view:sites'
@@ -41,6 +45,7 @@ export default function Sites() {
   const [draft, setDraft] = useState<SiteDraft>(EMPTY_DRAFT)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [viewMode, setViewMode] = useState<'card' | 'list'>(() => {
     if (typeof window === 'undefined') return 'card'
     const stored = window.localStorage.getItem(SITE_VIEW_MODE_STORAGE_KEY)
@@ -68,7 +73,7 @@ export default function Sites() {
       try {
         const rows = await db.sites.where('ownerEmail').equals(currentEmail).toArray()
         rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-        setItems(rows)
+        setItems(rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) })))
       } finally {
         setLoading(false)
       }
@@ -77,12 +82,38 @@ export default function Sites() {
     void load(email)
   }, [email])
 
+  const availableTags = useMemo(() => {
+    const tagSet = new Set<string>()
+    items.forEach(item => {
+      ensureTagsArray(item.tags).forEach(tag => tagSet.add(tag))
+    })
+    return Array.from(tagSet).sort((a, b) => a.localeCompare(b))
+  }, [items])
+
+  useEffect(() => {
+    setSelectedTags(prev => prev.filter(tag => availableTags.includes(tag)))
+  }, [availableTags])
+
+  function toggleTag(tag: string) {
+    setSelectedTags(prev => {
+      if (prev.includes(tag)) {
+        return prev.filter(item => item !== tag)
+      }
+      return [...prev, tag]
+    })
+  }
+
+  function clearTagFilters() {
+    setSelectedTags([])
+  }
+
   const fuse = useMemo(() => {
     return new Fuse(items, {
       keys: [
         { name: 'title', weight: 0.6 },
         { name: 'url', weight: 0.3 },
         { name: 'description', weight: 0.1 },
+        { name: 'tags', weight: 0.2 },
       ],
       threshold: 0.32,
       ignoreLocation: true,
@@ -90,24 +121,46 @@ export default function Sites() {
   }, [items])
 
   const filteredItems = useMemo(() => {
-    if (!searchTerm.trim()) {
-      return items
+    const trimmed = searchTerm.trim()
+    const base = trimmed ? fuse.search(trimmed).map(result => result.item) : items
+    if (selectedTags.length === 0) {
+      return base
     }
-    return fuse.search(searchTerm.trim()).map(result => result.item)
-  }, [fuse, items, searchTerm])
+    return base.filter(item => matchesAllTags(item.tags, selectedTags))
+  }, [fuse, items, searchTerm, selectedTags])
 
-  const commandItems = useMemo(
+  const itemCommandItems = useMemo(
     () =>
       items
         .filter(item => typeof item.id === 'number')
-        .map(item => ({
-          id: `site-${item.id}`,
-          title: item.title,
-          subtitle: item.url,
-          keywords: [item.description].filter(Boolean) as string[],
-        })),
+        .map(item => {
+          const tags = ensureTagsArray(item.tags)
+          const subtitleParts = [item.url, ...tags.map(tag => `#${tag}`)].filter(Boolean)
+          const keywords = [item.url, item.description, ...tags, ...tags.map(tag => `#${tag}`)]
+            .filter(Boolean)
+            .map(entry => String(entry))
+          return {
+            id: `site-${item.id}`,
+            title: item.title,
+            subtitle: subtitleParts.join(' · '),
+            keywords,
+          }
+        }),
     [items],
   )
+
+  const tagCommandItems = useMemo(
+    () =>
+      availableTags.map(tag => ({
+        id: `site-tag-${encodeURIComponent(tag)}`,
+        title: `筛选标签：${tag}`,
+        subtitle: selectedTags.includes(tag) ? '当前已选，点击取消筛选' : '按此标签筛选列表',
+        keywords: [tag, `#${tag}`],
+      })),
+    [availableTags, selectedTags],
+  )
+
+  const commandItems = useMemo(() => [...tagCommandItems, ...itemCommandItems], [itemCommandItems, tagCommandItems])
 
   function closeDrawer() {
     setDrawerOpen(false)
@@ -128,14 +181,19 @@ export default function Sites() {
   function handleView(item: SiteRecord) {
     setActiveItem(item)
     setDrawerMode('view')
-    setDraft({ title: item.title, url: item.url, description: item.description ?? '' })
+    setDraft({
+      title: item.title,
+      url: item.url,
+      description: item.description ?? '',
+      tags: ensureTagsArray(item.tags).join(', '),
+    })
     setDrawerOpen(true)
   }
 
   function handleEdit(item: SiteRecord) {
     setActiveItem(item)
     setDrawerMode('edit')
-    setDraft({ title: item.title, url: item.url, description: item.description ?? '' })
+    setDraft({ title: item.title, url: item.url, description: item.description ?? '', tags: ensureTagsArray(item.tags).join(', ') })
     setDrawerOpen(true)
   }
 
@@ -194,7 +252,7 @@ export default function Sites() {
       if (email) {
         const rows = await db.sites.where('ownerEmail').equals(email).toArray()
         rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-        setItems(rows)
+        setItems(rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) })))
       }
       closeDrawer()
     } catch (error) {
@@ -213,6 +271,7 @@ export default function Sites() {
     const trimmedTitle = draft.title.trim()
     const trimmedUrl = draft.url.trim()
     const trimmedDescription = draft.description.trim()
+    const parsedTags = parseTagsInput(draft.tags)
 
     if (!trimmedTitle) {
       setFormError('请填写名称')
@@ -233,6 +292,7 @@ export default function Sites() {
           title: trimmedTitle,
           url: trimmedUrl,
           description: trimmedDescription || undefined,
+          tags: parsedTags,
           createdAt: now,
           updatedAt: now,
         })
@@ -243,6 +303,7 @@ export default function Sites() {
           title: trimmedTitle,
           url: trimmedUrl,
           description: trimmedDescription || undefined,
+          tags: parsedTags,
           updatedAt: now,
         })
         showToast({ title: '网站已更新', variant: 'success' })
@@ -251,7 +312,7 @@ export default function Sites() {
       if (email) {
         const rows = await db.sites.where('ownerEmail').equals(email).toArray()
         rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-        setItems(rows)
+        setItems(rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) })))
       }
 
       closeDrawer()
@@ -263,6 +324,16 @@ export default function Sites() {
   }
 
   function handleCommandSelect(commandId: string) {
+    if (commandId.startsWith('site-tag-')) {
+      const encoded = commandId.replace('site-tag-', '')
+      try {
+        const tag = decodeURIComponent(encoded)
+        toggleTag(tag)
+      } catch {
+        // ignore malformed tag ids
+      }
+      return
+    }
     const id = Number(commandId.replace('site-', ''))
     const target = items.find(item => item.id === id)
     if (target) {
@@ -281,7 +352,12 @@ export default function Sites() {
       if (drawerOpen) {
         if (drawerMode === 'edit' && activeItem) {
           setDrawerMode('view')
-          setDraft({ title: activeItem.title, url: activeItem.url, description: activeItem.description ?? '' })
+          setDraft({
+            title: activeItem.title,
+            url: activeItem.url,
+            description: activeItem.description ?? '',
+            tags: ensureTagsArray(activeItem.tags).join(', '),
+          })
         } else {
           closeDrawer()
         }
@@ -297,7 +373,7 @@ export default function Sites() {
       description="收藏常用网站并记录简介，使用搜索和快捷键快速访问。"
       searchValue={searchTerm}
       onSearchChange={setSearchTerm}
-      searchPlaceholder="搜索名称、链接或备注"
+      searchPlaceholder="搜索名称、链接、备注或标签"
       createLabel="新增网站"
       onCreate={handleCreate}
       commandPalette={{
@@ -310,6 +386,9 @@ export default function Sites() {
       }}
       viewMode={viewMode}
       onViewModeChange={setViewMode}
+      filters={
+        <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
+      }
     >
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -338,6 +417,7 @@ export default function Sites() {
                 title={item.title}
                 description={item.description || '未填写简介'}
                 badges={[{ label: item.url, tone: 'info' }]}
+                tags={ensureTagsArray(item.tags).map(tag => ({ id: tag, name: tag }))}
                 updatedAt={item.updatedAt}
                 onOpen={() => handleView(item)}
                 actions={actions}
@@ -352,6 +432,7 @@ export default function Sites() {
             title: item.title,
             description: item.description || '未填写简介',
             metadata: item.url ? [`链接：${item.url}`] : undefined,
+            tags: ensureTagsArray(item.tags).map(tag => ({ id: tag, name: tag })),
             updatedAt: item.updatedAt,
             onOpen: () => handleView(item),
             actions: buildItemActions(item),
@@ -427,6 +508,20 @@ export default function Sites() {
               <p className="mt-1 whitespace-pre-line text-base text-text">{activeItem.description || '未填写'}</p>
             </div>
             <div>
+              <p className="text-xs text-muted">标签</p>
+              {ensureTagsArray(activeItem.tags).length > 0 ? (
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {ensureTagsArray(activeItem.tags).map(tag => (
+                    <span key={tag} className="inline-flex items-center rounded-full bg-surface-hover px-2.5 py-0.5 text-xs text-muted">
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 text-base text-text">未设置</p>
+              )}
+            </div>
+            <div>
               <p className="text-xs text-muted">最近更新</p>
               <p className="mt-1 text-base text-text">
                 {activeItem.updatedAt ? new Date(activeItem.updatedAt).toLocaleString() : '未知'}
@@ -465,6 +560,16 @@ export default function Sites() {
                 className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
                 placeholder="可记录登录说明或备注"
               />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-xs uppercase tracking-wide text-muted">标签</span>
+              <input
+                value={draft.tags}
+                onChange={event => setDraft(prev => ({ ...prev, tags: event.target.value }))}
+                className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+                placeholder="例如：学习, 公司"
+              />
+              <p className="text-xs text-muted">多个标签请使用逗号分隔，可用于快速筛选。</p>
             </label>
             {formError && <p className="text-sm text-rose-300">{formError}</p>}
             <div className="flex justify-end gap-3">

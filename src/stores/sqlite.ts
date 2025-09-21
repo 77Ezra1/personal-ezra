@@ -13,6 +13,7 @@ import type {
   UsersTable,
 } from './database'
 import { generateMnemonicPhrase } from '../lib/mnemonic'
+import { ensureTagsArray, normalizeTags } from '../lib/tags'
 
 type SqliteRow = Record<string, unknown>
 
@@ -88,6 +89,27 @@ function parseDocument(value: unknown): DocRecord['document'] {
   }
 }
 
+function serializeTags(tags: PasswordRecord['tags']): string {
+  const normalized = normalizeTags(tags ?? [])
+  try {
+    return JSON.stringify(normalized)
+  } catch (error) {
+    console.warn('Failed to serialize tags for SQLite storage', error)
+    return '[]'
+  }
+}
+
+function parseTags(value: unknown): string[] {
+  if (typeof value !== 'string' || !value.trim()) return []
+  try {
+    const parsed = JSON.parse(value)
+    return ensureTagsArray(Array.isArray(parsed) ? (parsed as string[]) : [])
+  } catch (error) {
+    console.warn('Failed to parse stored tags from SQLite', error)
+    return []
+  }
+}
+
 function serializeAvatar(meta: UserRecord['avatar']): string | null {
   if (!meta) return null
   try {
@@ -149,6 +171,7 @@ const MIGRATIONS: Migration[] = [
           username TEXT NOT NULL,
           passwordCipher TEXT NOT NULL,
           url TEXT,
+          tags TEXT,
           createdAt INTEGER NOT NULL,
           updatedAt INTEGER NOT NULL
         )
@@ -160,6 +183,7 @@ const MIGRATIONS: Migration[] = [
           title TEXT NOT NULL,
           url TEXT NOT NULL,
           description TEXT,
+          tags TEXT,
           createdAt INTEGER NOT NULL,
           updatedAt INTEGER NOT NULL
         )
@@ -171,6 +195,7 @@ const MIGRATIONS: Migration[] = [
           title TEXT NOT NULL,
           description TEXT,
           document TEXT,
+          tags TEXT,
           createdAt INTEGER NOT NULL,
           updatedAt INTEGER NOT NULL
         )
@@ -261,6 +286,26 @@ const MIGRATIONS: Migration[] = [
           ? previousUpdatedAt
           : Date.now()
         await connection.execute('UPDATE users SET mnemonic = ?, updatedAt = ? WHERE email = ?', [mnemonic, timestamp, email])
+      }
+    },
+  },
+  {
+    version: 6,
+    async run(connection) {
+      type ColumnInfo = { name: string }
+      const tables: Array<{ name: 'passwords' | 'sites' | 'docs'; column: string }> = [
+        { name: 'passwords', column: 'tags' },
+        { name: 'sites', column: 'tags' },
+        { name: 'docs', column: 'tags' },
+      ]
+
+      for (const table of tables) {
+        const columns = await connection.select<{ name?: string }[]>(`PRAGMA table_info(${table.name})`)
+        const hasTags = (columns as ColumnInfo[]).some(column => column.name === table.column)
+        if (!hasTags) {
+          await connection.execute(`ALTER TABLE ${table.name} ADD COLUMN ${table.column} TEXT`)
+        }
+        await connection.execute(`UPDATE ${table.name} SET ${table.column} = '[]' WHERE ${table.column} IS NULL`)
       }
     },
   },
@@ -387,6 +432,7 @@ function mapPasswordRow(row: SqliteRow): PasswordRecord {
     username: String(row.username ?? ''),
     passwordCipher: String(row.passwordCipher ?? ''),
     url: toOptionalString(row.url),
+    tags: parseTags(row.tags),
     createdAt,
     updatedAt,
   }
@@ -401,6 +447,7 @@ function mapSiteRow(row: SqliteRow): SiteRecord {
     title: String(row.title ?? ''),
     url: String(row.url ?? ''),
     description: toOptionalString(row.description),
+    tags: parseTags(row.tags),
     createdAt,
     updatedAt,
   }
@@ -415,6 +462,7 @@ function mapDocRow(row: SqliteRow): DocRecord {
     title: String(row.title ?? ''),
     description: toOptionalString(row.description),
     document: parseDocument(row.document),
+    tags: parseTags(row.tags),
     createdAt,
     updatedAt,
   }
@@ -422,13 +470,14 @@ function mapDocRow(row: SqliteRow): DocRecord {
 
 function preparePasswordInsert(record: PasswordRecord) {
   return {
-    columns: ['ownerEmail', 'title', 'username', 'passwordCipher', 'url', 'createdAt', 'updatedAt'],
+    columns: ['ownerEmail', 'title', 'username', 'passwordCipher', 'url', 'tags', 'createdAt', 'updatedAt'],
     values: [
       record.ownerEmail,
       record.title,
       record.username,
       record.passwordCipher,
       record.url ?? null,
+      serializeTags(record.tags),
       record.createdAt,
       record.updatedAt,
     ],
@@ -437,19 +486,20 @@ function preparePasswordInsert(record: PasswordRecord) {
 
 function preparePasswordUpdate(record: PasswordRecord) {
   return {
-    columns: ['title', 'username', 'passwordCipher', 'url', 'updatedAt'],
-    values: [record.title, record.username, record.passwordCipher, record.url ?? null, record.updatedAt],
+    columns: ['title', 'username', 'passwordCipher', 'url', 'tags', 'updatedAt'],
+    values: [record.title, record.username, record.passwordCipher, record.url ?? null, serializeTags(record.tags), record.updatedAt],
   }
 }
 
 function prepareSiteInsert(record: SiteRecord) {
   return {
-    columns: ['ownerEmail', 'title', 'url', 'description', 'createdAt', 'updatedAt'],
+    columns: ['ownerEmail', 'title', 'url', 'description', 'tags', 'createdAt', 'updatedAt'],
     values: [
       record.ownerEmail,
       record.title,
       record.url,
       record.description ?? null,
+      serializeTags(record.tags),
       record.createdAt,
       record.updatedAt,
     ],
@@ -458,19 +508,20 @@ function prepareSiteInsert(record: SiteRecord) {
 
 function prepareSiteUpdate(record: SiteRecord) {
   return {
-    columns: ['title', 'url', 'description', 'updatedAt'],
-    values: [record.title, record.url, record.description ?? null, record.updatedAt],
+    columns: ['title', 'url', 'description', 'tags', 'updatedAt'],
+    values: [record.title, record.url, record.description ?? null, serializeTags(record.tags), record.updatedAt],
   }
 }
 
 function prepareDocInsert(record: DocRecord) {
   return {
-    columns: ['ownerEmail', 'title', 'description', 'document', 'createdAt', 'updatedAt'],
+    columns: ['ownerEmail', 'title', 'description', 'document', 'tags', 'createdAt', 'updatedAt'],
     values: [
       record.ownerEmail,
       record.title,
       record.description ?? null,
       serializeDocument(record.document),
+      serializeTags(record.tags),
       record.createdAt,
       record.updatedAt,
     ],
@@ -479,8 +530,14 @@ function prepareDocInsert(record: DocRecord) {
 
 function prepareDocUpdate(record: DocRecord) {
   return {
-    columns: ['title', 'description', 'document', 'updatedAt'],
-    values: [record.title, record.description ?? null, serializeDocument(record.document), record.updatedAt],
+    columns: ['title', 'description', 'document', 'tags', 'updatedAt'],
+    values: [
+      record.title,
+      record.description ?? null,
+      serializeDocument(record.document),
+      serializeTags(record.tags),
+      record.updatedAt,
+    ],
   }
 }
 
@@ -522,21 +579,21 @@ export async function createSqliteDatabase(): Promise<DatabaseClient> {
     users: createUsersCollection(connection),
     passwords: createOwnedCollection(connection, {
       table: 'passwords',
-      selectColumns: ['id', 'ownerEmail', 'title', 'username', 'passwordCipher', 'url', 'createdAt', 'updatedAt'],
+      selectColumns: ['id', 'ownerEmail', 'title', 'username', 'passwordCipher', 'url', 'tags', 'createdAt', 'updatedAt'],
       mapRow: mapPasswordRow,
       prepareInsert: preparePasswordInsert,
       prepareUpdate: preparePasswordUpdate,
     }),
     sites: createOwnedCollection(connection, {
       table: 'sites',
-      selectColumns: ['id', 'ownerEmail', 'title', 'url', 'description', 'createdAt', 'updatedAt'],
+      selectColumns: ['id', 'ownerEmail', 'title', 'url', 'description', 'tags', 'createdAt', 'updatedAt'],
       mapRow: mapSiteRow,
       prepareInsert: prepareSiteInsert,
       prepareUpdate: prepareSiteUpdate,
     }),
     docs: createOwnedCollection(connection, {
       table: 'docs',
-      selectColumns: ['id', 'ownerEmail', 'title', 'description', 'document', 'createdAt', 'updatedAt'],
+      selectColumns: ['id', 'ownerEmail', 'title', 'description', 'document', 'tags', 'createdAt', 'updatedAt'],
       mapRow: mapDocRow,
       prepareInsert: prepareDocInsert,
       prepareUpdate: prepareDocUpdate,

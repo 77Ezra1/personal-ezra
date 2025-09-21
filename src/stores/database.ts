@@ -31,6 +31,7 @@ export interface PasswordRecord {
   username: string
   passwordCipher: string
   url?: string
+  tags?: string[]
   createdAt: number
   updatedAt: number
 }
@@ -41,6 +42,7 @@ export interface SiteRecord {
   title: string
   url: string
   description?: string
+  tags?: string[]
   createdAt: number
   updatedAt: number
 }
@@ -51,6 +53,7 @@ export interface DocRecord {
   title: string
   description?: string
   document?: DocDocument
+  tags?: string[]
   createdAt: number
   updatedAt: number
 }
@@ -251,6 +254,35 @@ class AppDatabase extends Dexie {
           }),
         )
       })
+    this.version(6)
+      .stores({
+        users: '&email',
+        passwords: '++id, ownerEmail, updatedAt, *tags',
+        sites: '++id, ownerEmail, updatedAt, *tags',
+        docs: '++id, ownerEmail, updatedAt, *tags',
+      })
+      .upgrade(async tx => {
+        type LegacyTaggableRecord = { id?: number; tags?: unknown }
+        async function ensureTags(tableName: 'passwords' | 'sites' | 'docs') {
+          const table = tx.table(tableName) as Table<LegacyTaggableRecord, number>
+          const rows = await table.toArray()
+          await Promise.all(
+            rows.map(async row => {
+              if (Array.isArray(row.tags)) {
+                return
+              }
+              const id = typeof row.id === 'number' ? row.id : undefined
+              if (typeof id === 'number') {
+                await table.update(id, { tags: [] })
+              } else {
+                await table.put({ ...row, tags: [] })
+              }
+            }),
+          )
+        }
+
+        await Promise.all([ensureTags('passwords'), ensureTags('sites'), ensureTags('docs')])
+      })
   }
 }
 
@@ -312,4 +344,5 @@ interface LegacyDocRecord {
   fileData?: ArrayBuffer
   createdAt: number
   updatedAt?: number
+  tags?: string[]
 }

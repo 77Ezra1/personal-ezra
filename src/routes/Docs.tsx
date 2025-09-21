@@ -13,6 +13,7 @@ import { useToast } from '../components/ToastProvider'
 
 import { AppLayout } from '../components/AppLayout'
 import { Skeleton } from '../components/Skeleton'
+import { TagFilter } from '../components/TagFilter'
 import { Empty } from '../components/Empty'
 import { VaultItemCard } from '../components/VaultItemCard'
 import { VaultItemList } from '../components/VaultItemList'
@@ -20,6 +21,7 @@ import { DetailsDrawer } from '../components/DetailsDrawer'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 
 import { Copy, ExternalLink, FileText, Pencil } from 'lucide-react'
+import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
 
 /* ---------------------- 本文件内的小工具，减少外部依赖 --------------------- */
 
@@ -47,6 +49,7 @@ type DocDraft = {
   description: string
   url: string
   file: File | null
+  tags: string
 }
 
 /* --------------------------------- 常量 --------------------------------- */
@@ -56,6 +59,7 @@ const EMPTY_DRAFT: DocDraft = {
   description: '',
   url: '',
   file: null,
+  tags: '',
 }
 
 const DOC_VIEW_MODE_STORAGE_KEY = 'pms:view:docs'
@@ -105,6 +109,7 @@ export default function Docs() {
   const [draft, setDraft] = useState<DocDraft>(EMPTY_DRAFT)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
   const fileInputId = useId()
   const [viewMode, setViewMode] = useState<'card' | 'list'>(() => {
     if (typeof window === 'undefined') return 'card'
@@ -134,7 +139,7 @@ export default function Docs() {
       try {
         const rows = await docsDb.docs.where('ownerEmail').equals(currentEmail).toArray()
         rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-        setItems(rows)
+        setItems(rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) })))
       } finally {
         setLoading(false)
       }
@@ -146,32 +151,87 @@ export default function Docs() {
   async function reloadItems(currentEmail: string) {
     const rows = await docsDb.docs.where('ownerEmail').equals(currentEmail).toArray()
     rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-    setItems(rows)
+    setItems(rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) })))
   }
 
   /* ------------------------------ 列表派生 ------------------------------ */
 
+  const availableTags = useMemo(() => {
+    const tagSet = new Set<string>()
+    items.forEach(item => {
+      ensureTagsArray(item.tags).forEach(tag => tagSet.add(tag))
+    })
+    return Array.from(tagSet).sort((a, b) => a.localeCompare(b))
+  }, [items])
+
+  useEffect(() => {
+    setSelectedTags(prev => prev.filter(tag => availableTags.includes(tag)))
+  }, [availableTags])
+
+  function toggleTag(tag: string) {
+    setSelectedTags(prev => {
+      if (prev.includes(tag)) {
+        return prev.filter(item => item !== tag)
+      }
+      return [...prev, tag]
+    })
+  }
+
+  function clearTagFilters() {
+    setSelectedTags([])
+  }
+
   const filteredItems = useMemo(() => {
     const q = searchTerm.trim().toLowerCase()
-    if (!q) return items
-    return items.filter(item => {
-      const linkUrl = extractLinkMeta(item.document)?.url || ''
-      return (
-        item.title.toLowerCase().includes(q) ||
-        (item.description ?? '').toLowerCase().includes(q) ||
-        linkUrl.toLowerCase().includes(q)
-      )
-    })
-  }, [items, searchTerm])
+    const base = q
+      ? items.filter(item => {
+          const linkUrl = extractLinkMeta(item.document)?.url || ''
+          const tags = ensureTagsArray(item.tags)
+          return (
+            item.title.toLowerCase().includes(q) ||
+            (item.description ?? '').toLowerCase().includes(q) ||
+            linkUrl.toLowerCase().includes(q) ||
+            tags.some(tag => tag.toLowerCase().includes(q))
+          )
+        })
+      : items
+    if (selectedTags.length === 0) {
+      return base
+    }
+    return base.filter(item => matchesAllTags(item.tags, selectedTags))
+  }, [items, searchTerm, selectedTags])
 
-  const commandItems = useMemo(
+  const itemCommandItems = useMemo(
     () =>
-      items.map(it => ({
-        id: `doc-${it.id ?? it.title}`,
-        label: it.title,
-      })),
-    [items]
+      items.map(it => {
+        const linkMeta = extractLinkMeta(it.document)
+        const tags = ensureTagsArray(it.tags)
+        const subtitleParts = [linkMeta?.url, ...tags.map(tag => `#${tag}`)].filter(Boolean)
+        const keywords = [it.description, linkMeta?.url, ...tags, ...tags.map(tag => `#${tag}`)]
+          .filter(Boolean)
+          .map(entry => String(entry))
+        return {
+          id: `doc-${it.id ?? it.title}`,
+          title: it.title,
+          subtitle: subtitleParts.join(' · '),
+          keywords,
+        }
+      }),
+    [items],
   )
+
+  const tagCommandItems = useMemo(
+    () =>
+      availableTags.map(tag => ({
+        id: `doc-tag-${encodeURIComponent(tag)}`,
+        title: `筛选标签：${tag}`,
+        subtitle: selectedTags.includes(tag) ? '当前已选，点击取消筛选' : '按此标签筛选列表',
+        keywords: [tag, `#${tag}`],
+      })),
+    [availableTags, selectedTags],
+  )
+
+  const commandItems = useMemo(() => [...tagCommandItems, ...itemCommandItems], [itemCommandItems, tagCommandItems])
 
   const existingFileMeta = extractFileMeta(activeItem?.document)
 
@@ -205,6 +265,7 @@ export default function Docs() {
       description: item.description ?? '',
       url: extractLinkMeta(item.document)?.url ?? '',
       file: null,
+      tags: ensureTagsArray(item.tags).join(', '),
     })
     setDrawerMode('edit')
     setDrawerOpen(true)
@@ -319,6 +380,7 @@ export default function Docs() {
     const trimmedTitle = draft.title.trim()
     const trimmedDescription = draft.description.trim()
     const trimmedUrl = draft.url.trim()
+    const parsedTags = parseTagsInput(draft.tags)
 
     if (!trimmedTitle) {
       setFormError('请填写标题')
@@ -383,6 +445,7 @@ export default function Docs() {
           title: trimmedTitle,
           description: trimmedDescription || undefined,
           document,
+          tags: parsedTags,
           createdAt: now,
           updatedAt: now,
         })
@@ -393,6 +456,7 @@ export default function Docs() {
           title: trimmedTitle,
           description: trimmedDescription || undefined,
           document,
+          tags: parsedTags,
           updatedAt: now,
         })
         if (importedFileMeta && existingFileMeta) {
@@ -431,6 +495,7 @@ export default function Docs() {
             description: activeItem.description ?? '',
             url: extractLinkMeta(activeItem.document)?.url ?? '',
             file: null,
+            tags: ensureTagsArray(activeItem.tags).join(', '),
           })
         } else {
           closeDrawer()
@@ -440,6 +505,16 @@ export default function Docs() {
   })
 
   function handleCommandSelect(commandId: string) {
+    if (commandId.startsWith('doc-tag-')) {
+      const encoded = commandId.replace('doc-tag-', '')
+      try {
+        const tag = decodeURIComponent(encoded)
+        toggleTag(tag)
+      } catch {
+        // ignore malformed tag ids
+      }
+      return
+    }
     const idStr = commandId.replace('doc-', '')
     const id = Number(idStr)
     const target = items.find(item => (typeof item.id === 'number' ? item.id === id : item.title === idStr))
@@ -456,7 +531,7 @@ export default function Docs() {
       description="保存重要文档及链接，可一键复制、打开或编辑内容。"
       searchValue={searchTerm}
       onSearchChange={setSearchTerm}
-      searchPlaceholder="搜索标题、描述或链接"
+      searchPlaceholder="搜索标题、描述、链接或标签"
       createLabel="新增文档"
       onCreate={handleCreate}
       commandPalette={{
@@ -469,6 +544,9 @@ export default function Docs() {
       }}
       viewMode={viewMode}
       onViewModeChange={setViewMode}
+      filters={
+        <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
+      }
     >
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -500,6 +578,7 @@ export default function Docs() {
             if (linkMeta) {
               badges.push({ label: '在线链接', tone: 'info' as const })
             }
+            const tags = ensureTagsArray(item.tags)
 
             return (
               <VaultItemCard
@@ -507,6 +586,7 @@ export default function Docs() {
                 title={item.title}
                 description={item.description || '未填写描述'}
                 badges={badges}
+                tags={tags.map(tag => ({ id: tag, name: tag }))}
                 updatedAt={item.updatedAt}
                 onOpen={() => handleView(item)}
                 actions={actions}
@@ -533,12 +613,14 @@ export default function Docs() {
             if (fileMeta) {
               metadata.push(`文件大小：${formatSize(fileMeta.size)}`)
             }
+            const tags = ensureTagsArray(item.tags)
             return {
               key: item.id ?? item.title,
               title: item.title,
               description: item.description || '未填写描述',
               metadata,
               badges,
+              tags: tags.map(tag => ({ id: tag, name: tag })),
               updatedAt: item.updatedAt,
               onOpen: () => handleView(item),
               actions: buildItemActions(item),
@@ -632,6 +714,20 @@ export default function Docs() {
               <p className="text-xs text-muted">描述</p>
               <p className="mt-1 whitespace-pre-line text-base text-text">{activeItem.description || '未填写'}</p>
             </div>
+            <div>
+              <p className="text-xs text-muted">标签</p>
+              {ensureTagsArray(activeItem.tags).length > 0 ? (
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {ensureTagsArray(activeItem.tags).map(tag => (
+                    <span key={tag} className="inline-flex items-center rounded-full bg-surface-hover px-2.5 py-0.5 text-xs text-muted">
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 text-base text-text">未设置</p>
+              )}
+            </div>
             {(() => {
               const linkMeta = extractLinkMeta(activeItem.document)
               if (!linkMeta) return null
@@ -711,6 +807,16 @@ export default function Docs() {
                 </button>
               )}
             </div>
+            <label className="block space-y-2">
+              <span className="text-xs uppercase tracking-wide text-muted">标签</span>
+              <input
+                value={draft.tags}
+                onChange={event => setDraft(prev => ({ ...prev, tags: event.target.value }))}
+                className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+                placeholder="例如：合同, 报表"
+              />
+              <p className="text-xs text-muted">多个标签请使用逗号分隔，便于搜索和命令面板快速定位。</p>
+            </label>
             <label className="block space-y-2">
               <span className="text-xs uppercase tracking-wide text-muted">备注</span>
               <textarea

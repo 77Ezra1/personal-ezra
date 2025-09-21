@@ -108,6 +108,18 @@ class MockSqliteDatabase {
       return
     }
 
+    const updateTagsMatch = trimmed.match(/^UPDATE\s+(passwords|sites|docs)\s+SET\s+tags\s*=\s*'\[\]'\s+WHERE\s+tags\s+IS\s+NULL/i)
+    if (updateTagsMatch) {
+      const table = updateTagsMatch[1]
+      const rows = this.ensureTable(table)
+      for (const row of rows) {
+        if (row.tags === null || row.tags === undefined) {
+          row.tags = '[]'
+        }
+      }
+      return
+    }
+
     throw new Error(`Unhandled SQL execute mock: ${query}`)
   }
 
