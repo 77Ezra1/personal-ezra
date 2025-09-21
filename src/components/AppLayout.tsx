@@ -25,6 +25,7 @@ type AppLayoutProps = {
   actions?: ReactNode
   viewMode?: 'card' | 'list'
   onViewModeChange?: (mode: 'card' | 'list') => void
+  filters?: ReactNode
 }
 
 export function AppLayout({
@@ -40,6 +41,7 @@ export function AppLayout({
   actions,
   viewMode = 'card',
   onViewModeChange,
+  filters,
 }: AppLayoutProps) {
   const viewModes: Array<{ value: 'card' | 'list'; label: string; icon: ReactNode }> = [
     { value: 'card', label: '卡片视图', icon: <LayoutGrid className="h-3.5 w-3.5" aria-hidden /> },
@@ -111,6 +113,7 @@ export function AppLayout({
             )}
           </div>
         </div>
+        {filters && <div className="flex flex-wrap gap-3">{filters}</div>}
       </header>
       <section>{children}</section>
       {commandPalette && (

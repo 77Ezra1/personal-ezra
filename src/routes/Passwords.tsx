@@ -6,6 +6,7 @@ import PasswordFieldWithStrength from '../components/PasswordFieldWithStrength'
 import { DetailsDrawer } from '../components/DetailsDrawer'
 import { Empty } from '../components/Empty'
 import { Skeleton } from '../components/Skeleton'
+import { TagFilter } from '../components/TagFilter'
 import { VaultItemCard } from '../components/VaultItemCard'
 import { VaultItemList } from '../components/VaultItemList'
 import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyTextAutoClear } from '../lib/clipboard'
@@ -16,6 +17,7 @@ import { useToast } from '../components/ToastProvider'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 import { useAuthStore } from '../stores/auth'
 import { db, type PasswordRecord } from '../stores/database'
+import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
 
 const CLIPBOARD_CLEAR_DELAY_SECONDS = Math.round(DEFAULT_CLIPBOARD_CLEAR_DELAY / 1_000)
 const PASSWORD_VIEW_MODE_STORAGE_KEY = 'pms:view:passwords'
@@ -25,6 +27,7 @@ type PasswordDraft = {
   username: string
   password: string
   url: string
+  tags: string
 }
 
 const EMPTY_DRAFT: PasswordDraft = {
@@ -32,6 +35,7 @@ const EMPTY_DRAFT: PasswordDraft = {
   username: '',
   password: '',
   url: '',
+  tags: '',
 }
 
 export default function Passwords() {
@@ -49,6 +53,7 @@ export default function Passwords() {
   const [draft, setDraft] = useState<PasswordDraft>(EMPTY_DRAFT)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [viewMode, setViewMode] = useState<'card' | 'list'>(() => {
     if (typeof window === 'undefined') return 'card'
     const stored = window.localStorage.getItem(PASSWORD_VIEW_MODE_STORAGE_KEY)
@@ -90,12 +95,16 @@ export default function Passwords() {
       return
     }
 
-    void reloadItems(email)
-  }, [email, reloadItems])
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !email) {
-      return undefined
+    async function load(currentEmail: string) {
+      setLoading(true)
+      try {
+        const rows = await db.passwords.where('ownerEmail').equals(currentEmail).toArray()
+        rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+        const normalized = rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) }))
+        setItems(normalized)
+      } finally {
+        setLoading(false)
+      }
     }
 
     const handleImported = () => {
@@ -108,12 +117,38 @@ export default function Passwords() {
     }
   }, [email, reloadItems])
 
+  const availableTags = useMemo(() => {
+    const tagSet = new Set<string>()
+    items.forEach(item => {
+      ensureTagsArray(item.tags).forEach(tag => tagSet.add(tag))
+    })
+    return Array.from(tagSet).sort((a, b) => a.localeCompare(b))
+  }, [items])
+
+  useEffect(() => {
+    setSelectedTags(prev => prev.filter(tag => availableTags.includes(tag)))
+  }, [availableTags])
+
+  function toggleTag(tag: string) {
+    setSelectedTags(prev => {
+      if (prev.includes(tag)) {
+        return prev.filter(item => item !== tag)
+      }
+      return [...prev, tag]
+    })
+  }
+
+  function clearTagFilters() {
+    setSelectedTags([])
+  }
+
   const fuse = useMemo(() => {
     return new Fuse(items, {
       keys: [
         { name: 'title', weight: 0.6 },
         { name: 'username', weight: 0.3 },
         { name: 'url', weight: 0.1 },
+        { name: 'tags', weight: 0.2 },
       ],
       threshold: 0.3,
       ignoreLocation: true,
@@ -121,24 +156,46 @@ export default function Passwords() {
   }, [items])
 
   const filteredItems = useMemo(() => {
-    if (!searchTerm.trim()) {
-      return items
+    const trimmed = searchTerm.trim()
+    const base = trimmed ? fuse.search(trimmed).map(result => result.item) : items
+    if (selectedTags.length === 0) {
+      return base
     }
-    return fuse.search(searchTerm.trim()).map(result => result.item)
-  }, [fuse, items, searchTerm])
+    return base.filter(item => matchesAllTags(item.tags, selectedTags))
+  }, [fuse, items, searchTerm, selectedTags])
 
-  const commandItems = useMemo(
+  const itemCommandItems = useMemo(
     () =>
       items
         .filter(item => typeof item.id === 'number')
-        .map(item => ({
-          id: `password-${item.id}`,
-          title: item.title,
-          subtitle: [item.username, item.url].filter(Boolean).join(' · '),
-          keywords: [item.username, item.url].filter(Boolean) as string[],
-        })),
+        .map(item => {
+          const tags = ensureTagsArray(item.tags)
+          const subtitleParts = [item.username, item.url, ...tags.map(tag => `#${tag}`)].filter(Boolean)
+          const keywords = [item.username, item.url, ...tags, ...tags.map(tag => `#${tag}`)]
+            .filter(Boolean)
+            .map(entry => String(entry))
+          return {
+            id: `password-${item.id}`,
+            title: item.title,
+            subtitle: subtitleParts.join(' · '),
+            keywords,
+          }
+        }),
     [items],
   )
+
+  const tagCommandItems = useMemo(
+    () =>
+      availableTags.map(tag => ({
+        id: `password-tag-${encodeURIComponent(tag)}`,
+        title: `筛选标签：${tag}`,
+        subtitle: selectedTags.includes(tag) ? '当前已选，点击取消筛选' : '按此标签筛选列表',
+        keywords: [tag, `#${tag}`],
+      })),
+    [availableTags, selectedTags],
+  )
+
+  const commandItems = useMemo(() => [...tagCommandItems, ...itemCommandItems], [itemCommandItems, tagCommandItems])
 
   function closeDrawer() {
     setDrawerOpen(false)
@@ -159,7 +216,13 @@ export default function Passwords() {
   function handleView(item: PasswordRecord) {
     setActiveItem(item)
     setDrawerMode('view')
-    setDraft({ ...EMPTY_DRAFT, title: item.title, username: item.username, url: item.url ?? '' })
+    setDraft({
+      ...EMPTY_DRAFT,
+      title: item.title,
+      username: item.username,
+      url: item.url ?? '',
+      tags: ensureTagsArray(item.tags).join(', '),
+    })
     setDrawerOpen(true)
   }
 
@@ -171,6 +234,7 @@ export default function Passwords() {
       username: item.username,
       password: '',
       url: item.url ?? '',
+      tags: ensureTagsArray(item.tags).join(', '),
     })
     setDrawerOpen(true)
   }
@@ -236,10 +300,12 @@ export default function Passwords() {
     const confirmed = window.confirm(`确定要删除“${item.title}”吗？此操作不可恢复。`)
     if (!confirmed) return
     try {
-      await db.passwords.delete(item.id)
+        await db.passwords.delete(item.id)
       showToast({ title: '密码已删除', variant: 'success' })
       if (email) {
-        await reloadItems(email, { showLoading: false })
+        const rows = await db.passwords.where('ownerEmail').equals(email).toArray()
+        rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+        setItems(rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) })))
       }
       closeDrawer()
     } catch (error) {
@@ -259,6 +325,7 @@ export default function Passwords() {
     const trimmedUsername = draft.username.trim()
     const trimmedUrl = draft.url.trim()
     const passwordInput = draft.password.trim()
+    const parsedTags = parseTagsInput(draft.tags)
 
     if (!trimmedTitle) {
       setFormError('请填写名称')
@@ -308,6 +375,7 @@ export default function Passwords() {
           username: trimmedUsername,
           passwordCipher,
           url: trimmedUrl || undefined,
+          tags: parsedTags,
           createdAt: now,
           updatedAt: now,
         })
@@ -319,13 +387,16 @@ export default function Passwords() {
           username: trimmedUsername,
           passwordCipher,
           url: trimmedUrl || undefined,
+          tags: parsedTags,
           updatedAt: now,
         })
         showToast({ title: '密码已更新', variant: 'success' })
       }
 
       if (email) {
-        await reloadItems(email, { showLoading: false })
+        const rows = await db.passwords.where('ownerEmail').equals(email).toArray()
+        rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+        setItems(rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) })))
       }
 
       closeDrawer()
@@ -337,6 +408,16 @@ export default function Passwords() {
   }
 
   function handleCommandSelect(commandId: string) {
+    if (commandId.startsWith('password-tag-')) {
+      const encoded = commandId.replace('password-tag-', '')
+      try {
+        const tag = decodeURIComponent(encoded)
+        toggleTag(tag)
+      } catch {
+        // ignore malformed tag ids
+      }
+      return
+    }
     const id = Number(commandId.replace('password-', ''))
     const target = items.find(item => item.id === id)
     if (target) {
@@ -355,7 +436,13 @@ export default function Passwords() {
       if (drawerOpen) {
         if (drawerMode === 'edit' && activeItem) {
           setDrawerMode('view')
-          setDraft({ ...EMPTY_DRAFT, title: activeItem.title, username: activeItem.username, url: activeItem.url ?? '' })
+          setDraft({
+            ...EMPTY_DRAFT,
+            title: activeItem.title,
+            username: activeItem.username,
+            url: activeItem.url ?? '',
+            tags: ensureTagsArray(activeItem.tags).join(', '),
+          })
         } else {
           closeDrawer()
         }
@@ -371,7 +458,7 @@ export default function Passwords() {
       description="集中管理常用账号与密码信息，可使用搜索或快捷键快速定位。"
       searchValue={searchTerm}
       onSearchChange={setSearchTerm}
-      searchPlaceholder="搜索名称、用户名或网址"
+      searchPlaceholder="搜索名称、用户名、网址或标签"
       createLabel="新增密码"
       onCreate={handleCreate}
       commandPalette={{
@@ -384,6 +471,9 @@ export default function Passwords() {
       }}
       viewMode={viewMode}
       onViewModeChange={setViewMode}
+      filters={
+        <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
+      }
     >
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -412,6 +502,7 @@ export default function Passwords() {
                 title={item.title}
                 description={item.username ? `用户名：${item.username}` : '未填写用户名'}
                 badges={item.url ? [{ label: item.url, tone: 'info' as const }] : undefined}
+                tags={ensureTagsArray(item.tags).map(tag => ({ id: tag, name: tag }))}
                 updatedAt={item.updatedAt}
                 onOpen={() => handleView(item)}
                 actions={actions}
@@ -426,6 +517,7 @@ export default function Passwords() {
             title: item.title,
             description: item.username ? `用户名：${item.username}` : '未填写用户名',
             metadata: item.url ? [`网址：${item.url}`] : undefined,
+            tags: ensureTagsArray(item.tags).map(tag => ({ id: tag, name: tag })),
             updatedAt: item.updatedAt,
             onOpen: () => handleView(item),
             actions: buildItemActions(item),
@@ -503,6 +595,20 @@ export default function Passwords() {
               <p className="mt-1 break-all text-base text-primary">{activeItem.url || '未填写'}</p>
             </div>
             <div>
+              <p className="text-xs text-muted">标签</p>
+              {ensureTagsArray(activeItem.tags).length > 0 ? (
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {ensureTagsArray(activeItem.tags).map(tag => (
+                    <span key={tag} className="inline-flex items-center rounded-full bg-surface-hover px-2.5 py-0.5 text-xs text-muted">
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 text-base text-text">未设置</p>
+              )}
+            </div>
+            <div>
               <p className="text-xs text-muted">最近更新</p>
               <p className="mt-1 text-base text-text">
                 {activeItem.updatedAt ? new Date(activeItem.updatedAt).toLocaleString() : '未知'}
@@ -563,6 +669,16 @@ export default function Passwords() {
                 className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
                 placeholder="https://example.com"
               />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-xs uppercase tracking-wide text-muted">标签</span>
+              <input
+                value={draft.tags}
+                onChange={event => setDraft(prev => ({ ...prev, tags: event.target.value }))}
+                className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+                placeholder="例如：工作, 邮箱"
+              />
+              <p className="text-xs text-muted">多个标签请使用逗号分隔，支持在搜索和命令面板中快速定位。</p>
             </label>
             {formError && <p className="text-sm text-rose-300">{formError}</p>}
             <div className="flex justify-end gap-3">
