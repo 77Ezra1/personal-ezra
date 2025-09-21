@@ -24,6 +24,7 @@ export interface UserRecord {
   mustChangePassword?: boolean
   createdAt: number
   updatedAt: number
+  mustChangePassword?: boolean
 }
 
 export interface PasswordRecord {
@@ -225,9 +226,9 @@ class AppDatabase extends Dexie {
               displayName,
               avatar: legacy.avatar ?? null,
               mnemonic: typeof legacy.mnemonic === 'string' ? legacy.mnemonic : '',
-              mustChangePassword,
               createdAt,
               updatedAt,
+              mustChangePassword,
             }
             await usersTable.put(next)
           }),
@@ -257,7 +258,7 @@ class AppDatabase extends Dexie {
               mnemonic,
               updatedAt: legacy.updatedAt ?? Date.now(),
             }
-            await usersTable.put(next as LegacyUserRecord)
+            await usersTable.put(next as unknown as LegacyUserRecord)
           }),
         )
       })

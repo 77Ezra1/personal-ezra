@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Fuse from 'fuse.js'
-import type { IFuseOptions } from 'fuse.js'
+import Fuse, { type IFuseOptions } from 'fuse.js'
 import clsx from 'clsx'
 
 export type CommandItem = {
