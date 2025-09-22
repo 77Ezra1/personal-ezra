@@ -1,4 +1,4 @@
-import './lib/error-overlay'
+import { installPanicOverlay } from './lib/error-overlay'
 import { isTauriRuntime } from './env'
 import { swCleanup } from './lib/sw-clean'
 import React from 'react'
@@ -11,6 +11,8 @@ import IdleLock from './features/lock/IdleLock'
 import { LockProvider } from './features/lock/LockProvider'
 import { LockScreen } from './features/lock/LockScreen'
 import { initializeTheme, useTheme } from './stores/theme'
+
+installPanicOverlay()
 
 if (isTauriRuntime) {
   void swCleanup()
