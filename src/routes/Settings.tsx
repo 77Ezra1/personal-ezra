@@ -1,4 +1,11 @@
 import clsx from 'clsx'
+import {
+  CloudOff,
+  MonitorSmartphone,
+  ShieldCheck,
+  Sparkles,
+  type LucideIcon,
+} from 'lucide-react'
 import { open, save } from '@tauri-apps/api/dialog'
 import { appDataDir, join } from '@tauri-apps/api/path'
 import { mkdir, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
@@ -14,6 +21,8 @@ import {
   type KeyboardEvent,
   type SetStateAction,
 } from 'react'
+import packageInfo from '../../package.json'
+import appIconUrl from '../../logo/icon-128-framed.png'
 import AvatarUploader from '../components/AvatarUploader'
 import ConfirmDialog from '../components/ConfirmDialog'
 import CopyButton from '../components/CopyButton'
@@ -34,6 +43,52 @@ type ThemeOption = {
 }
 
 type FormMessage = { type: 'success' | 'error'; text: string } | null
+
+const APP_PACKAGE = packageInfo as { name?: string; version?: string }
+const APP_DISPLAY_NAME = APP_PACKAGE.name ?? 'Personal'
+const APP_VERSION = APP_PACKAGE.version ?? '0.0.0'
+const APP_VERSION_BADGE = APP_VERSION.startsWith('v') ? APP_VERSION : `v${APP_VERSION}`
+
+type FeatureHighlight = {
+  key: string
+  title: string
+  description: string
+  icon: LucideIcon
+}
+
+const ABOUT_FEATURES: FeatureHighlight[] = [
+  {
+    key: 'encryption',
+    title: '零知识加密',
+    description: '主密码经 PBKDF2 派生后用于 AES-GCM 加密，敏感数据仅在需要时短暂解密。',
+    icon: ShieldCheck,
+  },
+  {
+    key: 'offline-first',
+    title: '离线优先体验',
+    description: 'Service Worker 预缓存与桌面端本地数据库，让密码库在断网场景仍可访问与编辑。',
+    icon: CloudOff,
+  },
+  {
+    key: 'multi-platform',
+    title: '跨平台一体化',
+    description: '同一套 React + Tauri 架构同时支持浏览器 PWA 与 Windows/macOS/Linux 桌面端。',
+    icon: MonitorSmartphone,
+  },
+  {
+    key: 'productivity',
+    title: '效率工具',
+    description: '内建命令面板、标签检索与批量操作，快速定位网站、密码和私密文档。',
+    icon: Sparkles,
+  },
+]
+
+type AboutMetaCard = {
+  key: string
+  label: string
+  value: string
+  description: string
+}
 
 const FORM_MESSAGE_DISPLAY_DURATION = 5000
 const BACKUP_PATH_STORAGE_KEY = 'pms-backup-path'
@@ -93,6 +148,108 @@ type SettingsSection = {
   key: string
   label: string
   render: () => JSX.Element
+}
+
+function AboutSection() {
+  const isDesktop = detectTauriRuntime()
+  const runtimeLabel = isDesktop ? '桌面端 (Tauri)' : 'Web / PWA'
+  const runtimeDescription = isDesktop
+    ? '依托 Rust + SQLite 等原生能力，将数据加密保存在本机文件系统，并支持自定义备份路径。'
+    : '通过 Service Worker 与 IndexedDB 缓存数据，即使离线也能查看与录入账户信息。'
+
+  const metaCards: AboutMetaCard[] = [
+    {
+      key: 'version',
+      label: '当前版本',
+      value: APP_VERSION_BADGE,
+      description: '版本号与备份格式保持一致，升级前会自动检查数据结构兼容性。',
+    },
+    {
+      key: 'runtime',
+      label: '运行环境',
+      value: runtimeLabel,
+      description: runtimeDescription,
+    },
+    {
+      key: 'storage',
+      label: '数据安全',
+      value: '本地加密存储',
+      description:
+        '主密码派生密钥保护 SQLite / IndexedDB 数据，导出备份同样采用加密压缩格式。',
+    },
+  ]
+
+  return (
+    <section className="space-y-6 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-4">
+            <img
+              src={appIconUrl}
+              alt={`${APP_DISPLAY_NAME} 应用图标`}
+              className="h-16 w-16 rounded-2xl border border-border/60 bg-surface shadow-inner"
+            />
+            <div className="space-y-1">
+              <h2 className="text-lg font-medium text-text">关于 {APP_DISPLAY_NAME}</h2>
+              <p className="text-sm leading-relaxed text-muted">
+                一款专注于私密信息管理的本地优先密码保险箱。
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-500">
+            {APP_VERSION_BADGE}
+          </span>
+          <span className="inline-flex items-center rounded-full border border-border/60 px-3 py-1 text-xs font-medium text-muted">
+            {runtimeLabel}
+          </span>
+        </div>
+      </div>
+
+      <p className="text-sm leading-relaxed text-muted">
+        {APP_DISPLAY_NAME} 是一款面向个人与小团队的零知识密码与私密资料管理应用。基于 React、Tauri 与 SQLite
+        打造，核心数据始终加密保存在本地，配合离线可用的 PWA 与桌面端打包，帮助你在任何环境下安全管理账号信息。
+      </p>
+
+      <ul className="grid gap-4 md:grid-cols-2">
+        {ABOUT_FEATURES.map(feature => {
+          const Icon = feature.icon
+          return (
+            <li
+              key={feature.key}
+              className="rounded-2xl border border-border/60 bg-surface px-4 py-4 shadow-sm"
+            >
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Icon className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-text">{feature.title}</p>
+                  <p className="text-xs leading-relaxed text-muted">{feature.description}</p>
+                </div>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        {metaCards.map(card => (
+          <div
+            key={card.key}
+            className="rounded-2xl border border-dashed border-border/60 bg-surface px-4 py-4"
+          >
+            <p className="text-xs font-medium uppercase tracking-[0.28em] text-muted">
+              {card.label}
+            </p>
+            <p className="mt-1 text-sm font-semibold text-text">{card.value}</p>
+            <p className="mt-2 text-xs leading-relaxed text-muted">{card.description}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
 }
 
 function ProfileSection() {
@@ -257,9 +414,10 @@ function ProfileSection() {
 }
 
 export default function Settings() {
-  const [activeSection, setActiveSection] = useState<string>('profile')
+  const [activeSection, setActiveSection] = useState<string>('about')
 
   const sections: SettingsSection[] = [
+    { key: 'about', label: '关于', render: () => <AboutSection /> },
     { key: 'profile', label: '用户资料', render: () => <ProfileSection /> },
     { key: 'change-password', label: '修改密码', render: () => <ChangePasswordSection /> },
     { key: 'mnemonic-recovery', label: '助记词找回', render: () => <MnemonicRecoverySection /> },
