@@ -1,0 +1,5 @@
+{
+  "identifier": "external-open",
+  "description": "Allow opening http/https/mailto links in the system default apps",
+  "permissions": ["shell:allow-open"]
+}
