@@ -1,3 +1,4 @@
+import './lib/error-overlay'
 import { isTauriRuntime } from './env'
 import { swCleanup } from './lib/sw-clean'
 import React from 'react'
