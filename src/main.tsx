@@ -1,3 +1,5 @@
+import { isTauriRuntime } from './env'
+import { swCleanup } from './lib/sw-clean'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import './styles/tokens.css'
@@ -8,6 +10,10 @@ import IdleLock from './features/lock/IdleLock'
 import { LockProvider } from './features/lock/LockProvider'
 import { LockScreen } from './features/lock/LockScreen'
 import { initializeTheme, useTheme } from './stores/theme'
+
+if (isTauriRuntime) {
+  void swCleanup()
+}
 
 const rootElement = document.getElementById('root')
 if (!rootElement) {
