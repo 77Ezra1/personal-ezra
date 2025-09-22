@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 const isTauri = !!process.env.TAURI_PLATFORM
+const buildTarget = 'es2022'
 
 export default defineConfig({
   // Tauri 用相对路径，Web 用绝对路径
@@ -17,9 +18,9 @@ export default defineConfig({
   ],
 
   // 关键修复：允许顶层 await
-  esbuild: { target: isTauri ? 'es2022' : 'es2020' },
+  esbuild: { target: buildTarget },
   build: {
-    target: isTauri ? 'es2022' : 'es2020',
+    target: buildTarget,
     sourcemap: false,
   },
 })
