@@ -22,7 +22,8 @@ import {
   type SetStateAction,
 } from 'react'
 import packageInfo from '../../package.json'
-import appIconUrl from '../../logo/icon-128-framed.png'
+import appIconUrl from '../../src-tauri/icons/icon.ico'
+
 import AvatarUploader from '../components/AvatarUploader'
 import ConfirmDialog from '../components/ConfirmDialog'
 import CopyButton from '../components/CopyButton'
