@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.pms.web",
   "build": {
-    "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build",
+    "beforeDevCommand": "cross-env VITE_DESKTOP=1 pnpm dev",
+    "beforeBuildCommand": "cross-env VITE_DESKTOP=1 pnpm build",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173"
   },
