@@ -10,6 +10,7 @@
     "devUrl": "http://localhost:5173"
   },
   "bundle": {
+    "active": true,
     "icon": [
       "icons/icon.ico",
       "icons/icon.icns"
@@ -17,6 +18,7 @@
   },
   "app": {
     "security": {
+      "csp": null,
       "capabilities": ["default"]
     },
     "windows": [
