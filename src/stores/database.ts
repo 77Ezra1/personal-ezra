@@ -91,7 +91,7 @@ class AppDatabase extends Dexie {
   docs!: Table<DocRecord, number>
 
   constructor() {
-    super('pms-web')
+    super('Personal')
     this.version(1).stores({
       users: '&email',
       passwords: '++id, title, createdAt',

@@ -22,8 +22,8 @@ describe('sqlite database helpers', () => {
     const { createSqliteDatabase } = await import('../src/stores/sqlite')
     const db = await createSqliteDatabase()
 
-    expect(fs.mkdir).toHaveBeenCalledWith('C:/mock/AppData/pms-web/data', { recursive: true })
-    expect(sql.Database.load).toHaveBeenCalledWith('sqlite:C:/mock/AppData/pms-web/data/pms.db')
+    expect(fs.mkdir).toHaveBeenCalledWith('C:/mock/AppData/Personal/data', { recursive: true })
+    expect(sql.Database.load).toHaveBeenCalledWith('sqlite:C:/mock/AppData/Personal/data/pms.db')
 
     const now = Date.now()
     const user: UserRecord = {

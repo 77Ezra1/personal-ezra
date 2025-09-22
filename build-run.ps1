@@ -7,12 +7,12 @@ $ErrorActionPreference = "Stop"
 function Die($msg){ Write-Host "ERROR: $msg" -ForegroundColor Red; exit 1 }
 
 # 0) 位置校验
-if (!(Test-Path ".\src-tauri\tauri.conf.json")) { Die "请在 pms-web 项目根目录运行本脚本" }
+if (!(Test-Path ".\src-tauri\tauri.conf.json")) { Die "请在 Personal 项目根目录运行本脚本" }
 
 # 1) 结束可能占用的进程 & 释放旧文件
-Write-Host ">> Kill running pms-web.exe if any..." -ForegroundColor Yellow
-& taskkill /IM pms-web.exe /F 2>$null | Out-Null
-Stop-Process -Name pms-web -Force -ErrorAction SilentlyContinue
+Write-Host ">> Kill running Personal.exe if any..." -ForegroundColor Yellow
+& taskkill /IM Personal.exe /F 2>$null | Out-Null
+Stop-Process -Name Personal -Force -ErrorAction SilentlyContinue
 
 # 2) 检查/安装 WebView2（缺它 release 可能直接打不开）
 Write-Host ">> Check WebView2 runtime..." -ForegroundColor Yellow
@@ -49,7 +49,7 @@ Write-Host ">> Building frontend (pnpm build)..." -ForegroundColor Yellow
 pnpm build
 
 # 6) 清掉旧 exe（避免 os error 5）
-Remove-Item ".\src-tauri\target\release\pms-web.exe" -Force -ErrorAction SilentlyContinue
+Remove-Item ".\src-tauri\target\release\Personal.exe" -Force -ErrorAction SilentlyContinue
 
 # 7) 打包 Tauri（必要时切换新的 target 目录以绕过锁文件）
 Write-Host ">> Building Tauri release..." -ForegroundColor Yellow
@@ -63,12 +63,12 @@ try {
 
 # 8) 运行（带日志环境变量）
 Write-Host ">> Running release exe..." -ForegroundColor Yellow
-$exeA = ".\src-tauri\target\release\pms-web.exe"
-$exeB = ".\.cargo-target\release\pms-web.exe"
+$exeA = ".\src-tauri\target\release\Personal.exe"
+$exeB = ".\.cargo-target\release\Personal.exe"
 $exe = if (Test-Path $exeA) { $exeA } elseif (Test-Path $exeB) { $exeB } else { $null }
 if (-not $exe) { 
   if ($DidPatch -and (Test-Path $Backup)) { Move-Item $Backup $Main -Force }
-  Die "未找到生成的 pms-web.exe"
+  Die "未找到生成的 Personal.exe"
 }
 
 # 打开详细日志（若是 ConsoleRelease，会在当前终端输出；否则仅方便排错）

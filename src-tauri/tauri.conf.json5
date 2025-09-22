@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/schema.json",
-  "productName": "pms-web",
+  "productName": "Personal",
   "version": "0.1.0",
   "identifier": "com.ezra.pmsweb",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "pms-web",
+        "title": "Personal",
         "width": 1200,
         "height": 800,
         "resizable": true

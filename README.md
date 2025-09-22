@@ -25,8 +25,8 @@ yarn && yarn dev
 使用 Docker 手动构建镜像：
 
 ```bash
-docker build -t pms-web .
-docker run --rm -p 8080:80 pms-web
+docker build -t Personal .
+docker run --rm -p 8080:80 Personal
 ```
 
 或者使用 docker compose（默认暴露在 http://localhost:8080）：

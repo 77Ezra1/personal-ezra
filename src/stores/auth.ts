@@ -12,7 +12,7 @@ import {
 } from '../lib/profile'
 import { db, type DocDocument, type PasswordRecord, type UserAvatarMeta, type UserRecord } from './database'
 
-export const SESSION_STORAGE_KEY = 'pms-web-session'
+export const SESSION_STORAGE_KEY = 'Personal-session'
 
 function toBase64(bytes: Uint8Array) {
   return btoa(String.fromCharCode(...bytes))

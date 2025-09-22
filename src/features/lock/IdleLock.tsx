@@ -3,7 +3,7 @@ import { create } from 'zustand'
 import { useAuthStore } from '../../stores/auth'
 import { useLock } from './LockProvider'
 
-const STORAGE_KEY = 'pms-web-idle-timeout'
+const STORAGE_KEY = 'Personal-idle-timeout'
 export const DEFAULT_TIMEOUT = 5 * 60 * 1000
 
 export type IdleDuration = number | 'off'

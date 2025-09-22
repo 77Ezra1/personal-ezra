@@ -261,7 +261,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 }))
 
 vi.mock('@tauri-apps/api/path', () => ({
-  appDataDir: vi.fn().mockResolvedValue('C:/mock/AppData/pms-web'),
+  appDataDir: vi.fn().mockResolvedValue('C:/mock/AppData/Personal'),
   join: vi.fn().mockImplementation((...parts: string[]) => parts.join('/')),
 }))
 

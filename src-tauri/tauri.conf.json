@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "pms-web",
+  "productName": "Personal",
   "version": "0.1.0",
   "identifier": "com.pms.web",
   "build": {
@@ -28,7 +28,7 @@
     },
     "windows": [
       {
-        "title": "pms-web",
+        "title": "Personal",
         "width": 1200,
         "height": 800,
         "resizable": true

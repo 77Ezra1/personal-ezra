@@ -2,7 +2,7 @@
 
 本次仅修复会导致 **TypeScript 编译失败** 的问题：在**函数参数解构**中使用 `as any` 的非法断言。
 
-- 修复：`pms-web/src/components/ui/Badge.tsx` 参数列表内的 `as any`
+- 修复：`Personal/src/components/ui/Badge.tsx` 参数列表内的 `as any`
 
 - 修复：src/components/QuickAdd.tsx JSX 语法错误（onClick 箭头函数与 srLabel 拼写/位置、重复的 <IconButton> 片段）
 - 修复：src/components/Topbar.tsx JSX 错误（重复的 <IconButton>、属性位置错误）
