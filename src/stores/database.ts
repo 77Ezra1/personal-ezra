@@ -334,16 +334,56 @@ const isTauri =
   typeof window !== 'undefined' &&
   typeof (window as any).__TAURI_INTERNALS__ !== 'undefined'
 
-let dbInstance: DatabaseClient
-
-if (isTauri) {
-  const { createSqliteDatabase } = await import('./sqlite')
-  dbInstance = await createSqliteDatabase()
-} else {
-  dbInstance = createDexieClient()
+function createLazyUsersTable(ready: Promise<DatabaseClient>): UsersTable {
+  return {
+    get: key => ready.then(client => client.users.get(key)),
+    put: record => ready.then(client => client.users.put(record)),
+    delete: key => ready.then(client => client.users.delete(key)),
+  }
 }
 
-export const db = dbInstance
+function createLazyOwnedCollection<T extends { ownerEmail: string }>(
+  ready: Promise<DatabaseClient>,
+  select: (client: DatabaseClient) => OwnedCollection<T>,
+): OwnedCollection<T> {
+  return {
+    where: (index: 'ownerEmail') => ({
+      equals: value => ({
+        toArray: async () => {
+          const client = await ready
+          return select(client).where(index).equals(value).toArray()
+        },
+      }),
+    }),
+    add: record => ready.then(client => select(client).add(record)),
+    put: record => ready.then(client => select(client).put(record)),
+    delete: key => ready.then(client => select(client).delete(key)),
+  }
+}
+
+function createLazyDatabaseClient(ready: Promise<DatabaseClient>): DatabaseClient {
+  return {
+    open: () => ready.then(client => client.open()),
+    users: createLazyUsersTable(ready),
+    passwords: createLazyOwnedCollection(ready, client => client.passwords),
+    sites: createLazyOwnedCollection(ready, client => client.sites),
+    docs: createLazyOwnedCollection(ready, client => client.docs),
+  }
+}
+
+const databaseReady: Promise<DatabaseClient> = (async () => {
+  if (isTauri) {
+    const { createSqliteDatabase } = await import('./sqlite')
+    return createSqliteDatabase()
+  }
+  return createDexieClient()
+})()
+
+export const db = createLazyDatabaseClient(databaseReady)
+
+export function getDatabase(): Promise<DatabaseClient> {
+  return databaseReady
+}
 
 interface LegacyDocRecord {
   id?: number
