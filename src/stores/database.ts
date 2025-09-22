@@ -21,10 +21,8 @@ export interface UserRecord {
   avatar: UserAvatarMeta | null
   mustChangePassword: boolean
   mnemonic: string
-  mustChangePassword?: boolean
   createdAt: number
   updatedAt: number
-  mustChangePassword?: boolean
 }
 
 export interface PasswordRecord {
@@ -242,7 +240,10 @@ class AppDatabase extends Dexie {
         docs: '++id, ownerEmail, updatedAt',
       })
       .upgrade(async tx => {
-        type LegacyUserRecord = Omit<UserRecord, 'mnemonic'> & { mnemonic?: string }
+        type LegacyUserRecord = Omit<UserRecord, 'mnemonic' | 'mustChangePassword'> & {
+          mnemonic?: string
+          mustChangePassword?: boolean
+        }
         const usersTable = tx.table('users') as Table<LegacyUserRecord, string>
         const users = await usersTable.toArray()
         if (users.length === 0) return
@@ -253,9 +254,12 @@ class AppDatabase extends Dexie {
               return
             }
             const mnemonic = generateMnemonicPhrase()
+            const mustChangePassword =
+              typeof legacy.mustChangePassword === 'boolean' ? legacy.mustChangePassword : false
             const next: UserRecord = {
               ...legacy,
               mnemonic,
+              mustChangePassword,
               updatedAt: legacy.updatedAt ?? Date.now(),
             }
             await usersTable.put(next as LegacyUserRecord)
