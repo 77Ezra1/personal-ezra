@@ -44,7 +44,9 @@ function detectTauriRuntime() {
       return true
     }
   }
-  const env = import.meta.env as unknown as { TAURI_PLATFORM?: string | undefined }
+  const env = (
+    import.meta as ImportMeta & { env?: { TAURI_PLATFORM?: string | undefined } }
+  ).env
   return typeof env?.TAURI_PLATFORM === 'string' && env.TAURI_PLATFORM.length > 0
 }
 
