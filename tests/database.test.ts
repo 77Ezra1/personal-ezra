@@ -18,10 +18,12 @@ beforeEach(() => {
 describe('sqlite database helpers', () => {
   it('opens the database at the app data path and stores users', async () => {
     const sql = await resetEnvironment()
+    const fs = await import('@tauri-apps/plugin-fs')
     const { createSqliteDatabase } = await import('../src/stores/sqlite')
     const db = await createSqliteDatabase()
 
-    expect(sql.Database.load).toHaveBeenCalledWith('sqlite:C:/mock/AppData/pms-web/app.sqlite')
+    expect(fs.mkdir).toHaveBeenCalledWith('C:/mock/AppData/pms-web/data', { recursive: true })
+    expect(sql.Database.load).toHaveBeenCalledWith('sqlite:C:/mock/AppData/pms-web/data/pms.db')
 
     const now = Date.now()
     const user: UserRecord = {
@@ -106,6 +108,7 @@ describe('database module selection', () => {
     const sql = await resetEnvironment()
     ;(window as Record<string, unknown>).__TAURI_INTERNALS__ = {}
     const { db } = await import('../src/stores/database')
+    await db.open()
     expect(sql.Database.load).toHaveBeenCalled()
 
     const now = Date.now()
