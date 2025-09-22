@@ -10,26 +10,30 @@
       "identifier": "fs:allow-read-dir",
       "allow": [
         { "path": "$DOCUMENT/*" },
-        { "path": "$APPDATA/vault/*" }
+        { "path": "$APPDATA/vault/*" },
+        { "path": "$HOME/*" }
       ]
     },
     {
       "identifier": "fs:allow-read-file",
       "allow": [
         { "path": "$DOCUMENT/*" },
-        { "path": "$APPDATA/vault/*" }
+        { "path": "$APPDATA/vault/*" },
+        { "path": "$HOME/*" }
       ]
     },
     {
       "identifier": "fs:allow-write-file",
       "allow": [
-        { "path": "$APPDATA/vault/*" }
+        { "path": "$APPDATA/vault/*" },
+        { "path": "$HOME/*" }
       ]
     },
     {
       "identifier": "fs:allow-mkdir",
       "allow": [
-        { "path": "$APPDATA/vault/*" }
+        { "path": "$APPDATA/vault/*" },
+        { "path": "$HOME/*" }
       ]
     },
     {
@@ -41,7 +45,8 @@
     {
       "identifier": "fs:allow-exists",
       "allow": [
-        { "path": "$APPDATA/vault/*" }
+        { "path": "$APPDATA/vault/*" },
+        { "path": "$HOME/*" }
       ]
     }
   ]
