@@ -1,10 +1,6 @@
 const OVERLAY_ID = 'panic-overlay'
 
-declare global {
-  interface Window {
-    __panicOverlayInstalled?: boolean
-  }
-}
+let installed = false
 
 function ensureOverlay(): HTMLPreElement {
   let overlay = document.getElementById(OVERLAY_ID) as HTMLPreElement | null
@@ -34,8 +30,6 @@ function ensureOverlay(): HTMLPreElement {
   return overlay
 }
 
-const overlay = typeof document !== 'undefined' ? ensureOverlay() : null
-
 function formatError(error: unknown): string {
   if (error instanceof Error) {
     if (error.stack) {
@@ -53,23 +47,27 @@ function formatError(error: unknown): string {
   }
 }
 
-function showOverlay(error: unknown) {
-  if (!overlay) return
+function showOverlay(overlay: HTMLPreElement, error: unknown) {
   overlay.textContent = `Unhandled Runtime Error\n\n${formatError(error)}`
   overlay.style.display = 'block'
   console.error(error)
 }
 
-function handleWindowError(event: ErrorEvent) {
-  showOverlay(event.error ?? event.message ?? event)
-}
+export function installPanicOverlay(): void {
+  if (installed || typeof window === 'undefined' || typeof document === 'undefined') {
+    return
+  }
 
-function handleUnhandledRejection(event: PromiseRejectionEvent) {
-  showOverlay(event.reason ?? event)
-}
+  const overlay = ensureOverlay()
+  const handleWindowError = (event: ErrorEvent) => {
+    showOverlay(overlay, event.error ?? event.message ?? event)
+  }
+  const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+    showOverlay(overlay, event.reason ?? event)
+  }
 
-if (typeof window !== 'undefined' && !window.__panicOverlayInstalled) {
   window.addEventListener('error', handleWindowError)
   window.addEventListener('unhandledrejection', handleUnhandledRejection)
-  window.__panicOverlayInstalled = true
+
+  installed = true
 }
