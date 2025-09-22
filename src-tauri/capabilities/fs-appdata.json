@@ -1,0 +1,22 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "fs-appdata",
+  "description": "Allows the FS plugin to manage files within the application's AppData directory.",
+  "windows": ["main"],
+  "permissions": [
+    {
+      "identifier": "fs:scope",
+      "scope": {
+        "allow": [
+          "$APPDATA/**",
+          "$RESOURCE/**"
+        ]
+      }
+    },
+    "fs:allow-appdata-read-recursive",
+    "fs:allow-appdata-write-recursive",
+    "fs:allow-appdata-meta-recursive",
+    "fs:allow-resource-read-recursive",
+    "fs:allow-resource-meta-recursive"
+  ]
+}

@@ -19,7 +19,11 @@
   "app": {
     "security": {
       "csp": null,
-      "capabilities": ["default"]
+      "capabilities": [
+        "default",
+        "fs-appdata",
+        "sqlite"
+      ]
     },
     "windows": [
       {
