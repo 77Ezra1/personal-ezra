@@ -1,6 +1,7 @@
 import { exists, mkdir, remove, writeFile } from '@tauri-apps/plugin-fs'
 import { appDataDir, join } from '@tauri-apps/api/path'
-import { open } from '@tauri-apps/plugin-shell'
+import { open as openShell } from '@tauri-apps/plugin-shell'
+import { openExternal } from './external'
 
 const VAULT_DIR_NAME = 'vault'
 
@@ -84,11 +85,11 @@ export async function importFileToVault(file: File): Promise<VaultFileMeta> {
 
 export async function openDocument(target: DocumentOpenTarget) {
   if (target.kind === 'link') {
-    await open(target.url)
+    await openExternal(target.url)
     return
   }
   const absolutePath = await resolveVaultPath(target.file.relPath)
-  await open(absolutePath)
+  await openShell(absolutePath)
 }
 
 export async function removeVaultFile(relPath: string) {

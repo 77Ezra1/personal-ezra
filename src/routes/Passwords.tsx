@@ -18,7 +18,7 @@ import { useAuthStore } from '../stores/auth'
 import { db, type PasswordRecord } from '../stores/database'
 import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
 import { MAX_LINK_DISPLAY_LENGTH, truncateLink } from '../lib/strings'
-import { openExternalUrl } from '../lib/external-links'
+import { openExternal } from '../lib/external'
 
 const CLIPBOARD_CLEAR_DELAY_SECONDS = Math.round(DEFAULT_CLIPBOARD_CLEAR_DELAY / 1_000)
 const PASSWORD_VIEW_MODE_STORAGE_KEY = 'pms:view:passwords'
@@ -301,7 +301,7 @@ export default function Passwords() {
       return
     }
     try {
-      await openExternalUrl(item.url)
+      await openExternal(item.url)
       showToast({ title: '已在新窗口打开链接', variant: 'success' })
     } catch (error) {
       console.error('Failed to open url', error)

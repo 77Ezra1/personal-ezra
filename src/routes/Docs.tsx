@@ -313,9 +313,8 @@ export default function Docs() {
       await openDocument({ kind: 'link', url })
       showToast({ title: '已在浏览器打开链接', variant: 'success' })
     } catch (error) {
-      console.error('Failed to open link via shell', error)
-      window.open(url, '_blank', 'noreferrer')
-      showToast({ title: '已尝试在新窗口打开', variant: 'info' })
+      console.error('Failed to open link', error)
+      showToast({ title: '打开链接失败', variant: 'error' })
     }
   }
 

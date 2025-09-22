@@ -16,7 +16,7 @@ import { useAuthStore } from '../stores/auth'
 import { db, type SiteRecord } from '../stores/database'
 import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
 import { MAX_LINK_DISPLAY_LENGTH, truncateLink } from '../lib/strings'
-import { openExternalUrl } from '../lib/external-links'
+import { openExternal } from '../lib/external'
 
 type SiteDraft = {
   title: string
@@ -245,7 +245,7 @@ export default function Sites() {
       return
     }
     try {
-      await openExternalUrl(item.url)
+      await openExternal(item.url)
       showToast({ title: '已打开链接', variant: 'success' })
     } catch (error) {
       console.error('Failed to open site url', error)

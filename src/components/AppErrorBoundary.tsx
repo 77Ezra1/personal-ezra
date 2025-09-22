@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle, RefreshCw, Send } from 'lucide-react'
-import { openExternalUrl } from '../lib/open-external-url'
+import { openExternal } from '../lib/external'
 
 export interface AppErrorBoundaryProps {
   children: ReactNode
@@ -61,16 +61,9 @@ export default class AppErrorBoundary extends Component<
     }
 
     try {
-      await openExternalUrl(normalizedHref)
+      await openExternal(normalizedHref)
     } catch (error) {
-      console.error('Failed to open feedback link via shell', error)
-      if (typeof window !== 'undefined' && typeof window.open === 'function') {
-        try {
-          window.open(normalizedHref, '_blank', 'noreferrer')
-        } catch (fallbackError) {
-          console.error('Failed to open feedback link in new window', fallbackError)
-        }
-      }
+      console.error('Failed to open feedback link', error)
     }
   }
 
