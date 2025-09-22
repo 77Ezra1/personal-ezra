@@ -16,6 +16,7 @@ import { useAuthStore } from '../stores/auth'
 import { db, type SiteRecord } from '../stores/database'
 import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
 import { MAX_LINK_DISPLAY_LENGTH, truncateLink } from '../lib/strings'
+import { openExternalUrl } from '../lib/external-links'
 
 type SiteDraft = {
   title: string
@@ -238,13 +239,13 @@ export default function Sites() {
     }
   }
 
-  function handleOpenUrl(item: SiteRecord) {
+  async function handleOpenUrl(item: SiteRecord) {
     if (!item.url) {
       showToast({ title: '无法打开', description: '该网站未填写链接。', variant: 'error' })
       return
     }
     try {
-      window.open(item.url, '_blank', 'noreferrer')
+      await openExternalUrl(item.url)
       showToast({ title: '已打开链接', variant: 'success' })
     } catch (error) {
       console.error('Failed to open site url', error)
@@ -262,7 +263,7 @@ export default function Sites() {
       {
         icon: <ExternalLink className="h-3.5 w-3.5" aria-hidden />,
         label: '打开链接',
-        onClick: () => handleOpenUrl(item),
+        onClick: () => void handleOpenUrl(item),
       },
       {
         icon: <Pencil className="h-3.5 w-3.5" aria-hidden />,
@@ -512,7 +513,7 @@ export default function Sites() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleOpenUrl(activeItem)}
+                    onClick={() => void handleOpenUrl(activeItem)}
                     className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-text transition hover:bg-surface-hover"
                   >
                     <ExternalLink className="h-4 w-4" />

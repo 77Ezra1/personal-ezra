@@ -18,6 +18,7 @@ import { useAuthStore } from '../stores/auth'
 import { db, type PasswordRecord } from '../stores/database'
 import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
 import { MAX_LINK_DISPLAY_LENGTH, truncateLink } from '../lib/strings'
+import { openExternalUrl } from '../lib/external-links'
 
 const CLIPBOARD_CLEAR_DELAY_SECONDS = Math.round(DEFAULT_CLIPBOARD_CLEAR_DELAY / 1_000)
 const PASSWORD_VIEW_MODE_STORAGE_KEY = 'pms:view:passwords'
@@ -280,7 +281,7 @@ export default function Passwords() {
         icon: <ExternalLink className="h-3.5 w-3.5" aria-hidden />,
         label: '打开链接',
         onClick: () => {
-          handleOpenUrl(item)
+          void handleOpenUrl(item)
         },
       })
     }
@@ -294,13 +295,13 @@ export default function Passwords() {
     return actions
   }
 
-  function handleOpenUrl(item: PasswordRecord) {
+  async function handleOpenUrl(item: PasswordRecord) {
     if (!item.url) {
       showToast({ title: '无法打开链接', description: '该条目未填写网址。', variant: 'error' })
       return
     }
     try {
-      window.open(item.url, '_blank', 'noreferrer')
+      await openExternalUrl(item.url)
       showToast({ title: '已在新窗口打开链接', variant: 'success' })
     } catch (error) {
       console.error('Failed to open url', error)
@@ -581,7 +582,7 @@ export default function Passwords() {
                   {activeItem.url && (
                     <button
                       type="button"
-                      onClick={() => handleOpenUrl(activeItem)}
+                      onClick={() => void handleOpenUrl(activeItem)}
                       className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-text transition hover:bg-surface-hover"
                     >
                       <ExternalLink className="h-4 w-4" />
