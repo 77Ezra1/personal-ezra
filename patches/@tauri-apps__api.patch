@@ -1,0 +1,77 @@
+diff --git a/dialog.cjs b/dialog.cjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..0aa505c7e381c1d6845e8a3277843b0a566c94a2
+--- /dev/null
++++ b/dialog.cjs
+@@ -0,0 +1,22 @@
++'use strict'
++
++const getDialog = () => {
++  const tauriGlobal = globalThis.__TAURI__
++  if (!tauriGlobal || !tauriGlobal.dialog) {
++    throw new Error('Tauri dialog API is not available in this environment')
++  }
++  return tauriGlobal.dialog
++}
++
++async function open(options) {
++  const dialog = getDialog()
++  return dialog.open(options)
++}
++
++async function save(options) {
++  const dialog = getDialog()
++  return dialog.save(options)
++}
++
++exports.open = open
++exports.save = save
+diff --git a/dialog.d.ts b/dialog.d.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1fcfd986b9ede85d03ae639f58762b5103f8d6db
+--- /dev/null
++++ b/dialog.d.ts
+@@ -0,0 +1,20 @@
++export type DialogFilter = {
++  name?: string
++  extensions: string[]
++}
++
++export type OpenDialogOptions = {
++  defaultPath?: string
++  filters?: DialogFilter[]
++  multiple?: boolean
++  directory?: boolean
++}
++
++export type SaveDialogOptions = {
++  defaultPath?: string
++  filters?: DialogFilter[]
++}
++
++export declare function open(options?: OpenDialogOptions): Promise<string | string[] | null>
++
++export declare function save(options?: SaveDialogOptions): Promise<string | null>
+diff --git a/dialog.js b/dialog.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..5a75ca6ff47c80ef98211cc3512a50eb583b27f3
+--- /dev/null
++++ b/dialog.js
+@@ -0,0 +1,17 @@
++const getDialog = () => {
++  const tauriGlobal = globalThis.__TAURI__
++  if (!tauriGlobal || !tauriGlobal.dialog) {
++    throw new Error('Tauri dialog API is not available in this environment')
++  }
++  return tauriGlobal.dialog
++}
++
++export async function open(options) {
++  const dialog = getDialog()
++  return dialog.open(options)
++}
++
++export async function save(options) {
++  const dialog = getDialog()
++  return dialog.save(options)
++}
