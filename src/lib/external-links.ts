@@ -12,7 +12,7 @@ export async function openExternalUrl(url: string) {
     throw new Error('URL is required to open external link')
   }
 
-  if (!isTauriRuntime) {
+  if (!isTauriRuntime()) {
     openWithWindow(url)
     return
   }
