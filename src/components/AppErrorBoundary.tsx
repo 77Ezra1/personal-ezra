@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle, RefreshCw, Send } from 'lucide-react'
+import { openExternalUrl } from '../lib/open-external-url'
 
 export interface AppErrorBoundaryProps {
   children: ReactNode
@@ -43,14 +44,33 @@ export default class AppErrorBoundary extends Component<
     }
   }
 
-  handleFeedback = () => {
+  handleFeedback = async () => {
     const { onFeedback, feedbackHref } = this.props
     if (onFeedback) {
-      onFeedback()
+      try {
+        await onFeedback()
+      } catch (error) {
+        console.error('Failed to run custom feedback handler', error)
+      }
       return
     }
-    if (feedbackHref && typeof window !== 'undefined') {
-      window.open(feedbackHref, '_blank', 'noreferrer')
+
+    const normalizedHref = typeof feedbackHref === 'string' ? feedbackHref.trim() : ''
+    if (!normalizedHref) {
+      return
+    }
+
+    try {
+      await openExternalUrl(normalizedHref)
+    } catch (error) {
+      console.error('Failed to open feedback link via shell', error)
+      if (typeof window !== 'undefined' && typeof window.open === 'function') {
+        try {
+          window.open(normalizedHref, '_blank', 'noreferrer')
+        } catch (fallbackError) {
+          console.error('Failed to open feedback link in new window', fallbackError)
+        }
+      }
     }
   }
 
