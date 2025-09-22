@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Lock as LockIcon } from 'lucide-react'
-import { BrowserRouter, Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
+import { BrowserRouter, HashRouter, Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
 import { SESSION_STORAGE_KEY, useAuthStore } from './stores/auth'
 import Login from './routes/Login'
 import Register from './routes/Register'
@@ -12,6 +12,7 @@ import Docs from './routes/Docs'
 import Settings from './routes/Settings'
 import { useLock } from './features/lock/LockProvider'
 import ConfirmDialog from './components/ConfirmDialog'
+import { isTauriRuntime } from './env'
 
 function GuestLayout({ children }: { children: ReactNode }) {
   return (
@@ -182,6 +183,14 @@ function AuthenticatedLayout() {
   )
 }
 
+function RouterComponent({ children }: { children: ReactNode }) {
+  if (isTauriRuntime) {
+    return <HashRouter>{children}</HashRouter>
+  }
+
+  return <BrowserRouter>{children}</BrowserRouter>
+}
+
 export default function App() {
   const email = useAuthStore(s => s.email)
   const init = useAuthStore(s => s.init)
@@ -212,7 +221,7 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter>
+    <RouterComponent>
       <Routes>
         <Route path="/" element={<Navigate to={email ? '/dashboard' : '/login'} replace />} />
         <Route
@@ -243,6 +252,6 @@ export default function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </RouterComponent>
   )
 }
