@@ -1,4 +1,6 @@
 import clsx from 'clsx'
+import { open, save } from '@tauri-apps/api/dialog'
+import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import {
   useEffect,
   useId,
@@ -32,6 +34,19 @@ type ThemeOption = {
 type FormMessage = { type: 'success' | 'error'; text: string } | null
 
 const FORM_MESSAGE_DISPLAY_DURATION = 5000
+
+type MaybeTauriWindow = Window & { __TAURI__?: unknown }
+
+function detectTauriRuntime() {
+  if (typeof window !== 'undefined') {
+    const tauriWindow = window as MaybeTauriWindow
+    if (tauriWindow.__TAURI__) {
+      return true
+    }
+  }
+  const env = import.meta.env as unknown as { TAURI_PLATFORM?: string | undefined }
+  return typeof env?.TAURI_PLATFORM === 'string' && env.TAURI_PLATFORM.length > 0
+}
 
 function useAutoDismissFormMessage(
   message: FormMessage,
@@ -378,6 +393,8 @@ function DataBackupSection() {
   const [masterPassword, setMasterPassword] = useState('')
   const [passwordError, setPasswordError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const isTauri = detectTauriRuntime()
+  const jsonFilters = [{ name: 'JSON 文件', extensions: ['json'] }]
 
   const backupDisabled = !email || !encryptionKey
   const passwordDisabled = backupDisabled || exporting || importing
@@ -412,14 +429,25 @@ function DataBackupSection() {
       const blob = await exportUserData(email, encryptionKey, masterPassword)
       const timestamp = formatTimestamp(new Date())
       const fileName = `pms-backup-${timestamp}.json`
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = fileName
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
+
+      if (isTauri) {
+        const savePath = await save({ defaultPath: fileName, filters: jsonFilters })
+        if (!savePath) {
+          return
+        }
+        const fileContent = await blob.text()
+        await writeTextFile(savePath, fileContent)
+      } else {
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = fileName
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+      }
+
       showToast({
         title: '备份已导出',
         description: '请妥善保管下载的备份文件。',
@@ -439,22 +467,7 @@ function DataBackupSection() {
     }
   }
 
-  const handleImportClick = () => {
-    if (!email || !encryptionKey) {
-      showToast({ title: '无法导入备份', description: '请先登录并解锁账号后再试。', variant: 'error' })
-      return
-    }
-    if (!masterPassword) {
-      setPasswordError('请先输入主密码再导入备份。')
-      return
-    }
-    fileInputRef.current?.click()
-  }
-
-  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const [file] = event.currentTarget.files ?? []
-    event.currentTarget.value = ''
-    if (!file) return
+  const performImport = async (payload: Blob | string) => {
     if (!email || !encryptionKey) {
       showToast({ title: '无法导入备份', description: '请先登录并解锁账号后再试。', variant: 'error' })
       return
@@ -465,7 +478,7 @@ function DataBackupSection() {
     }
     try {
       setImporting(true)
-      const result = await importUserData(file, encryptionKey, masterPassword)
+      const result = await importUserData(payload, encryptionKey, masterPassword)
       showToast({
         title: '导入成功',
         description: `密码 ${result.passwords} 条｜网站 ${result.sites} 个｜文档 ${result.docs} 条`,
@@ -486,6 +499,52 @@ function DataBackupSection() {
     } finally {
       setImporting(false)
     }
+  }
+
+  const handleImportClick = async () => {
+    if (!email || !encryptionKey) {
+      showToast({ title: '无法导入备份', description: '请先登录并解锁账号后再试。', variant: 'error' })
+      return
+    }
+    if (!masterPassword) {
+      setPasswordError('请先输入主密码再导入备份。')
+      return
+    }
+
+    if (isTauri) {
+      try {
+        const selection = await open({ multiple: false, filters: jsonFilters })
+        const filePath = Array.isArray(selection) ? selection[0] : selection
+        if (!filePath) {
+          return
+        }
+        try {
+          const fileContent = await readTextFile(filePath)
+          await performImport(fileContent)
+        } catch (error) {
+          console.error('Failed to read backup file', error)
+          const message = error instanceof Error ? error.message : '读取备份文件失败，请确认文件无误后重试。'
+          showToast({ title: '导入失败', description: message, variant: 'error' })
+          setImporting(false)
+        }
+      } catch (error) {
+        console.error('Failed to open backup dialog', error)
+        const message = error instanceof Error ? error.message : '打开文件选择器失败，请稍后再试。'
+        showToast({ title: '导入失败', description: message, variant: 'error' })
+      }
+      return
+    }
+
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const [file] = event.currentTarget.files ?? []
+    event.currentTarget.value = ''
+    if (!file) {
+      return
+    }
+    await performImport(file)
   }
 
   return (

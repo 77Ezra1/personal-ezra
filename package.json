@@ -69,5 +69,10 @@
     "vite": "^5.4.2",
     "vite-plugin-pwa": "^1.0.3",
     "vitest": "^3.2.4"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "@tauri-apps/api": "patches/@tauri-apps__api.patch"
+    }
   }
 }
