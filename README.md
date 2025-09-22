@@ -13,6 +13,8 @@ pnpm dev
 pnpm build && pnpm preview
 ```
 
+> **macOS DMG 构建注意**：如需在 macOS 上运行 `pnpm tauri:build` 生成 DMG，请先确保 Tauri 的可选依赖已安装；若之前跳过了可选依赖，请删除 `node_modules` 与 `pnpm-lock.yaml` 后执行 `pnpm install --include-optional`（或显式安装 `@tauri-apps/cli-darwin-*`）。该步骤需在执行 `pnpm tauri:build` 之前完成，以便在复制 `.app` Bundle 时找到 DMG 打包脚本。
+
 如使用 npm 或 yarn：
 ```bash
 npm install && npm run dev
