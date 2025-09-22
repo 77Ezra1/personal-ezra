@@ -14,7 +14,7 @@ import { initializeTheme, useTheme } from './stores/theme'
 
 installPanicOverlay()
 
-if (isTauriRuntime) {
+if (isTauriRuntime()) {
   void swCleanup()
 }
 

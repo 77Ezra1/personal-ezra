@@ -184,7 +184,7 @@ function AuthenticatedLayout() {
 }
 
 function RouterComponent({ children }: { children: ReactNode }) {
-  if (isTauriRuntime) {
+  if (isTauriRuntime()) {
     return <HashRouter>{children}</HashRouter>
   }
 
