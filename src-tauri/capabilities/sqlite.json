@@ -1,0 +1,44 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "sqlite",
+  "description": "Allows the SQL plugin to interact with SQLite databases stored under AppData.",
+  "windows": ["main"],
+  "permissions": [
+    {
+      "identifier": "sql:allow-load",
+      "scope": {
+        "allow": [
+          "sqlite:$APPDATA/**.db",
+          "sqlite:$APPDATA/**/data/*.db"
+        ]
+      }
+    },
+    {
+      "identifier": "sql:allow-select",
+      "scope": {
+        "allow": [
+          "sqlite:$APPDATA/**.db",
+          "sqlite:$APPDATA/**/data/*.db"
+        ]
+      }
+    },
+    {
+      "identifier": "sql:allow-close",
+      "scope": {
+        "allow": [
+          "sqlite:$APPDATA/**.db",
+          "sqlite:$APPDATA/**/data/*.db"
+        ]
+      }
+    },
+    {
+      "identifier": "sql:allow-execute",
+      "scope": {
+        "allow": [
+          "sqlite:$APPDATA/**.db",
+          "sqlite:$APPDATA/**/data/*.db"
+        ]
+      }
+    }
+  ]
+}
