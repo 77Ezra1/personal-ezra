@@ -16,7 +16,7 @@ export default defineConfig({
     }),
   ],
   build: {
-    target: isTauri ? ['es2021'] : 'esnext',
+    target: isTauri ? ['es2021'] : 'modules',
     sourcemap: false,
   },
 })
