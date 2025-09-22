@@ -146,8 +146,10 @@ function normalizeParams(values: unknown[]): unknown[] {
 
 async function resolveDatabasePath() {
   const baseDir = await appDataDir()
-  await mkdir(baseDir, { recursive: true })
-  return join(baseDir, 'app.sqlite')
+  const dataDir = await join(baseDir, 'data')
+  await mkdir(dataDir, { recursive: true })
+  const dbPath = await join(dataDir, 'pms.db')
+  return dbPath
 }
 
 const MIGRATIONS: Migration[] = [
