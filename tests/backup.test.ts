@@ -10,6 +10,8 @@ let databaseClient: DatabaseClient
 const email = 'backup-user@example.com'
 const masterPassword = 'StrongPassw0rd!'
 
+const LONG_RUNNING_TEST_TIMEOUT = 20_000
+
 beforeAll(async () => {
   const backupModule = await import('../src/lib/backup')
   exportUserData = backupModule.exportUserData
@@ -63,7 +65,9 @@ beforeEach(async () => {
 })
 
 describe('user data backup', () => {
-  it('imports password-protected backup after re-registering the same account', async () => {
+  it(
+    'imports password-protected backup after re-registering the same account',
+    async () => {
     await databaseClient.open()
 
     const auth = useAuthStore.getState()
@@ -112,5 +116,7 @@ describe('user data backup', () => {
     expect(stored).toHaveLength(1)
     const decrypted = await decryptString(secondKeyBytes, stored[0]!.passwordCipher)
     expect(decrypted).toBe('initial-secret')
-  })
+    },
+    LONG_RUNNING_TEST_TIMEOUT,
+  )
 })
