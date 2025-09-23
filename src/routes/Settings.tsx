@@ -481,11 +481,6 @@ export default function Settings() {
 
   return (
     <div className="space-y-8 text-text">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold text-text">设置</h1>
-        <p className="text-sm text-muted">调整主题外观与个性化选项。</p>
-      </header>
-
       <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[240px_1fr]">
         <nav
           aria-label="设置导航"
