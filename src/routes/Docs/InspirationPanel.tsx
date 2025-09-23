@@ -837,7 +837,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         hasTagFilter={hasTagFilter}
         searchTerm={searchTerm}
       />
-      <div className="flex flex-col gap-6">
+      <div className="space-y-6">
         <InspirationEditor
           draft={draft}
           onTitleChange={handleTitleChange}
@@ -847,36 +847,22 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
           onDelete={() => {
             void handleDelete()
           }}
-          hasTagFilter={hasTagFilter}
-          searchTerm={searchTerm}
+          textareaRef={textareaRef}
+          tagInputRef={tagInputRef}
+          tagInput={tagInput}
+          onTagInputChange={handleTagInputChange}
+          onTagSubmit={handleTagSubmit}
+          onTagEdit={handleTagEdit}
+          onTagRemove={handleTagRemove}
+          onTagEditCancel={handleTagEditCancel}
+          editingTagIndex={editingTagIndex}
+          saving={saving}
+          deleting={deleting}
+          loadingNote={loadingNote}
+          canDelete={Boolean(draft.id)}
+          lastSavedAt={activeMeta?.updatedAt}
         />
-        <div className="space-y-6">
-          <InspirationEditor
-            draft={draft}
-            onTitleChange={handleTitleChange}
-            onContentChange={handleContentChange}
-            onInsertLink={handleInsertLink}
-            onSubmit={handleSubmit}
-            onDelete={() => {
-              void handleDelete()
-            }}
-            textareaRef={textareaRef}
-            tagInputRef={tagInputRef}
-            tagInput={tagInput}
-            onTagInputChange={handleTagInputChange}
-            onTagSubmit={handleTagSubmit}
-            onTagEdit={handleTagEdit}
-            onTagRemove={handleTagRemove}
-            onTagEditCancel={handleTagEditCancel}
-            editingTagIndex={editingTagIndex}
-            saving={saving}
-            deleting={deleting}
-            loadingNote={loadingNote}
-            canDelete={Boolean(draft.id)}
-            lastSavedAt={activeMeta?.updatedAt}
-          />
-          <InspirationPreview content={draft.content} />
-        </div>
+        <InspirationPreview content={draft.content} />
       </div>
     </div>
   )
