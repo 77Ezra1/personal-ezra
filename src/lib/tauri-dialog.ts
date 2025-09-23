@@ -1,52 +1,42 @@
-export type DialogFilter = {
-  name?: string
-  extensions: string[]
-}
-
-export type OpenDialogOptions = {
-  defaultPath?: string
-  filters?: DialogFilter[]
-  multiple?: boolean
-  directory?: boolean
-}
-
-export type SaveDialogOptions = {
-  defaultPath?: string
-  filters?: DialogFilter[]
-}
-
-type TauriDialogApi = {
-  open: (options?: OpenDialogOptions) => Promise<string | string[] | null>
-  save: (options?: SaveDialogOptions) => Promise<string | null>
-}
+import {
+  open as tauriOpen,
+  save as tauriSave,
+  type DialogFilter,
+  type OpenDialogOptions,
+  type SaveDialogOptions,
+} from '@tauri-apps/plugin-dialog'
 
 type MaybeTauriWindow = Window & {
   __TAURI__?: {
-    dialog?: TauriDialogApi
+    invoke?: unknown
   }
 }
 
-const getTauriDialog = (): TauriDialogApi | null => {
+const ensureTauriDialogAvailable = () => {
   if (typeof window === 'undefined') {
-    return null
+    throw new Error('Tauri dialog API is not available in this environment')
   }
 
   const tauriWindow = window as MaybeTauriWindow
-  return tauriWindow.__TAURI__?.dialog ?? null
-}
 
-export const openDialog: TauriDialogApi['open'] = async options => {
-  const dialog = getTauriDialog()
-  if (!dialog) {
+  if (typeof tauriWindow.__TAURI__?.invoke !== 'function') {
     throw new Error('Tauri dialog API is not available in this environment')
   }
-  return dialog.open(options)
+}
+
+type TauriDialogApi = {
+  open: typeof tauriOpen
+  save: typeof tauriSave
+}
+
+export type { DialogFilter, OpenDialogOptions, SaveDialogOptions }
+
+export const openDialog: TauriDialogApi['open'] = async options => {
+  ensureTauriDialogAvailable()
+  return tauriOpen(options)
 }
 
 export const saveDialog: TauriDialogApi['save'] = async options => {
-  const dialog = getTauriDialog()
-  if (!dialog) {
-    throw new Error('Tauri dialog API is not available in this environment')
-  }
-  return dialog.save(options)
+  ensureTauriDialogAvailable()
+  return tauriSave(options)
 }
