@@ -7,7 +7,15 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { appDataDir, join } from '@tauri-apps/api/path'
-import { mkdir, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
+import {
+  copyFile,
+  exists,
+  mkdir,
+  readTextFile,
+  remove,
+  rename,
+  writeTextFile,
+} from '@tauri-apps/plugin-fs'
 import { openDialog, saveDialog } from '../lib/tauri-dialog'
 import {
   useCallback,
@@ -31,6 +39,12 @@ import CopyButton from '../components/CopyButton'
 import PasswordFieldWithStrength from '../components/PasswordFieldWithStrength'
 import { useToast } from '../components/ToastProvider'
 import { generateCaptcha } from '../lib/captcha'
+import {
+  DATABASE_FILE_NAME,
+  DEFAULT_DATA_DIR_SEGMENTS,
+  loadStoredDataPath,
+  saveStoredDataPath,
+} from '../lib/storage-path'
 import { BACKUP_IMPORTED_EVENT, exportUserData, importUserData } from '../lib/backup'
 import { estimatePasswordStrength, PASSWORD_STRENGTH_REQUIREMENT } from '../lib/password-utils'
 import { DEFAULT_TIMEOUT, IDLE_TIMEOUT_OPTIONS, useIdleTimeoutStore } from '../features/lock/IdleLock'
@@ -158,6 +172,19 @@ type SettingsCategory = {
   sections: SettingsSection[]
 }
 
+type DataPathUpdateStatus = 'none' | 'migrated' | 'existing'
+
+function describeDataPathUpdate(path: string, status: DataPathUpdateStatus) {
+  switch (status) {
+    case 'migrated':
+      return `${path} ｜ 已迁移现有数据库文件，重启应用后生效。`
+    case 'existing':
+      return `${path} ｜ 目标目录已存在数据库文件，将直接使用该文件。重启应用后生效。`
+    default:
+      return `${path} ｜ 重启应用后生效。`
+  }
+}
+
 function AboutSection() {
   const isDesktop = detectTauriRuntime()
   const runtimeLabel = isDesktop ? '桌面端 (Tauri)' : 'Web / PWA'
@@ -198,7 +225,7 @@ function AboutSection() {
               className="h-16 w-16 rounded-2xl border border-border/60 bg-surface shadow-inner"
             />
             <div className="space-y-1">
-              <h2 className="text-lg font-medium text-text">关于 {APP_DISPLAY_NAME}</h2>
+              <h2 className="text-lg font-medium text-text">关于我们</h2>
               <p className="text-sm leading-relaxed text-muted">
                 一款专注于私密信息管理的本地优先密码保险箱。
               </p>
@@ -427,7 +454,7 @@ export default function Settings() {
       {
         key: 'overview',
         label: '应用信息',
-        sections: [{ key: 'about', label: '关于', render: () => <AboutSection /> }],
+        sections: [{ key: 'about', label: '关于我们', render: () => <AboutSection /> }],
       },
       {
         key: 'profile',
@@ -481,11 +508,6 @@ export default function Settings() {
 
   return (
     <div className="space-y-8 text-text">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold text-text">设置</h1>
-        <p className="text-sm text-muted">调整主题外观与个性化选项。</p>
-      </header>
-
       <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[240px_1fr]">
         <nav
           aria-label="设置导航"
@@ -637,6 +659,10 @@ function DataBackupSection() {
   const [importing, setImporting] = useState(false)
   const [masterPassword, setMasterPassword] = useState('')
   const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [dataPath, setDataPath] = useState('')
+  const [defaultDataPath, setDefaultDataPath] = useState('')
+  const [selectingDataPath, setSelectingDataPath] = useState(false)
+  const [resettingDataPath, setResettingDataPath] = useState(false)
   const [backupPath, setBackupPath] = useState('')
   const [defaultBackupPath, setDefaultBackupPath] = useState('')
   const [selectingBackupPath, setSelectingBackupPath] = useState(false)
@@ -660,6 +686,45 @@ function DataBackupSection() {
       console.warn('Failed to persist backup path', error)
     }
   }, [])
+
+  useEffect(() => {
+    if (!isTauri) return
+    let mounted = true
+
+    const initializeDataDirectory = async () => {
+      try {
+        const baseDir = await appDataDir()
+        const defaultDir = await join(baseDir, ...DEFAULT_DATA_DIR_SEGMENTS)
+        await mkdir(defaultDir, { recursive: true })
+        if (!mounted) return
+        setDefaultDataPath(defaultDir)
+
+        const stored = loadStoredDataPath()
+        if (stored) {
+          try {
+            await mkdir(stored, { recursive: true })
+            if (!mounted) return
+            setDataPath(stored)
+            return
+          } catch (error) {
+            console.error('Failed to access persisted data directory', error)
+          }
+        }
+
+        if (!mounted) return
+        setDataPath(defaultDir)
+        saveStoredDataPath(defaultDir)
+      } catch (error) {
+        console.error('Failed to initialize data directory', error)
+      }
+    }
+
+    initializeDataDirectory()
+
+    return () => {
+      mounted = false
+    }
+  }, [isTauri])
 
   useEffect(() => {
     if (!isTauri) return
@@ -697,6 +762,118 @@ function DataBackupSection() {
       mounted = false
     }
   }, [isTauri, persistBackupPath])
+
+  const applyDataPath = useCallback(
+    async (targetDir: string, options: { moveExisting?: boolean } = {}) => {
+      if (!targetDir) {
+        throw new Error('请选择有效的存储路径。')
+      }
+
+      await mkdir(targetDir, { recursive: true })
+
+      let status: DataPathUpdateStatus = 'none'
+
+      if (options.moveExisting) {
+        const currentDir = dataPath || defaultDataPath
+        if (currentDir && currentDir !== targetDir) {
+          const sourceDbPath = await join(currentDir, DATABASE_FILE_NAME)
+          const targetDbPath = await join(targetDir, DATABASE_FILE_NAME)
+          try {
+            const [sourceExists, targetExists] = await Promise.all([
+              exists(sourceDbPath),
+              exists(targetDbPath),
+            ])
+
+            if (sourceExists) {
+              if (targetExists) {
+                status = 'existing'
+              } else {
+                try {
+                  await rename(sourceDbPath, targetDbPath)
+                  status = 'migrated'
+                } catch (renameError) {
+                  try {
+                    await copyFile(sourceDbPath, targetDbPath)
+                    try {
+                      await remove(sourceDbPath)
+                    } catch (cleanupError) {
+                      console.warn('Failed to remove old database after copy', cleanupError)
+                    }
+                    status = 'migrated'
+                  } catch (copyError) {
+                    throw copyError instanceof Error
+                      ? new Error(`迁移数据库文件失败：${copyError.message}`)
+                      : copyError
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            throw error instanceof Error
+              ? new Error(`处理数据库文件时出错：${error.message}`)
+              : error
+          }
+        }
+      }
+
+      setDataPath(targetDir)
+      saveStoredDataPath(targetDir)
+
+      return status
+    },
+    [dataPath, defaultDataPath],
+  )
+
+  const handleSelectDataPath = async () => {
+    if (!isTauri) return
+    try {
+      setSelectingDataPath(true)
+      const selection = await openDialog({ directory: true })
+      const selectedPath = Array.isArray(selection) ? selection[0] : selection
+      if (!selectedPath) {
+        return
+      }
+      const status = await applyDataPath(selectedPath, { moveExisting: true })
+      showToast({
+        title: '已更新数据存储路径',
+        description: describeDataPathUpdate(selectedPath, status),
+        variant: 'success',
+      })
+    } catch (error) {
+      console.error('Failed to select data directory', error)
+      const message =
+        error instanceof Error ? error.message : '选择数据存储路径失败，请稍后再试。'
+      showToast({ title: '选择失败', description: message, variant: 'error' })
+    } finally {
+      setSelectingDataPath(false)
+    }
+  }
+
+  const handleResetDataPath = async () => {
+    if (!isTauri) return
+    try {
+      setResettingDataPath(true)
+      let target = defaultDataPath
+      if (!target) {
+        const baseDir = await appDataDir()
+        target = await join(baseDir, ...DEFAULT_DATA_DIR_SEGMENTS)
+      }
+      const status = await applyDataPath(target, { moveExisting: true })
+      setDefaultDataPath(target)
+      showToast({
+        title: '数据存储路径已恢复默认',
+        description: describeDataPathUpdate(target, status),
+        variant: 'success',
+      })
+    } catch (error) {
+      console.error('Failed to reset data directory', error)
+      const message =
+        error instanceof Error ? error.message : '恢复默认数据路径失败，请稍后再试。'
+      showToast({ title: '恢复失败', description: message, variant: 'error' })
+    } finally {
+      setResettingDataPath(false)
+    }
+  }
 
   const handleSelectBackupPath = async () => {
     if (!isTauri) return
@@ -954,49 +1131,105 @@ function DataBackupSection() {
         {passwordError ? <p className="text-xs text-red-500">{passwordError}</p> : null}
       </div>
 
-      {isTauri ? (
-        <div className="space-y-2">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <label className="text-sm font-medium text-text">备份路径</label>
-            <button
-              type="button"
-              onClick={handleResetBackupPath}
-              disabled={resettingBackupPath || !defaultBackupPath || backupPath === defaultBackupPath}
-              className={clsx(
-                'inline-flex items-center rounded-lg border border-border px-3 py-1 text-xs font-medium transition',
-                'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
-              )}
-            >
-              {resettingBackupPath ? '恢复中…' : '恢复默认'}
-            </button>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <input
-              type="text"
-              value={backupPath || '尚未选择备份路径'}
-              readOnly
-              className={clsx(
-                'w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition',
-                backupPath ? 'focus:border-primary/60 focus:bg-surface-hover' : 'text-muted',
-              )}
-            />
-            <button
-              type="button"
-              onClick={handleSelectBackupPath}
-              disabled={selectingBackupPath || resettingBackupPath}
-              className={clsx(
-                'inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-sm transition',
-                'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
-              )}
-            >
-              {selectingBackupPath ? '选择中…' : '选择路径'}
-            </button>
-          </div>
+      <div className="space-y-3 rounded-2xl border border-border/50 bg-surface/60 p-4">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-text">文件管理</h3>
           <p className="text-xs leading-relaxed text-muted">
-            备份文件将自动保存至所选目录。若路径无权限写入，将自动回退为系统的保存对话框。
+            自定义本地数据库与备份导出路径，方便按照个人习惯管理数据。
           </p>
         </div>
-      ) : null}
+        {isTauri ? (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <label className="text-sm font-medium text-text">数据存储路径</label>
+                <button
+                  type="button"
+                  onClick={handleResetDataPath}
+                  disabled={resettingDataPath || !defaultDataPath || dataPath === defaultDataPath}
+                  className={clsx(
+                    'inline-flex items-center rounded-lg border border-border px-3 py-1 text-xs font-medium transition',
+                    'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+                  )}
+                >
+                  {resettingDataPath ? '恢复中…' : '恢复默认'}
+                </button>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  type="text"
+                  value={dataPath || '尚未选择存储路径'}
+                  readOnly
+                  className={clsx(
+                    'w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition',
+                    dataPath ? 'focus:border-primary/60 focus:bg-surface-hover' : 'text-muted',
+                  )}
+                />
+                <button
+                  type="button"
+                  onClick={handleSelectDataPath}
+                  disabled={selectingDataPath || resettingDataPath}
+                  className={clsx(
+                    'inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-sm transition',
+                    'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+                  )}
+                >
+                  {selectingDataPath ? '选择中…' : '选择路径'}
+                </button>
+              </div>
+              <p className="text-xs leading-relaxed text-muted">
+                本地数据库文件（{DATABASE_FILE_NAME}）将存储在所选目录，调整后请重启应用以生效。
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <label className="text-sm font-medium text-text">备份导出路径</label>
+                <button
+                  type="button"
+                  onClick={handleResetBackupPath}
+                  disabled={resettingBackupPath || !defaultBackupPath || backupPath === defaultBackupPath}
+                  className={clsx(
+                    'inline-flex items-center rounded-lg border border-border px-3 py-1 text-xs font-medium transition',
+                    'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+                  )}
+                >
+                  {resettingBackupPath ? '恢复中…' : '恢复默认'}
+                </button>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  type="text"
+                  value={backupPath || '尚未选择备份路径'}
+                  readOnly
+                  className={clsx(
+                    'w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition',
+                    backupPath ? 'focus:border-primary/60 focus:bg-surface-hover' : 'text-muted',
+                  )}
+                />
+                <button
+                  type="button"
+                  onClick={handleSelectBackupPath}
+                  disabled={selectingBackupPath || resettingBackupPath}
+                  className={clsx(
+                    'inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-sm transition',
+                    'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+                  )}
+                >
+                  {selectingBackupPath ? '选择中…' : '选择路径'}
+                </button>
+              </div>
+              <p className="text-xs leading-relaxed text-muted">
+                备份文件将默认写入该目录，如遇写入权限问题会自动回退为系统保存对话框。
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs leading-relaxed text-muted">
+            仅桌面端支持自定义文件路径，Web 端会使用浏览器的默认存储位置。
+          </p>
+        )}
+      </div>
 
       <div className="flex flex-wrap gap-3">
         <button
