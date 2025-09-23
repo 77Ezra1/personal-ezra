@@ -13,6 +13,9 @@ type MaybeTauriWindow = Window & {
       invoke?: unknown
     }
   }
+  __TAURI_INTERNALS__?: {
+    invoke?: unknown
+  }
 }
 
 const ensureTauriDialogAvailable = (): void => {
@@ -22,12 +25,19 @@ const ensureTauriDialogAvailable = (): void => {
 
   const tauriWindow = window as MaybeTauriWindow
 
-  const invoke =
-    tauriWindow.__TAURI__?.invoke ?? tauriWindow.__TAURI__?.core?.invoke
+  const invokeCandidates = [
+    tauriWindow.__TAURI__?.invoke,
+    tauriWindow.__TAURI__?.core?.invoke,
+    tauriWindow.__TAURI_INTERNALS__?.invoke,
+  ]
 
-  if (typeof invoke !== 'function') {
-    throw new Error('Tauri dialog API is not available in this environment')
+  for (const invoke of invokeCandidates) {
+    if (typeof invoke === 'function') {
+      return
+    }
   }
+
+  throw new Error('Tauri dialog API is not available in this environment')
 }
 
 export type { DialogFilter, OpenDialogOptions, SaveDialogOptions }
