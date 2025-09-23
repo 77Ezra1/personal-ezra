@@ -826,14 +826,26 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
           <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
         </section>
       )}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)] xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
-        <InspirationNoteList
-          notes={filteredNotes}
-          totalCount={notes.length}
-          loading={loadingList}
-          selectedId={selectedId}
-          onSelect={noteId => {
-            void handleSelectNote(noteId)
+      <InspirationNoteList
+        notes={filteredNotes}
+        totalCount={notes.length}
+        loading={loadingList}
+        selectedId={selectedId}
+        onSelect={noteId => {
+          void handleSelectNote(noteId)
+        }}
+        hasTagFilter={hasTagFilter}
+        searchTerm={searchTerm}
+      />
+      <div className="flex flex-col gap-6">
+        <InspirationEditor
+          draft={draft}
+          onTitleChange={handleTitleChange}
+          onContentChange={handleContentChange}
+          onInsertLink={handleInsertLink}
+          onSubmit={handleSubmit}
+          onDelete={() => {
+            void handleDelete()
           }}
           hasTagFilter={hasTagFilter}
           searchTerm={searchTerm}
