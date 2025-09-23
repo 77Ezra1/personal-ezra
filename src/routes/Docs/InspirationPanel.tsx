@@ -700,20 +700,27 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   }
 
   return (
-    <div className={clsx('space-y-6', className)}>
-      <InspirationHeader
-        onCreate={handleCreate}
-        onRefresh={() => {
-          void refreshNotes()
-        }}
-        loading={loadingList}
-        error={error}
-      />
-      {(availableTags.length > 0 || isFiltering) && (
-        <section className="rounded-3xl border border-border bg-surface p-4 shadow-inner shadow-black/10 transition dark:shadow-black/40">
-          <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
-        </section>
+    <div
+      className={clsx(
+        'flex flex-col gap-6 md:grid md:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] md:items-start lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)] xl:gap-8',
+        className,
       )}
+    >
+      <div className="flex flex-col gap-4 md:col-span-2">
+        <InspirationHeader
+          onCreate={handleCreate}
+          onRefresh={() => {
+            void refreshNotes()
+          }}
+          loading={loadingList}
+          error={error}
+        />
+        {(availableTags.length > 0 || isFiltering) && (
+          <section className="rounded-3xl border border-border bg-surface p-4 shadow-inner shadow-black/10 transition dark:shadow-black/40">
+            <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
+          </section>
+        )}
+      </div>
       <InspirationNoteList
         notes={filteredNotes}
         totalCount={notes.length}
@@ -724,31 +731,33 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         }}
         isFiltering={isFiltering}
       />
-      <InspirationEditor
-        draft={draft}
-        onTitleChange={handleTitleChange}
-        onContentChange={handleContentChange}
-        onInsertLink={handleInsertLink}
-        onSubmit={handleSubmit}
-        onDelete={() => {
-          void handleDelete()
-        }}
-        textareaRef={textareaRef}
-        tagInputRef={tagInputRef}
-        tagInput={tagInput}
-        onTagInputChange={handleTagInputChange}
-        onTagSubmit={handleTagSubmit}
-        onTagEdit={handleTagEdit}
-        onTagRemove={handleTagRemove}
-        onTagEditCancel={handleTagEditCancel}
-        editingTagIndex={editingTagIndex}
-        saving={saving}
-        deleting={deleting}
-        loadingNote={loadingNote}
-        canDelete={Boolean(draft.id)}
-        lastSavedAt={activeMeta?.updatedAt}
-      />
-      <InspirationPreview content={draft.content} />
+      <div className="flex flex-col gap-6">
+        <InspirationEditor
+          draft={draft}
+          onTitleChange={handleTitleChange}
+          onContentChange={handleContentChange}
+          onInsertLink={handleInsertLink}
+          onSubmit={handleSubmit}
+          onDelete={() => {
+            void handleDelete()
+          }}
+          textareaRef={textareaRef}
+          tagInputRef={tagInputRef}
+          tagInput={tagInput}
+          onTagInputChange={handleTagInputChange}
+          onTagSubmit={handleTagSubmit}
+          onTagEdit={handleTagEdit}
+          onTagRemove={handleTagRemove}
+          onTagEditCancel={handleTagEditCancel}
+          editingTagIndex={editingTagIndex}
+          saving={saving}
+          deleting={deleting}
+          loadingNote={loadingNote}
+          canDelete={Boolean(draft.id)}
+          lastSavedAt={activeMeta?.updatedAt}
+        />
+        <InspirationPreview content={draft.content} />
+      </div>
     </div>
   )
 }
