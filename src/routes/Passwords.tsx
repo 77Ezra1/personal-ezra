@@ -462,9 +462,6 @@ export default function Passwords() {
       })
   }, [items, totpEntries, totpErrors])
 
-  const commandItems = useMemo(
-    () => [...tagCommandItems, ...totpCommandItems, ...itemCommandItems],
-    [itemCommandItems, tagCommandItems, totpCommandItems],
   const healthCommandItems = useMemo(() => {
     return [
       {
@@ -495,8 +492,8 @@ export default function Passwords() {
   }, [healthStats.reused, healthStats.stale, healthStats.total, healthStats.weak])
 
   const commandItems = useMemo(
-    () => [...healthCommandItems, ...tagCommandItems, ...itemCommandItems],
-    [healthCommandItems, itemCommandItems, tagCommandItems],
+    () => [...healthCommandItems, ...tagCommandItems, ...totpCommandItems, ...itemCommandItems],
+    [healthCommandItems, itemCommandItems, tagCommandItems, totpCommandItems],
   )
 
   function closeDrawer() {
