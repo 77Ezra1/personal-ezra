@@ -17,6 +17,7 @@ import {
   writeTextFile,
 } from '@tauri-apps/plugin-fs'
 import { openDialog, saveDialog } from '../lib/tauri-dialog'
+import { isTauriRuntime } from '../env'
 import {
   useCallback,
   useEffect,
@@ -110,21 +111,6 @@ const FORM_MESSAGE_DISPLAY_DURATION = 5000
 const BACKUP_PATH_STORAGE_KEY = 'pms-backup-path'
 const DEFAULT_BACKUP_DIR = ['vault', 'backups']
 
-type MaybeTauriWindow = Window & { __TAURI__?: unknown }
-
-function detectTauriRuntime() {
-  if (typeof window !== 'undefined') {
-    const tauriWindow = window as MaybeTauriWindow
-    if (tauriWindow.__TAURI__) {
-      return true
-    }
-  }
-  const env = (
-    import.meta as ImportMeta & { env?: { TAURI_PLATFORM?: string | undefined } }
-  ).env
-  return typeof env?.TAURI_PLATFORM === 'string' && env.TAURI_PLATFORM.length > 0
-}
-
 function useAutoDismissFormMessage(
   message: FormMessage,
   setMessage: Dispatch<SetStateAction<FormMessage>>,
@@ -186,7 +172,7 @@ function describeDataPathUpdate(path: string, status: DataPathUpdateStatus) {
 }
 
 function AboutSection() {
-  const isDesktop = detectTauriRuntime()
+  const isDesktop = isTauriRuntime()
   const runtimeLabel = isDesktop ? '桌面端 (Tauri)' : 'Web / PWA'
   const runtimeDescription = isDesktop
     ? '依托 Rust + SQLite 等原生能力，将数据加密保存在本机文件系统，并支持自定义备份路径。'
@@ -668,7 +654,7 @@ function DataBackupSection() {
   const [selectingBackupPath, setSelectingBackupPath] = useState(false)
   const [resettingBackupPath, setResettingBackupPath] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const isTauri = detectTauriRuntime()
+  const isTauri = isTauriRuntime()
   const jsonFilters = [{ name: 'JSON 文件', extensions: ['json'] }]
 
   const backupDisabled = !email || !encryptionKey
