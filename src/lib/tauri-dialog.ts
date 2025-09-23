@@ -7,6 +7,9 @@ import type {
 type MaybeTauriWindow = Window & {
   __TAURI__?: {
     invoke?: unknown
+    core?: {
+      invoke?: unknown
+    }
     dialog?: {
       open?: TauriDialogApi['open']
       save?: TauriDialogApi['save']
@@ -26,7 +29,10 @@ const ensureTauriDialogAvailable = (): TauriDialogApi => {
 
   const tauriWindow = window as MaybeTauriWindow
 
-  if (typeof tauriWindow.__TAURI__?.invoke !== 'function') {
+  const invoke =
+    tauriWindow.__TAURI__?.invoke ?? tauriWindow.__TAURI__?.core?.invoke
+
+  if (typeof invoke !== 'function') {
     throw new Error('Tauri dialog API is not available in this environment')
   }
 
