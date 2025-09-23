@@ -826,59 +826,45 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
           <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
         </section>
       )}
-    >
-      <div className="flex flex-col gap-4 md:col-span-2">
-        <InspirationHeader
-          onCreate={handleCreate}
-          onRefresh={() => {
-            void refreshNotes()
-          }}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)] xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+        <InspirationNoteList
+          notes={filteredNotes}
+          totalCount={notes.length}
           loading={loadingList}
-          error={error}
-        />
-        {(availableTags.length > 0 || isFiltering) && (
-          <section className="rounded-3xl border border-border bg-surface p-4 shadow-inner shadow-black/10 transition dark:shadow-black/40">
-            <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
-          </section>
-        )}
-      </div>
-      <InspirationNoteList
-        notes={filteredNotes}
-        totalCount={notes.length}
-        loading={loadingList}
-        selectedId={selectedId}
-        onSelect={noteId => {
-          void handleSelectNote(noteId)
-        }}
-        hasTagFilter={hasTagFilter}
-        searchTerm={searchTerm}
-      />
-      <div className="flex flex-col gap-6">
-        <InspirationEditor
-          draft={draft}
-          onTitleChange={handleTitleChange}
-          onContentChange={handleContentChange}
-          onInsertLink={handleInsertLink}
-          onSubmit={handleSubmit}
-          onDelete={() => {
-            void handleDelete()
+          selectedId={selectedId}
+          onSelect={noteId => {
+            void handleSelectNote(noteId)
           }}
-          textareaRef={textareaRef}
-          tagInputRef={tagInputRef}
-          tagInput={tagInput}
-          onTagInputChange={handleTagInputChange}
-          onTagSubmit={handleTagSubmit}
-          onTagEdit={handleTagEdit}
-          onTagRemove={handleTagRemove}
-          onTagEditCancel={handleTagEditCancel}
-          editingTagIndex={editingTagIndex}
-          saving={saving}
-          deleting={deleting}
-          loadingNote={loadingNote}
-          canDelete={Boolean(draft.id)}
-          lastSavedAt={activeMeta?.updatedAt}
+          hasTagFilter={hasTagFilter}
+          searchTerm={searchTerm}
         />
-        <InspirationPreview content={draft.content} />
+        <div className="space-y-6">
+          <InspirationEditor
+            draft={draft}
+            onTitleChange={handleTitleChange}
+            onContentChange={handleContentChange}
+            onInsertLink={handleInsertLink}
+            onSubmit={handleSubmit}
+            onDelete={() => {
+              void handleDelete()
+            }}
+            textareaRef={textareaRef}
+            tagInputRef={tagInputRef}
+            tagInput={tagInput}
+            onTagInputChange={handleTagInputChange}
+            onTagSubmit={handleTagSubmit}
+            onTagEdit={handleTagEdit}
+            onTagRemove={handleTagRemove}
+            onTagEditCancel={handleTagEditCancel}
+            editingTagIndex={editingTagIndex}
+            saving={saving}
+            deleting={deleting}
+            loadingNote={loadingNote}
+            canDelete={Boolean(draft.id)}
+            lastSavedAt={activeMeta?.updatedAt}
+          />
+          <InspirationPreview content={draft.content} />
+        </div>
       </div>
     </div>
   )
