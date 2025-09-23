@@ -14,6 +14,7 @@ export interface NoteSummary {
   createdAt: number
   updatedAt: number
   excerpt: string
+  tags: string[]
 }
 
 export interface NoteDetail extends NoteSummary {
@@ -24,12 +25,14 @@ export interface NoteDraft {
   id?: string
   title: string
   content: string
+  tags: string[]
 }
 
 type ParsedFrontMatter = {
   title?: string
   createdAt?: number
   updatedAt?: number
+  tags?: string[]
 }
 
 const FRONT_MATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/m
@@ -99,6 +102,56 @@ function generateExcerpt(content: string) {
   return firstLine.length > 120 ? `${snippet}…` : snippet
 }
 
+function sanitizeTags(input?: string[] | null) {
+  if (!input || input.length === 0) return [] as string[]
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const rawTag of input) {
+    if (typeof rawTag !== 'string') continue
+    const trimmed = rawTag.trim()
+    if (!trimmed) continue
+    const normalized = trimmed.replace(/\s+/g, ' ')
+    const key = normalized.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(normalized)
+  }
+  return result
+}
+
+function parseTagsValue(raw: string) {
+  const trimmed = raw.trim()
+  if (!trimmed) return []
+
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) {
+        return sanitizeTags(parsed.map(item => String(item)))
+      }
+    } catch {
+      // ignore json parsing errors and fall back to manual parsing
+    }
+    const inner = trimmed.slice(1, -1)
+    if (!inner.trim()) return []
+    return sanitizeTags(
+      inner
+        .split(',')
+        .map(item => item.trim().replace(/^['"]|['"]$/g, '')),
+    )
+  }
+
+  if (trimmed.includes(',')) {
+    return sanitizeTags(
+      trimmed
+        .split(',')
+        .map(item => item.trim().replace(/^['"]|['"]$/g, '')),
+    )
+  }
+
+  return sanitizeTags([trimmed.replace(/^['"]|['"]$/g, '')])
+}
+
 async function generateUniqueFileName(dir: string, title: string, timestamp: number) {
   const existingEntries = await readDir(dir)
   const existing = new Set(
@@ -158,20 +211,36 @@ function parseFrontMatter(text: string): { metadata: ParsedFrontMatter; content:
       metadata.createdAt = parseNumber(rawValue)
     } else if (normalizedKey === 'updatedAt') {
       metadata.updatedAt = parseNumber(rawValue)
+    } else if (normalizedKey === 'tags') {
+      metadata.tags = parseTagsValue(rawValue)
     }
   }
 
   const normalizedBody = normalizeContent(body).replace(/^\n/, '')
-  return { metadata, content: normalizedBody }
+  const tags = sanitizeTags(metadata.tags)
+  const normalizedMetadata: ParsedFrontMatter = { ...metadata, tags }
+  return { metadata: normalizedMetadata, content: normalizedBody }
 }
 
-function serializeNoteFile(meta: { title: string; createdAt: number; updatedAt: number }, content: string) {
+function serializeNoteFile(
+  meta: { title: string; createdAt: number; updatedAt: number; tags: string[] },
+  content: string,
+) {
   const normalized = normalizeContent(content)
+  const serializedTags = meta.tags.length
+    ? `[${meta.tags
+        .map(tag => {
+          const escaped = tag.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+          return `"${escaped}"`
+        })
+        .join(', ')}]`
+    : '[]'
   return [
     '---',
     `title: ${meta.title}`,
     `createdAt: ${meta.createdAt}`,
     `updatedAt: ${meta.updatedAt}`,
+    `tags: ${serializedTags}`,
     '---',
     '',
     normalized,
@@ -198,12 +267,14 @@ export async function listNotes(): Promise<NoteSummary[]> {
           const createdAt = parsed.metadata.createdAt ?? parsed.metadata.updatedAt ?? now
           const updatedAt = parsed.metadata.updatedAt ?? createdAt
           const excerpt = generateExcerpt(parsed.content)
+          const tags = parsed.metadata.tags ?? []
           const summary: NoteSummary = {
             id: entry.name,
             title,
             createdAt,
             updatedAt,
             excerpt,
+            tags,
           }
           return summary
         } catch (error) {
@@ -214,6 +285,7 @@ export async function listNotes(): Promise<NoteSummary[]> {
             createdAt: 0,
             updatedAt: 0,
             excerpt: '',
+            tags: [],
           }
           return fallback
         }
@@ -248,6 +320,7 @@ export async function loadNote(id: string): Promise<NoteDetail> {
     updatedAt,
     excerpt: generateExcerpt(content),
     content,
+    tags: parsed.metadata.tags ?? [],
   }
 }
 
@@ -257,6 +330,7 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
   const now = Date.now()
   const title = sanitizeTitle(draft.title)
   const content = draft.content ?? ''
+  const tags = sanitizeTags(draft.tags)
 
   let fileName = draft.id ? normalizeNoteId(draft.id) : await generateUniqueFileName(dir, title, now)
   let createdAt = now
@@ -272,7 +346,7 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
     }
   }
 
-  const meta = { title, createdAt, updatedAt: now }
+  const meta = { title, createdAt, updatedAt: now, tags }
   const serialized = serializeNoteFile(meta, content)
   const filePath = await join(dir, fileName)
   await writeTextFile(filePath, serialized)
@@ -284,6 +358,7 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
     updatedAt: now,
     excerpt: generateExcerpt(content),
     content: normalizeContent(content),
+    tags,
   }
 }
 
