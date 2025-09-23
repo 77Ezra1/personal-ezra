@@ -374,11 +374,12 @@ export default function Inspiration() {
               <h3 className="text-sm font-semibold text-text">Markdown 预览</h3>
               <span className="text-xs text-muted">支持链接、列表、引用等常用语法</span>
             </div>
-            <div className="prose prose-invert max-w-none text-sm leading-relaxed">
-              <ReactMarkdown components={markdownComponents}>
-                {draft.content.trim() ? draft.content : '（暂无内容）'}
-              </ReactMarkdown>
-            </div>
+            <ReactMarkdown
+              className="markdown-preview text-sm"
+              components={markdownComponents}
+            >
+              {draft.content.trim() ? draft.content : '（暂无内容）'}
+            </ReactMarkdown>
           </div>
         </section>
       </div>
