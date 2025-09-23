@@ -201,13 +201,13 @@ function InspirationNoteList({
         <span>笔记列表</span>
         <span>{statusText}</span>
       </div>
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2">
         {loading && notes.length === 0 ? (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {[0, 1, 2].map(index => (
               <div
                 key={index}
-                className="h-16 animate-pulse rounded-2xl border border-border/60 bg-surface/60"
+                className="h-12 animate-pulse rounded-2xl border border-border/60 bg-surface/60"
               />
             ))}
           </div>
@@ -224,21 +224,17 @@ function InspirationNoteList({
               type="button"
               onClick={() => onSelect(note.id)}
               className={clsx(
-                'group flex w-full flex-col gap-2 rounded-2xl border border-border/60 bg-surface/80 px-4 py-3 text-left transition hover:border-border hover:bg-surface-hover',
+                'group flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-border/60 bg-surface/80 px-3 py-2 text-left transition hover:border-border hover:bg-surface-hover',
                 selectedId === note.id && 'border-primary bg-primary/10 text-primary',
               )}
             >
-              <span className="text-sm font-medium text-text group-hover:text-text">{note.title}</span>
-              <span className="text-[0.7rem] text-muted group-hover:text-muted/80">更新于 {formatDateTime(note.updatedAt)}</span>
-              {note.excerpt && (
-                <p className="line-clamp-2 text-xs text-muted group-hover:text-muted/80">{note.excerpt}</p>
-              )}
+              <span className="min-w-0 flex-1 text-sm font-medium text-text group-hover:text-text">{note.title}</span>
               {note.tags.length > 0 && (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex shrink-0 flex-wrap items-center gap-1">
                   {note.tags.map(tag => (
                     <span
                       key={tag}
-                      className="inline-flex items-center rounded-full border border-border/60 bg-surface px-2 py-0.5 text-[0.65rem] font-semibold text-muted transition group-hover:text-muted"
+                      className="inline-flex items-center rounded-full border border-border/60 bg-surface px-1.5 py-0.5 text-[0.65rem] font-semibold text-muted transition group-hover:text-muted"
                     >
                       #{tag}
                     </span>
@@ -830,6 +826,22 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
           <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
         </section>
       )}
+    >
+      <div className="flex flex-col gap-4 md:col-span-2">
+        <InspirationHeader
+          onCreate={handleCreate}
+          onRefresh={() => {
+            void refreshNotes()
+          }}
+          loading={loadingList}
+          error={error}
+        />
+        {(availableTags.length > 0 || isFiltering) && (
+          <section className="rounded-3xl border border-border bg-surface p-4 shadow-inner shadow-black/10 transition dark:shadow-black/40">
+            <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
+          </section>
+        )}
+      </div>
       <InspirationNoteList
         notes={filteredNotes}
         totalCount={notes.length}
@@ -841,31 +853,33 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         hasTagFilter={hasTagFilter}
         searchTerm={searchTerm}
       />
-      <InspirationEditor
-        draft={draft}
-        onTitleChange={handleTitleChange}
-        onContentChange={handleContentChange}
-        onInsertLink={handleInsertLink}
-        onSubmit={handleSubmit}
-        onDelete={() => {
-          void handleDelete()
-        }}
-        textareaRef={textareaRef}
-        tagInputRef={tagInputRef}
-        tagInput={tagInput}
-        onTagInputChange={handleTagInputChange}
-        onTagSubmit={handleTagSubmit}
-        onTagEdit={handleTagEdit}
-        onTagRemove={handleTagRemove}
-        onTagEditCancel={handleTagEditCancel}
-        editingTagIndex={editingTagIndex}
-        saving={saving}
-        deleting={deleting}
-        loadingNote={loadingNote}
-        canDelete={Boolean(draft.id)}
-        lastSavedAt={activeMeta?.updatedAt}
-      />
-      <InspirationPreview content={draft.content} />
+      <div className="flex flex-col gap-6">
+        <InspirationEditor
+          draft={draft}
+          onTitleChange={handleTitleChange}
+          onContentChange={handleContentChange}
+          onInsertLink={handleInsertLink}
+          onSubmit={handleSubmit}
+          onDelete={() => {
+            void handleDelete()
+          }}
+          textareaRef={textareaRef}
+          tagInputRef={tagInputRef}
+          tagInput={tagInput}
+          onTagInputChange={handleTagInputChange}
+          onTagSubmit={handleTagSubmit}
+          onTagEdit={handleTagEdit}
+          onTagRemove={handleTagRemove}
+          onTagEditCancel={handleTagEditCancel}
+          editingTagIndex={editingTagIndex}
+          saving={saving}
+          deleting={deleting}
+          loadingNote={loadingNote}
+          canDelete={Boolean(draft.id)}
+          lastSavedAt={activeMeta?.updatedAt}
+        />
+        <InspirationPreview content={draft.content} />
+      </div>
     </div>
   )
 }
