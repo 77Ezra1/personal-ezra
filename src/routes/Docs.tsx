@@ -24,6 +24,7 @@ import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 import { Copy, ExternalLink, FileText, Pencil } from 'lucide-react'
 import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
 import { MAX_LINK_DISPLAY_LENGTH, truncateLink } from '../lib/strings'
+import { InspirationPanel } from './Docs/InspirationPanel'
 
 /* ---------------------- 本文件内的小工具，减少外部依赖 --------------------- */
 
@@ -562,96 +563,102 @@ export default function Docs() {
         <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
       }
     >
-      {loading ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} className="h-40" />
-          ))}
-        </div>
-      ) : filteredItems.length === 0 ? (
-        <Empty
-          title={items.length === 0 ? '暂无文档' : '未找到匹配的文档'}
-          description={
-            items.length === 0
-              ? '可上传文件或记录在线文档链接，支持快捷键 Ctrl/Cmd + N 快速创建。'
-              : '尝试调整关键字或清空搜索条件。'
-          }
-          actionLabel="新增文档"
-          onAction={handleCreate}
-        />
-      ) : viewMode === 'card' ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredItems.map(item => {
-            const linkMeta = extractLinkMeta(item.document)
-            const fileMeta = extractFileMeta(item.document)
-            const actions = buildItemActions(item)
-            const badges = []
-            if (fileMeta) {
-              badges.push({ label: `文件：${fileMeta.name}`, tone: 'neutral' as const })
-            }
-            if (linkMeta) {
-              badges.push({ label: '在线链接', tone: 'info' as const })
-            }
-            const tags = ensureTagsArray(item.tags)
-
-            return (
-              <VaultItemCard
-                key={item.id ?? item.title}
-                title={item.title}
-                description={item.description || '未填写描述'}
-                badges={badges}
-                tags={tags.map(tag => ({ id: tag, name: tag }))}
-                updatedAt={item.updatedAt}
-                onOpen={() => handleView(item)}
-                actions={actions}
+      <>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,380px)]">
+          <div className="space-y-6">
+            {loading ? (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <Skeleton key={index} className="h-40" />
+                ))}
+              </div>
+            ) : filteredItems.length === 0 ? (
+              <Empty
+                title={items.length === 0 ? '暂无文档' : '未找到匹配的文档'}
+                description={
+                  items.length === 0
+                    ? '可上传文件或记录在线文档链接，支持快捷键 Ctrl/Cmd + N 快速创建。'
+                    : '尝试调整关键字或清空搜索条件。'
+                }
+                actionLabel="新增文档"
+                onAction={handleCreate}
               />
-            )
-          })}
-        </div>
-      ) : (
-        <VaultItemList
-          items={filteredItems.map(item => {
-            const linkMeta = extractLinkMeta(item.document)
-            const fileMeta = extractFileMeta(item.document)
-            const badges = []
-            if (fileMeta) {
-              badges.push({ label: `文件：${fileMeta.name}`, tone: 'neutral' as const })
-            }
-            if (linkMeta) {
-              badges.push({ label: '在线链接', tone: 'info' as const })
-            }
-            const metadata: VaultItemMetadataItem[] = []
-            if (linkMeta) {
-              metadata.push({
-                content: `链接：${truncateLink(linkMeta.url, MAX_LINK_DISPLAY_LENGTH)}`,
-                title: linkMeta.url,
-              })
-            }
-            if (fileMeta) {
-              metadata.push({ content: `文件大小：${formatSize(fileMeta.size)}` })
-            }
-            const tags = ensureTagsArray(item.tags)
-            return {
-              key: item.id ?? item.title,
-              title: item.title,
-              description: item.description || '未填写描述',
-              metadata,
-              badges,
-              tags: tags.map(tag => ({ id: tag, name: tag })),
-              updatedAt: item.updatedAt,
-              onOpen: () => handleView(item),
-              actions: buildItemActions(item),
-            }
-          })}
-        />
-      )}
+            ) : viewMode === 'card' ? (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {filteredItems.map(item => {
+                  const linkMeta = extractLinkMeta(item.document)
+                  const fileMeta = extractFileMeta(item.document)
+                  const actions = buildItemActions(item)
+                  const badges = []
+                  if (fileMeta) {
+                    badges.push({ label: `文件：${fileMeta.name}`, tone: 'neutral' as const })
+                  }
+                  if (linkMeta) {
+                    badges.push({ label: '在线链接', tone: 'info' as const })
+                  }
+                  const tags = ensureTagsArray(item.tags)
 
-      <DetailsDrawer
-        open={drawerOpen}
-        onClose={closeDrawer}
-        title={
-          drawerMode === 'create'
-            ? '新增文档'
+                  return (
+                    <VaultItemCard
+                      key={item.id ?? item.title}
+                      title={item.title}
+                      description={item.description || '未填写描述'}
+                      badges={badges}
+                      tags={tags.map(tag => ({ id: tag, name: tag }))}
+                      updatedAt={item.updatedAt}
+                      onOpen={() => handleView(item)}
+                      actions={actions}
+                    />
+                  )
+                })}
+              </div>
+            ) : (
+              <VaultItemList
+                items={filteredItems.map(item => {
+                  const linkMeta = extractLinkMeta(item.document)
+                  const fileMeta = extractFileMeta(item.document)
+                  const badges = []
+                  if (fileMeta) {
+                    badges.push({ label: `文件：${fileMeta.name}`, tone: 'neutral' as const })
+                  }
+                  if (linkMeta) {
+                    badges.push({ label: '在线链接', tone: 'info' as const })
+                  }
+                  const metadata: VaultItemMetadataItem[] = []
+                  if (linkMeta) {
+                    metadata.push({
+                      content: `链接：${truncateLink(linkMeta.url, MAX_LINK_DISPLAY_LENGTH)}`,
+                      title: linkMeta.url,
+                    })
+                  }
+                  if (fileMeta) {
+                    metadata.push({ content: `文件大小：${formatSize(fileMeta.size)}` })
+                  }
+                  const tags = ensureTagsArray(item.tags)
+                  return {
+                    key: item.id ?? item.title,
+                    title: item.title,
+                    description: item.description || '未填写描述',
+                    metadata,
+                    badges,
+                    tags: tags.map(tag => ({ id: tag, name: tag })),
+                    updatedAt: item.updatedAt,
+                    onOpen: () => handleView(item),
+                    actions: buildItemActions(item),
+                  }
+                })}
+              />
+            )}
+          </div>
+          <InspirationPanel className="xl:self-start" />
+        </div>
+
+        <DetailsDrawer
+          open={drawerOpen}
+          onClose={closeDrawer}
+          title={
+            drawerMode === 'create'
+              ? '新增文档'
             : drawerMode === 'edit'
             ? editingTitle
               ? `编辑文档：${editingTitle}`
@@ -725,8 +732,8 @@ export default function Docs() {
             : undefined
         }
       >
-        {drawerMode === 'view' && activeItem ? (
-          <div className="space-y-4 text-sm text-text">
+          {drawerMode === 'view' && activeItem ? (
+            <div className="space-y-4 text-sm text-text">
             <div>
               <p className="text-xs text-muted">描述</p>
               <p className="mt-1 whitespace-pre-line text-base text-text">{activeItem.description || '未填写'}</p>
@@ -869,6 +876,7 @@ export default function Docs() {
           </form>
         )}
       </DetailsDrawer>
+      </>
     </AppLayout>
   )
 }
