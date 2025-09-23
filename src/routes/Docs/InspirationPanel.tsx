@@ -86,12 +86,12 @@ type InspirationHeaderProps = {
 
 function InspirationHeader({ onCreate, onRefresh, loading, error }: InspirationHeaderProps) {
   return (
-    <header className="space-y-4 rounded-3xl border border-border bg-surface p-6 shadow-lg shadow-black/10 transition-colors dark:shadow-black/40">
+    <header className="space-y-4 rounded-3xl border border-border bg-surface p-6 shadow-lg shadow-black/10 transition-colors dark:shadow-black/40 sm:p-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-2">
-          <h2 className="text-xl font-semibold text-text">灵感妙记</h2>
+          <h2 className="text-2xl font-semibold text-text">灵感妙记</h2>
           <p className="text-sm text-muted">
-            记录灵感碎片、会议纪要或计划清单，所有 Markdown 文件都保存在离线数据目录下，随时备份与迁移。
+            集中记录灵感碎片、会议纪要与规划要点，所有 Markdown 笔记都会安全存放在本地离线数据目录，可随时备份与迁移。
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
