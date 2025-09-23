@@ -14,6 +14,7 @@ export interface NoteSummary {
   createdAt: number
   updatedAt: number
   excerpt: string
+  searchText: string
   tags: string[]
 }
 
@@ -100,6 +101,39 @@ function generateExcerpt(content: string) {
   const [firstLine] = normalized.split(/\n{2,}/)
   const snippet = firstLine.slice(0, 120)
   return firstLine.length > 120 ? `${snippet}…` : snippet
+}
+
+function extractPlainTextFromMarkdown(markdown: string) {
+  const normalized = normalizeContent(markdown)
+  if (!normalized.trim()) return ''
+
+  let text = normalized
+  text = text.replace(/```(?:[^\n]*\n)?([\s\S]*?)```/g, (_match, code) => ` ${code} `)
+  text = text.replace(/`([^`]+)`/g, '$1')
+  text = text.replace(/!\[([^\]]*)]\([^)]+\)/g, (_match, alt) => (alt ? ` ${alt} ` : ' '))
+  text = text.replace(/\[([^\]]+)]\([^)]+\)/g, (_match, label) => label)
+  text = text.replace(/<[^>]+>/g, ' ')
+  text = text.replace(/&nbsp;/gi, ' ')
+  text = text.replace(/&amp;/gi, '&')
+  text = text.replace(/&lt;/gi, '<')
+  text = text.replace(/&gt;/gi, '>')
+  text = text.replace(/&quot;/gi, '"')
+  text = text.replace(/&#39;/g, "'")
+  text = text.replace(/^>{1,}\s?/gm, '')
+  text = text.replace(/^#{1,6}\s+/gm, '')
+  text = text.replace(/^\s*(?:[-+*]|\d+\.)\s+/gm, '')
+  text = text.replace(/[*~]+/g, '')
+
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+function createSearchText(title: string, content: string, tags: string[]) {
+  const plainContent = extractPlainTextFromMarkdown(content)
+  const segments = [title, plainContent, tags.join(' ')]
+    .map(segment => segment.trim())
+    .filter(Boolean)
+  if (segments.length === 0) return ''
+  return segments.join(' ').replace(/\s+/g, ' ').trim().toLowerCase()
 }
 
 function sanitizeTags(input?: string[] | null) {
@@ -284,12 +318,14 @@ export async function listNotes(): Promise<NoteSummary[]> {
           const metadataTags = parsed.metadata.tags ?? []
           const contentTags = extractTagsFromContent(parsed.content)
           const tags = sanitizeTags([...metadataTags, ...contentTags])
+          const searchText = createSearchText(title, parsed.content, tags)
           const summary: NoteSummary = {
             id: entry.name,
             title,
             createdAt,
             updatedAt,
             excerpt,
+            searchText,
             tags,
           }
           return summary
@@ -301,6 +337,7 @@ export async function listNotes(): Promise<NoteSummary[]> {
             createdAt: 0,
             updatedAt: 0,
             excerpt: '',
+            searchText: '',
             tags: [],
           }
           return fallback
@@ -332,12 +369,14 @@ export async function loadNote(id: string): Promise<NoteDetail> {
   const metadataTags = parsed.metadata.tags ?? []
   const contentTags = extractTagsFromContent(content)
   const tags = sanitizeTags([...metadataTags, ...contentTags])
+  const searchText = createSearchText(title, content, tags)
   return {
     id: fileName,
     title,
     createdAt,
     updatedAt,
     excerpt: generateExcerpt(content),
+    searchText,
     content,
     tags,
   }
@@ -348,9 +387,9 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
   const dir = await ensureNotesDirectory()
   const now = Date.now()
   const title = sanitizeTitle(draft.title)
-  const content = draft.content ?? ''
+  const rawContent = draft.content ?? ''
   const draftTags = sanitizeTags(draft.tags)
-  const contentTags = extractTagsFromContent(content)
+  const contentTags = extractTagsFromContent(rawContent)
   const tags = sanitizeTags([...draftTags, ...contentTags])
 
   let fileName = draft.id ? normalizeNoteId(draft.id) : await generateUniqueFileName(dir, title, now)
@@ -368,17 +407,21 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
   }
 
   const meta = { title, createdAt, updatedAt: now, tags }
-  const serialized = serializeNoteFile(meta, content)
+  const serialized = serializeNoteFile(meta, rawContent)
   const filePath = await join(dir, fileName)
   await writeTextFile(filePath, serialized)
+
+  const normalizedContent = normalizeContent(rawContent)
+  const searchText = createSearchText(title, normalizedContent, tags)
 
   return {
     id: fileName,
     title,
     createdAt,
     updatedAt: now,
-    excerpt: generateExcerpt(content),
-    content: normalizeContent(content),
+    excerpt: generateExcerpt(normalizedContent),
+    searchText,
+    content: normalizedContent,
     tags,
   }
 }

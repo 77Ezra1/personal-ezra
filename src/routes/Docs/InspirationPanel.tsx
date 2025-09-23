@@ -546,7 +546,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       if (!hasSearch) return true
 
       const title = note.title.toLowerCase()
-      const excerpt = note.excerpt.toLowerCase()
+      const searchText = note.searchText.toLowerCase()
       const normalizedTags = note.tags.map(tag => tag.toLowerCase())
       const excerptHashtags = Array.from(
         new Set((note.excerpt.match(/#[^\s#]+/g) ?? []).map(item => item.slice(1).toLowerCase())),
@@ -566,7 +566,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
 
         return (
           title.includes(normalizedToken) ||
-          excerpt.includes(normalizedToken) ||
+          searchText.includes(normalizedToken) ||
           normalizedTags.some(tag => tag.includes(normalizedToken)) ||
           excerptHashtags.some(tag => tag.includes(normalizedToken))
         )
