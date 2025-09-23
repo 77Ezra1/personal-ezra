@@ -80,7 +80,10 @@ export function getPasswordHealthKey(record: PasswordRecord) {
   return `temp:${record.title}-${record.createdAt}`
 }
 
-export function usePasswordHealth(items: PasswordRecord[], encryptionKey: string | null | undefined) {
+export function usePasswordHealth(
+  items: PasswordRecord[],
+  encryptionKey: Uint8Array | null | undefined,
+) {
   const cacheRef = useRef<Map<string, CacheEntry>>(new Map())
   const [state, setState] = useState<PasswordHealthState>(EMPTY_STATE)
 
@@ -124,6 +127,8 @@ export function usePasswordHealth(items: PasswordRecord[], encryptionKey: string
       })
       return
     }
+
+    const currentKey = encryptionKey
 
     if (targets.length === 0) {
       cacheRef.current.clear()
@@ -177,7 +182,7 @@ export function usePasswordHealth(items: PasswordRecord[], encryptionKey: string
             }
 
             try {
-              const plain = await decryptString(encryptionKey, target.item.passwordCipher)
+              const plain = await decryptString(currentKey, target.item.passwordCipher)
               const strength = estimatePasswordStrength(plain)
               const plainHash = await hashPlainText(plain)
               const entry: CacheEntry = {
