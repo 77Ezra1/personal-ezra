@@ -6,9 +6,9 @@ import {
   Sparkles,
   type LucideIcon,
 } from 'lucide-react'
-import { open, save } from '@tauri-apps/api/dialog'
 import { appDataDir, join } from '@tauri-apps/api/path'
 import { mkdir, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
+import { openDialog, saveDialog } from '../lib/tauri-dialog'
 import {
   useCallback,
   useEffect,
@@ -622,7 +622,7 @@ function DataBackupSection() {
     if (!isTauri) return
     try {
       setSelectingBackupPath(true)
-      const selection = await open({ directory: true })
+      const selection = await openDialog({ directory: true })
       const selectedPath = Array.isArray(selection) ? selection[0] : selection
       if (!selectedPath) {
         return
@@ -703,23 +703,24 @@ function DataBackupSection() {
       const fileName = `pms-backup-${timestamp}.json`
 
       if (isTauri) {
-        let destinationPath: string | null = null
-        if (backupPath) {
-          try {
-            await mkdir(backupPath, { recursive: true })
-            destinationPath = await join(backupPath, fileName)
-          } catch (error) {
-            console.error('Failed to prepare backup directory', error)
-            throw error instanceof Error
-              ? new Error(`写入备份文件失败：${error.message}`)
-              : error
+        const destinationPath = await (async (): Promise<string | null> => {
+          if (backupPath) {
+            try {
+              await mkdir(backupPath, { recursive: true })
+              return await join(backupPath, fileName)
+            } catch (error) {
+              console.error('Failed to prepare backup directory', error)
+              throw error instanceof Error
+                ? new Error(`写入备份文件失败：${error.message}`)
+                : error
+            }
           }
-        } else {
-          const savePath = await save({ defaultPath: fileName, filters: jsonFilters })
-          if (!savePath) {
-            return
-          }
-          destinationPath = savePath
+
+          return await saveDialog({ defaultPath: fileName, filters: jsonFilters })
+        })()
+
+        if (!destinationPath) {
+          return
         }
 
         try {
@@ -807,7 +808,7 @@ function DataBackupSection() {
 
     if (isTauri) {
       try {
-        const selection = await open({ multiple: false, filters: jsonFilters })
+        const selection = await openDialog({ multiple: false, filters: jsonFilters })
         const filePath = Array.isArray(selection) ? selection[0] : selection
         if (!filePath) {
           return
