@@ -252,11 +252,15 @@ class MockSqliteDatabase {
 const connections: ConnectionRecord[] = []
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
+  readDir: vi.fn(),
   readTextFile: vi.fn(),
+  writeTextFile: vi.fn(),
   writeFile: vi.fn(),
   mkdir: vi.fn().mockResolvedValue(undefined),
   remove: vi.fn(),
   exists: vi.fn().mockResolvedValue(true),
+  copyFile: vi.fn(),
+  rename: vi.fn(),
   BaseDirectory: { AppData: 'AppData' },
 }))
 
