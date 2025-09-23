@@ -25,7 +25,8 @@
         "default",
         "external-open",
         "fs-appdata",
-        "sqlite"
+        "sqlite",
+        "dialog"
       ]
     },
     "windows": [

@@ -1,8 +1,10 @@
-import type {
-  DialogFilter,
-  OpenDialogOptions,
-  SaveDialogOptions,
-} from '@tauri-apps/api/dialog'
+import {
+  open,
+  save,
+  type DialogFilter,
+  type OpenDialogOptions,
+  type SaveDialogOptions,
+} from '@tauri-apps/plugin-dialog'
 
 type MaybeTauriWindow = Window & {
   __TAURI__?: {
@@ -10,19 +12,10 @@ type MaybeTauriWindow = Window & {
     core?: {
       invoke?: unknown
     }
-    dialog?: {
-      open?: TauriDialogApi['open']
-      save?: TauriDialogApi['save']
-    }
   }
 }
 
-type TauriDialogApi = {
-  open: (options?: OpenDialogOptions) => Promise<string | string[] | null>
-  save: (options?: SaveDialogOptions) => Promise<string | null>
-}
-
-const ensureTauriDialogAvailable = (): TauriDialogApi => {
+const ensureTauriDialogAvailable = (): void => {
   if (typeof window === 'undefined') {
     throw new Error('Tauri dialog API is not available in this environment')
   }
@@ -35,26 +28,16 @@ const ensureTauriDialogAvailable = (): TauriDialogApi => {
   if (typeof invoke !== 'function') {
     throw new Error('Tauri dialog API is not available in this environment')
   }
-
-  const dialog = tauriWindow.__TAURI__?.dialog
-
-  if (typeof dialog?.open !== 'function' || typeof dialog?.save !== 'function') {
-    throw new Error('Tauri dialog API is not available in this environment')
-  }
-
-  return dialog as TauriDialogApi
 }
 
 export type { DialogFilter, OpenDialogOptions, SaveDialogOptions }
 
-const getTauriDialog = (): TauriDialogApi => ensureTauriDialogAvailable()
-
-export const openDialog: TauriDialogApi['open'] = async options => {
-  const dialog = getTauriDialog()
-  return dialog.open(options)
+export const openDialog = async (options?: OpenDialogOptions) => {
+  ensureTauriDialogAvailable()
+  return open(options)
 }
 
-export const saveDialog: TauriDialogApi['save'] = async options => {
-  const dialog = getTauriDialog()
-  return dialog.save(options)
+export const saveDialog = async (options?: SaveDialogOptions) => {
+  ensureTauriDialogAvailable()
+  return save(options)
 }
