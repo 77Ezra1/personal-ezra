@@ -110,6 +110,130 @@ type AboutMetaCard = {
 const FORM_MESSAGE_DISPLAY_DURATION = 5000
 const BACKUP_PATH_STORAGE_KEY = 'pms-backup-path'
 const DEFAULT_BACKUP_DIR = ['vault', 'backups']
+const AUTO_BACKUP_STORAGE_KEY = 'pms-auto-backup-settings'
+const AUTO_BACKUP_FAILURE_LIMIT = 3
+const AUTO_BACKUP_DEFAULT_INTERVAL = 60 // minutes
+const AUTO_BACKUP_INTERVAL_OPTIONS = [
+  { label: '每 15 分钟', value: 15 },
+  { label: '每 30 分钟', value: 30 },
+  { label: '每 1 小时', value: 60 },
+  { label: '每 6 小时', value: 6 * 60 },
+  { label: '每天', value: 24 * 60 },
+  { label: '每周', value: 7 * 24 * 60 },
+]
+
+type StoredAutoBackupState = {
+  enabled?: boolean
+  intervalMinutes?: number
+  lastSuccessAt?: number | null
+  lastAttemptAt?: number | null
+  failureCount?: number
+  nextRunAt?: number | null
+  lastError?: string | null
+}
+
+function formatBackupFileTimestamp(date: Date) {
+  const pad = (value: number) => value.toString().padStart(2, '0')
+  const year = date.getFullYear()
+  const month = pad(date.getMonth() + 1)
+  const day = pad(date.getDate())
+  const hour = pad(date.getHours())
+  const minute = pad(date.getMinutes())
+  const second = pad(date.getSeconds())
+  return `${year}${month}${day}-${hour}${minute}${second}`
+}
+
+type RunScheduledBackupOptions = {
+  email: string | null | undefined
+  encryptionKey: Uint8Array | null | undefined
+  masterPassword: string | null | undefined
+  backupPath?: string | null
+  isTauri: boolean
+  jsonFilters: { name: string; extensions: string[] }[]
+  allowDialogFallback?: boolean
+}
+
+type RunScheduledBackupResult = {
+  exportedAt: number
+  fileName: string
+  destinationPath?: string
+}
+
+async function runScheduledBackup({
+  email,
+  encryptionKey,
+  masterPassword,
+  backupPath,
+  isTauri,
+  jsonFilters,
+  allowDialogFallback = false,
+}: RunScheduledBackupOptions): Promise<RunScheduledBackupResult | null> {
+  if (!email || !encryptionKey) {
+    throw new Error('请先登录并解锁账号后再试。')
+  }
+
+  const passwordInput = typeof masterPassword === 'string' ? masterPassword : ''
+  if (!passwordInput) {
+    throw new Error('自动备份需要主密码，请先在上方输入后再试。')
+  }
+
+  const blob = await exportUserData(email, encryptionKey, passwordInput)
+  const timestamp = formatBackupFileTimestamp(new Date())
+  const fileName = `pms-backup-${timestamp}.json`
+  const exportedAt = Date.now()
+
+  if (isTauri) {
+    let destinationPath: string | null = null
+
+    if (backupPath) {
+      try {
+        await mkdir(backupPath, { recursive: true })
+        destinationPath = await join(backupPath, fileName)
+      } catch (error) {
+        console.error('Failed to prepare scheduled backup directory', error)
+        throw error instanceof Error
+          ? new Error(`写入备份文件失败：${error.message}`)
+          : error
+      }
+    } else if (allowDialogFallback) {
+      destinationPath = await saveDialog({ defaultPath: fileName, filters: jsonFilters })
+    } else {
+      throw new Error('未配置自动备份目录，请先设置备份路径。')
+    }
+
+    if (!destinationPath) {
+      return null
+    }
+
+    try {
+      const fileContent = await blob.text()
+      await writeTextFile(destinationPath, fileContent)
+    } catch (error) {
+      console.error('Failed to write scheduled backup file', error)
+      throw error instanceof Error
+        ? new Error(`写入备份文件失败：${error.message}`)
+        : error
+    }
+
+    return { exportedAt, fileName, destinationPath }
+  }
+
+  try {
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error('Failed to trigger scheduled backup download', error)
+    throw error instanceof Error ? error : new Error('下载备份文件失败，请稍后再试。')
+  }
+
+  return { exportedAt, fileName }
+}
 
 function useAutoDismissFormMessage(
   message: FormMessage,
@@ -653,7 +777,22 @@ function DataBackupSection() {
   const [defaultBackupPath, setDefaultBackupPath] = useState('')
   const [selectingBackupPath, setSelectingBackupPath] = useState(false)
   const [resettingBackupPath, setResettingBackupPath] = useState(false)
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState(false)
+  const [autoBackupInterval, setAutoBackupInterval] = useState<number>(AUTO_BACKUP_DEFAULT_INTERVAL)
+  const [autoBackupLastSuccess, setAutoBackupLastSuccess] = useState<number | null>(null)
+  const [autoBackupLastAttempt, setAutoBackupLastAttempt] = useState<number | null>(null)
+  const [autoBackupNextRun, setAutoBackupNextRun] = useState<number | null>(null)
+  const [autoBackupFailureCount, setAutoBackupFailureCount] = useState(0)
+  const [autoBackupLastError, setAutoBackupLastError] = useState<string | null>(null)
+  const [autoBackupStatusMessage, setAutoBackupStatusMessage] = useState<string | null>(null)
+  const [autoBackupTesting, setAutoBackupTesting] = useState(false)
+  const [autoBackupRunning, setAutoBackupRunning] = useState(false)
+  const [tauriBackgroundAvailable, setTauriBackgroundAvailable] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const autoBackupTimerRef = useRef<number | null>(null)
+  const autoBackupEnabledRef = useRef(false)
+  const autoBackupRunningRef = useRef(false)
+  const runAutoBackupRef = useRef<((trigger: 'interval' | 'manual') => Promise<void>) | null>(null)
   const isTauri = isTauriRuntime()
   const jsonFilters = [{ name: 'JSON 文件', extensions: ['json'] }]
 
@@ -670,6 +809,44 @@ function DataBackupSection() {
       }
     } catch (error) {
       console.warn('Failed to persist backup path', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.localStorage.getItem(AUTO_BACKUP_STORAGE_KEY)
+      if (!raw) {
+        return
+      }
+      const parsed: unknown = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object') {
+        return
+      }
+      const state = parsed as StoredAutoBackupState
+      if (typeof state.enabled === 'boolean') {
+        setAutoBackupEnabled(state.enabled)
+      }
+      if (typeof state.intervalMinutes === 'number' && Number.isFinite(state.intervalMinutes) && state.intervalMinutes > 0) {
+        setAutoBackupInterval(state.intervalMinutes)
+      }
+      if (typeof state.lastSuccessAt === 'number' && Number.isFinite(state.lastSuccessAt)) {
+        setAutoBackupLastSuccess(state.lastSuccessAt)
+      }
+      if (typeof state.lastAttemptAt === 'number' && Number.isFinite(state.lastAttemptAt)) {
+        setAutoBackupLastAttempt(state.lastAttemptAt)
+      }
+      if (typeof state.nextRunAt === 'number' && Number.isFinite(state.nextRunAt)) {
+        setAutoBackupNextRun(state.nextRunAt)
+      }
+      if (typeof state.failureCount === 'number' && Number.isFinite(state.failureCount) && state.failureCount > 0) {
+        setAutoBackupFailureCount(Math.trunc(state.failureCount))
+      }
+      if (typeof state.lastError === 'string' && state.lastError) {
+        setAutoBackupLastError(state.lastError)
+      }
+    } catch (error) {
+      console.warn('Failed to restore auto backup state', error)
     }
   }, [])
 
@@ -711,6 +888,291 @@ function DataBackupSection() {
       mounted = false
     }
   }, [isTauri])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const payload: StoredAutoBackupState = {
+      enabled: autoBackupEnabled,
+      intervalMinutes: autoBackupInterval,
+      lastSuccessAt: autoBackupLastSuccess ?? null,
+      lastAttemptAt: autoBackupLastAttempt ?? null,
+      nextRunAt: autoBackupNextRun ?? null,
+      failureCount: autoBackupFailureCount,
+      lastError: autoBackupLastError ?? null,
+    }
+    try {
+      window.localStorage.setItem(AUTO_BACKUP_STORAGE_KEY, JSON.stringify(payload))
+    } catch (error) {
+      console.warn('Failed to persist auto backup state', error)
+    }
+  }, [
+    autoBackupEnabled,
+    autoBackupInterval,
+    autoBackupLastAttempt,
+    autoBackupLastError,
+    autoBackupLastSuccess,
+    autoBackupNextRun,
+    autoBackupFailureCount,
+  ])
+
+  useEffect(() => {
+    if (!isTauri) return
+    if (typeof window === 'undefined') return
+    const globalWindow = window as typeof window & {
+      __TAURI_INTERNALS__?: { invoke?: unknown }
+    }
+    setTauriBackgroundAvailable(Boolean(globalWindow.__TAURI_INTERNALS__?.invoke))
+  }, [isTauri])
+
+  useEffect(() => {
+    autoBackupEnabledRef.current = autoBackupEnabled
+  }, [autoBackupEnabled])
+
+  const scheduleNextAutoBackup = useCallback(
+    (delayMs?: number) => {
+      if (autoBackupTimerRef.current !== null) {
+        window.clearTimeout(autoBackupTimerRef.current)
+        autoBackupTimerRef.current = null
+      }
+
+      if (!autoBackupEnabledRef.current) {
+        setAutoBackupNextRun(null)
+        return
+      }
+
+      const intervalMinutes =
+        typeof autoBackupInterval === 'number' && Number.isFinite(autoBackupInterval) && autoBackupInterval > 0
+          ? autoBackupInterval
+          : AUTO_BACKUP_DEFAULT_INTERVAL
+      const intervalMs = Math.max(intervalMinutes, 1) * 60 * 1000
+      const now = Date.now()
+      let delay = typeof delayMs === 'number' && Number.isFinite(delayMs) ? Math.max(delayMs, 0) : Number.NaN
+
+      if (Number.isNaN(delay)) {
+        const baseline = autoBackupLastSuccess ?? autoBackupLastAttempt
+        if (baseline) {
+          delay = Math.max(baseline + intervalMs - now, 0)
+        } else {
+          delay = intervalMs
+        }
+      }
+
+      const scheduledAt = now + delay
+      setAutoBackupNextRun(scheduledAt)
+      autoBackupTimerRef.current = window.setTimeout(() => {
+        runAutoBackupRef.current?.('interval')
+      }, delay)
+    },
+    [autoBackupInterval, autoBackupLastAttempt, autoBackupLastSuccess],
+  )
+
+  useEffect(() => {
+    return () => {
+      if (autoBackupTimerRef.current !== null) {
+        window.clearTimeout(autoBackupTimerRef.current)
+      }
+    }
+  }, [])
+
+  const runAutoBackup = useCallback(
+    async (trigger: 'interval' | 'manual') => {
+      if (autoBackupRunningRef.current) {
+        return
+      }
+
+      if (backupDisabled) {
+        const message = '当前账号未解锁，无法执行自动备份。'
+        setAutoBackupLastError(message)
+        setAutoBackupStatusMessage(message)
+        if (trigger === 'manual') {
+          showToast({ title: '无法备份', description: message, variant: 'error' })
+        }
+        return
+      }
+
+      if (!masterPassword) {
+        const message = '自动备份需要主密码，请在上方输入。'
+        setAutoBackupLastError(message)
+        setAutoBackupStatusMessage(message)
+        if (trigger === 'manual') {
+          setPasswordError('请先输入主密码再导出备份。')
+          showToast({ title: '缺少主密码', description: message, variant: 'error' })
+        }
+        return
+      }
+
+      if (isTauri && !backupPath) {
+        const message = '未配置自动备份目录，请先设置备份路径。'
+        setAutoBackupLastError(message)
+        setAutoBackupStatusMessage(message)
+        if (trigger === 'manual') {
+          showToast({ title: '备份目录缺失', description: message, variant: 'error' })
+        } else {
+          showToast({ title: '自动备份失败', description: message, variant: 'error' })
+        }
+        return
+      }
+
+      autoBackupRunningRef.current = true
+      if (trigger === 'manual') {
+        setAutoBackupTesting(true)
+      } else {
+        setAutoBackupRunning(true)
+      }
+
+      const now = Date.now()
+      setAutoBackupLastAttempt(now)
+
+      const intervalMinutes =
+        typeof autoBackupInterval === 'number' && Number.isFinite(autoBackupInterval) && autoBackupInterval > 0
+          ? autoBackupInterval
+          : AUTO_BACKUP_DEFAULT_INTERVAL
+      const intervalMs = Math.max(intervalMinutes, 1) * 60 * 1000
+
+      try {
+        const result = await runScheduledBackup({
+          email,
+          encryptionKey,
+          masterPassword,
+          backupPath,
+          isTauri,
+          jsonFilters,
+          allowDialogFallback: false,
+        })
+
+        if (!result) {
+          setAutoBackupStatusMessage('已取消备份操作。')
+          return
+        }
+
+        setAutoBackupLastSuccess(result.exportedAt)
+        setAutoBackupFailureCount(0)
+        setAutoBackupLastError(null)
+
+        const successMessage =
+          trigger === 'manual' ? `备份成功：${result.fileName}` : `自动备份完成：${result.fileName}`
+        setAutoBackupStatusMessage(successMessage)
+
+        if (trigger === 'manual') {
+          showToast({
+            title: '测试备份成功',
+            description: result.destinationPath ?? result.fileName,
+            variant: 'success',
+          })
+        }
+
+        if (autoBackupEnabledRef.current) {
+          const nextDelay = Math.max(result.exportedAt + intervalMs - Date.now(), 0)
+          scheduleNextAutoBackup(nextDelay)
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '自动备份失败，请稍后再试。'
+        setAutoBackupLastError(message)
+        setAutoBackupStatusMessage(message)
+
+        let shouldDisable = false
+        setAutoBackupFailureCount(prev => {
+          const next = prev + 1
+          if (autoBackupEnabledRef.current && next >= AUTO_BACKUP_FAILURE_LIMIT) {
+            shouldDisable = true
+            return 0
+          }
+          return next
+        })
+
+        if (trigger === 'manual') {
+          showToast({ title: '测试备份失败', description: message, variant: 'error' })
+        } else {
+          showToast({ title: '自动备份失败', description: message, variant: 'error' })
+        }
+
+        if (shouldDisable) {
+          setAutoBackupEnabled(false)
+          setAutoBackupStatusMessage('自动备份因连续失败已停用，请检查配置后重新启用。')
+          showToast({
+            title: '自动备份已暂停',
+            description: '连续失败次数过多，请检查后重新启用。',
+            variant: 'error',
+          })
+        } else if (autoBackupEnabledRef.current) {
+          scheduleNextAutoBackup(intervalMs)
+        }
+      } finally {
+        autoBackupRunningRef.current = false
+        if (trigger === 'manual') {
+          setAutoBackupTesting(false)
+        } else {
+          setAutoBackupRunning(false)
+        }
+      }
+    },
+    [
+      autoBackupInterval,
+      backupDisabled,
+      backupPath,
+      email,
+      encryptionKey,
+      isTauri,
+      jsonFilters,
+      masterPassword,
+      scheduleNextAutoBackup,
+      showToast,
+    ],
+  )
+
+  useEffect(() => {
+    runAutoBackupRef.current = runAutoBackup
+  }, [runAutoBackup])
+
+  useEffect(() => {
+    if (!autoBackupEnabled) {
+      if (autoBackupTimerRef.current !== null) {
+        window.clearTimeout(autoBackupTimerRef.current)
+        autoBackupTimerRef.current = null
+      }
+      setAutoBackupNextRun(null)
+      return
+    }
+
+    if (backupDisabled) {
+      const message = '当前账号未解锁，无法执行自动备份。'
+      setAutoBackupLastError(message)
+      setAutoBackupStatusMessage(message)
+      if (autoBackupTimerRef.current !== null) {
+        window.clearTimeout(autoBackupTimerRef.current)
+        autoBackupTimerRef.current = null
+      }
+      setAutoBackupNextRun(null)
+      return
+    }
+
+    if (!masterPassword) {
+      const message = '自动备份需要主密码，请在上方输入。'
+      setAutoBackupLastError(message)
+      setAutoBackupStatusMessage(message)
+      if (autoBackupTimerRef.current !== null) {
+        window.clearTimeout(autoBackupTimerRef.current)
+        autoBackupTimerRef.current = null
+      }
+      setAutoBackupNextRun(null)
+      return
+    }
+
+    if (isTauri && !backupPath) {
+      const message = '未配置自动备份目录，请先设置备份路径。'
+      setAutoBackupLastError(message)
+      setAutoBackupStatusMessage(message)
+      if (autoBackupTimerRef.current !== null) {
+        window.clearTimeout(autoBackupTimerRef.current)
+        autoBackupTimerRef.current = null
+      }
+      setAutoBackupNextRun(null)
+      return
+    }
+
+    setAutoBackupLastError(null)
+    scheduleNextAutoBackup()
+  }, [autoBackupEnabled, backupDisabled, backupPath, isTauri, masterPassword, scheduleNextAutoBackup])
 
   useEffect(() => {
     if (!isTauri) return
@@ -914,20 +1376,82 @@ function DataBackupSection() {
     }
   }
 
+  const dateFormatter = useMemo(
+    () => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }),
+    [],
+  )
+
+  const formattedAutoBackupLastSuccess = autoBackupLastSuccess
+    ? dateFormatter.format(autoBackupLastSuccess)
+    : '尚未执行'
+  const formattedAutoBackupNextRun = autoBackupEnabled
+    ? autoBackupNextRun
+      ? dateFormatter.format(autoBackupNextRun)
+      : '等待中'
+    : '未计划'
+  const autoBackupSwitchLabel = autoBackupRunning ? '执行中…' : autoBackupEnabled ? '已启用' : '未启用'
+  const autoBackupSupportMessage = isTauri
+    ? tauriBackgroundAvailable
+      ? '检测到 Tauri 后端接口，可在后台调度自动备份。'
+      : '当前由前端定时器执行，若关闭窗口将暂停自动备份任务。'
+    : '浏览器端通过定时器执行，请保持页面活动并避免系统休眠。'
+  const autoBackupStatusClass = autoBackupLastError
+    ? 'text-red-500'
+    : autoBackupEnabled
+      ? 'text-primary'
+      : 'text-muted'
+
+  const handleToggleAutoBackup = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextEnabled = event.currentTarget.checked
+    if (nextEnabled) {
+      if (backupDisabled) {
+        showToast({
+          title: '无法启用自动备份',
+          description: '请先登录并解锁账号后再试。',
+          variant: 'error',
+        })
+        return
+      }
+      if (!masterPassword) {
+        const message = '启用自动备份前请输入当前主密码。'
+        setPasswordError(message)
+        showToast({ title: '缺少主密码', description: message, variant: 'error' })
+        return
+      }
+      if (isTauri && !backupPath) {
+        const message = '请先选择一个有效的备份导出路径。'
+        showToast({ title: '备份目录缺失', description: message, variant: 'error' })
+        return
+      }
+      setAutoBackupFailureCount(0)
+      setAutoBackupLastError(null)
+      setAutoBackupStatusMessage('自动备份已启用，等待下一次计划任务。')
+      setAutoBackupEnabled(true)
+      return
+    }
+
+    setAutoBackupEnabled(false)
+    setAutoBackupLastError(null)
+    setAutoBackupStatusMessage('自动备份已停用。')
+  }
+
+  const handleAutoBackupIntervalChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const rawValue = Number(event.currentTarget.value)
+    const nextInterval = Number.isFinite(rawValue) && rawValue > 0 ? rawValue : AUTO_BACKUP_DEFAULT_INTERVAL
+    setAutoBackupInterval(nextInterval)
+    if (autoBackupEnabledRef.current) {
+      scheduleNextAutoBackup(nextInterval * 60 * 1000)
+      setAutoBackupStatusMessage('自动备份频率已更新。')
+    }
+  }
+
+  const handleTestAutoBackup = () => {
+    void runAutoBackup('manual')
+  }
+
   const handlePasswordChange = (event: ChangeEvent<HTMLInputElement>) => {
     setMasterPassword(event.currentTarget.value)
     setPasswordError(null)
-  }
-
-  const formatTimestamp = (date: Date) => {
-    const pad = (value: number) => value.toString().padStart(2, '0')
-    const year = date.getFullYear()
-    const month = pad(date.getMonth() + 1)
-    const day = pad(date.getDate())
-    const hour = pad(date.getHours())
-    const minute = pad(date.getMinutes())
-    const second = pad(date.getSeconds())
-    return `${year}${month}${day}-${hour}${minute}${second}`
   }
 
   const handleExport = async () => {
@@ -941,49 +1465,18 @@ function DataBackupSection() {
     }
     try {
       setExporting(true)
-      const blob = await exportUserData(email, encryptionKey, masterPassword)
-      const timestamp = formatTimestamp(new Date())
-      const fileName = `pms-backup-${timestamp}.json`
+      const result = await runScheduledBackup({
+        email,
+        encryptionKey,
+        masterPassword,
+        backupPath,
+        isTauri,
+        jsonFilters,
+        allowDialogFallback: true,
+      })
 
-      if (isTauri) {
-        const destinationPath = await (async (): Promise<string | null> => {
-          if (backupPath) {
-            try {
-              await mkdir(backupPath, { recursive: true })
-              return await join(backupPath, fileName)
-            } catch (error) {
-              console.error('Failed to prepare backup directory', error)
-              throw error instanceof Error
-                ? new Error(`写入备份文件失败：${error.message}`)
-                : error
-            }
-          }
-
-          return await saveDialog({ defaultPath: fileName, filters: jsonFilters })
-        })()
-
-        if (!destinationPath) {
-          return
-        }
-
-        try {
-          const fileContent = await blob.text()
-          await writeTextFile(destinationPath, fileContent)
-        } catch (error) {
-          console.error('Failed to write backup file', error)
-          throw error instanceof Error
-            ? new Error(`写入备份文件失败：${error.message}`)
-            : error
-        }
-      } else {
-        const url = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = url
-        link.download = fileName
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        URL.revokeObjectURL(url)
+      if (!result) {
+        return
       }
 
       showToast({
@@ -992,7 +1485,9 @@ function DataBackupSection() {
         variant: 'success',
       })
       setPasswordError(null)
-      setMasterPassword('')
+      if (!autoBackupEnabled) {
+        setMasterPassword('')
+      }
     } catch (error) {
       console.error('Failed to export user backup', error)
       const message = error instanceof Error ? error.message : '导出备份失败，请稍后再试。'
@@ -1023,7 +1518,9 @@ function DataBackupSection() {
         variant: 'success',
       })
       setPasswordError(null)
-      setMasterPassword('')
+      if (!autoBackupEnabled) {
+        setMasterPassword('')
+      }
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent(BACKUP_IMPORTED_EVENT))
       }
@@ -1209,18 +1706,108 @@ function DataBackupSection() {
                 备份文件将默认写入该目录，如遇写入权限问题会自动回退为系统保存对话框。
               </p>
             </div>
-          </div>
-        ) : (
-          <p className="text-xs leading-relaxed text-muted">
-            仅桌面端支持自定义文件路径，Web 端会使用浏览器的默认存储位置。
-          </p>
-        )}
       </div>
+    ) : (
+      <p className="text-xs leading-relaxed text-muted">
+        仅桌面端支持自定义文件路径，Web 端会使用浏览器的默认存储位置。
+      </p>
+    )}
+  </div>
 
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={handleExport}
+  <div className="space-y-3 rounded-2xl border border-border/50 bg-surface/60 p-4">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold text-text">自动备份</h3>
+        <p className="text-xs leading-relaxed text-muted">{autoBackupSupportMessage}</p>
+      </div>
+      <label className="inline-flex items-center gap-2">
+        <span className="text-xs font-medium text-muted">{autoBackupSwitchLabel}</span>
+        <span className="relative inline-flex h-6 w-11 items-center">
+          <input
+            type="checkbox"
+            className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            checked={autoBackupEnabled}
+            onChange={handleToggleAutoBackup}
+            disabled={autoBackupRunning || autoBackupTesting}
+          />
+          <span
+            className={clsx(
+              'h-6 w-11 rounded-full bg-border/80 transition-colors',
+              'peer-checked:bg-primary/70 peer-disabled:cursor-not-allowed peer-disabled:opacity-60',
+            )}
+          />
+          <span
+            className={clsx(
+              'absolute left-1 top-1 h-4 w-4 rounded-full bg-surface shadow transition-transform',
+              autoBackupEnabled ? 'translate-x-5' : 'translate-x-0',
+              'peer-disabled:cursor-not-allowed',
+            )}
+          />
+        </span>
+      </label>
+    </div>
+
+    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+      <div className="space-y-2">
+        <label htmlFor="auto-backup-interval" className="text-xs font-medium text-muted">
+          备份频率
+        </label>
+        <select
+          id="auto-backup-interval"
+          value={String(autoBackupInterval)}
+          onChange={handleAutoBackupIntervalChange}
+          disabled={!autoBackupEnabled || autoBackupRunning || autoBackupTesting}
+          className={clsx(
+            'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition',
+            'focus:border-primary/60 focus:bg-surface-hover',
+            (!autoBackupEnabled || autoBackupRunning || autoBackupTesting) &&
+              'disabled:cursor-not-allowed disabled:opacity-60',
+          )}
+        >
+          {AUTO_BACKUP_INTERVAL_OPTIONS.map(option => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <button
+        type="button"
+        onClick={handleTestAutoBackup}
+        disabled={autoBackupTesting || autoBackupRunning || backupDisabled}
+        className={clsx(
+          'inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-sm transition',
+          'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+        )}
+      >
+        {autoBackupTesting ? '测试中…' : '立即测试备份'}
+      </button>
+    </div>
+
+    <div className="space-y-1 text-xs leading-relaxed text-muted">
+      <p>
+        最近自动备份：<span className="font-medium text-text">{formattedAutoBackupLastSuccess}</span>
+      </p>
+      <p>
+        下次计划时间：<span className="font-medium text-text">{formattedAutoBackupNextRun}</span>
+      </p>
+    </div>
+
+    {autoBackupStatusMessage ? (
+      <p className={clsx('text-xs', autoBackupStatusClass)}>{autoBackupStatusMessage}</p>
+    ) : null}
+
+    {autoBackupFailureCount > 0 && autoBackupEnabled ? (
+      <p className="text-xs text-red-500">
+        连续失败 {autoBackupFailureCount} 次，达到 {AUTO_BACKUP_FAILURE_LIMIT} 次将自动停用。
+      </p>
+    ) : null}
+  </div>
+
+  <div className="flex flex-wrap gap-3">
+    <button
+      type="button"
+      onClick={handleExport}
           disabled={backupDisabled || exporting}
           className={clsx(
             'inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-background shadow-sm transition',

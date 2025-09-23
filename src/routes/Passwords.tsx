@@ -6,7 +6,8 @@ import { DetailsDrawer } from '../components/DetailsDrawer'
 import { Empty } from '../components/Empty'
 import { Skeleton } from '../components/Skeleton'
 import { TagFilter } from '../components/TagFilter'
-import { VaultItemCard, type VaultItemAction } from '../components/VaultItemCard'
+import { PasswordHealthBanner } from '../components/PasswordHealthBanner'
+import { VaultItemCard, type VaultItemAction, type VaultItemBadge } from '../components/VaultItemCard'
 import { VaultItemList } from '../components/VaultItemList'
 import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyTextAutoClear } from '../lib/clipboard'
 import { BACKUP_IMPORTED_EVENT } from '../lib/backup'
@@ -15,6 +16,11 @@ import { generateTotp, normalizeTotpSecret } from '../lib/totp'
 import { useToast } from '../components/ToastProvider'
 import CopyButton from '../components/CopyButton'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
+import {
+  getPasswordHealthKey,
+  type PasswordHealthFilter,
+  usePasswordHealth,
+} from '../hooks/usePasswordHealth'
 import { useAuthStore } from '../stores/auth'
 import { db, type PasswordRecord } from '../stores/database'
 import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
@@ -66,6 +72,7 @@ export default function Passwords() {
   const [submitting, setSubmitting] = useState(false)
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [healthFilter, setHealthFilter] = useState<PasswordHealthFilter>('all')
   const [viewMode, setViewMode] = useState<'card' | 'list'>(() => {
     if (typeof window === 'undefined') return 'card'
     const stored = window.localStorage.getItem(PASSWORD_VIEW_MODE_STORAGE_KEY)
@@ -80,6 +87,15 @@ export default function Passwords() {
   useEffect(() => {
     totpEntriesRef.current = totpEntries
   }, [totpEntries])
+
+  const health = usePasswordHealth(items, encryptionKey)
+  const {
+    categories: healthCategories,
+    entries: healthEntries,
+    stats: healthStats,
+    lastCheckedAt: healthLastCheckedAt,
+    isAnalyzing: healthAnalyzing,
+  } = health
 
   const reloadItems = useCallback(
     async (currentEmail: string, options: { showLoading?: boolean } = {}) => {
@@ -317,11 +333,59 @@ export default function Passwords() {
   const filteredItems = useMemo(() => {
     const trimmed = searchTerm.trim()
     const base = trimmed ? fuse.search(trimmed).map(result => result.item) : items
-    if (selectedTags.length === 0) {
-      return base
+    const tagFiltered =
+      selectedTags.length === 0 ? base : base.filter(item => matchesAllTags(item.tags, selectedTags))
+
+    if (healthFilter === 'all') {
+      return tagFiltered
     }
-    return base.filter(item => matchesAllTags(item.tags, selectedTags))
-  }, [fuse, items, searchTerm, selectedTags])
+
+    const categoryKeys = healthCategories[healthFilter]
+    if (!categoryKeys || categoryKeys.size === 0) {
+      return []
+    }
+
+    return tagFiltered.filter(item => categoryKeys.has(getPasswordHealthKey(item)))
+  }, [
+    fuse,
+    healthCategories.reused,
+    healthCategories.stale,
+    healthCategories.weak,
+    healthFilter,
+    items,
+    searchTerm,
+    selectedTags,
+  ])
+
+  const healthBadgeMap = useMemo(() => {
+    const map = new Map<string, VaultItemBadge[]>()
+    healthEntries.forEach((entry, key) => {
+      const badges: VaultItemBadge[] = []
+      if (entry.strength) {
+        badges.push({
+          label: `强度：${entry.strength.label}`,
+          tone: entry.strength.meetsRequirement ? 'neutral' : 'warning',
+          title:
+            entry.strength.suggestions.length > 0
+              ? entry.strength.suggestions.join('\n')
+              : undefined,
+        })
+      }
+      if (healthCategories.weak.has(key)) {
+        badges.push({ label: '弱密码', tone: 'warning', title: '未满足复杂度要求，建议尽快更新。' })
+      }
+      if (healthCategories.reused.has(key)) {
+        badges.push({ label: '重复使用', tone: 'info', title: '检测到该密码与其它条目一致。' })
+      }
+      if (healthCategories.stale.has(key)) {
+        badges.push({ label: '需更新', tone: 'warning', title: '超过 180 天未更新，建议定期更换。' })
+      }
+      if (badges.length > 0) {
+        map.set(key, badges)
+      }
+    })
+    return map
+  }, [healthCategories.reused, healthCategories.stale, healthCategories.weak, healthEntries])
 
   const itemCommandItems = useMemo(
     () =>
@@ -401,6 +465,38 @@ export default function Passwords() {
   const commandItems = useMemo(
     () => [...tagCommandItems, ...totpCommandItems, ...itemCommandItems],
     [itemCommandItems, tagCommandItems, totpCommandItems],
+  const healthCommandItems = useMemo(() => {
+    return [
+      {
+        id: 'password-health-all',
+        title: '查看全部密码',
+        subtitle: `共 ${healthStats.total} 条记录`,
+        keywords: ['全部', '全部密码', '健康'],
+      },
+      {
+        id: 'password-health-weak',
+        title: '查看弱密码',
+        subtitle: healthStats.weak > 0 ? `共有 ${healthStats.weak} 条弱密码` : '未发现弱密码',
+        keywords: ['弱密码', '安全', 'strong', 'weak'],
+      },
+      {
+        id: 'password-health-reused',
+        title: '查看重复使用的密码',
+        subtitle: healthStats.reused > 0 ? `共有 ${healthStats.reused} 条重复使用` : '未检测到重复使用',
+        keywords: ['重复', '重复使用', 'reuse'],
+      },
+      {
+        id: 'password-health-stale',
+        title: '查看需更新的密码',
+        subtitle: healthStats.stale > 0 ? `共有 ${healthStats.stale} 条超过 180 天未更新` : '暂无超过 180 天未更新的密码',
+        keywords: ['过期', '需更新', 'stale'],
+      },
+    ]
+  }, [healthStats.reused, healthStats.stale, healthStats.total, healthStats.weak])
+
+  const commandItems = useMemo(
+    () => [...healthCommandItems, ...tagCommandItems, ...itemCommandItems],
+    [healthCommandItems, itemCommandItems, tagCommandItems],
   )
 
   function closeDrawer() {
@@ -722,6 +818,15 @@ export default function Passwords() {
   }
 
   function handleCommandSelect(commandId: string) {
+    if (commandId.startsWith('password-health-')) {
+      const next = commandId.replace('password-health-', '')
+      if (next === 'all') {
+        setHealthFilter('all')
+      } else if (next === 'weak' || next === 'reused' || next === 'stale') {
+        setHealthFilter(next)
+      }
+      return
+    }
     if (commandId.startsWith('password-tag-')) {
       const encoded = commandId.replace('password-tag-', '')
       try {
@@ -803,73 +908,97 @@ export default function Passwords() {
         <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
       }
     >
-      {loading ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} className="h-40" />
-          ))}
-        </div>
-      ) : filteredItems.length === 0 ? (
-        <Empty
-          title={items.length === 0 ? '暂无密码条目' : '未找到匹配的密码'}
-          description={
-            items.length === 0
-              ? '使用右上角的“新增密码”按钮或快捷键 Ctrl/Cmd + N 创建第一条记录。'
-              : '尝试调整关键字或清空搜索条件。'
-          }
-          actionLabel="新增密码"
-          onAction={handleCreate}
+      <div className="space-y-6">
+        <PasswordHealthBanner
+          stats={healthStats}
+          lastCheckedAt={healthLastCheckedAt}
+          isAnalyzing={healthAnalyzing}
+          activeFilter={healthFilter}
+          onFilterChange={setHealthFilter}
         />
-      ) : viewMode === 'card' ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredItems.map(item => {
-            const actions = buildItemActions(item)
-            const truncatedUrl = item.url ? truncateLink(item.url, MAX_LINK_DISPLAY_LENGTH) : null
-            return (
-              <VaultItemCard
-                key={item.id ?? item.title}
-                title={item.title}
-                description={item.username ? `用户名：${item.username}` : '未填写用户名'}
-                badges={
-                  item.url
-                    ? [
-                        {
-                          label: truncatedUrl ?? item.url,
-                          tone: 'info' as const,
-                          title: item.url,
-                        },
-                      ]
-                    : undefined
-                }
-                tags={ensureTagsArray(item.tags).map(tag => ({ id: tag, name: tag }))}
-                updatedAt={item.updatedAt}
-                onOpen={() => handleView(item)}
-                actions={actions}
-              />
-            )
-          })}
-        </div>
-      ) : (
-        <VaultItemList
-          items={filteredItems.map(item => ({
-            key: item.id ?? item.title,
-            title: item.title,
-            description: item.username ? `用户名：${item.username}` : '未填写用户名',
-            metadata: item.url
-              ? [
-                  {
-                    content: `网址：${truncateLink(item.url, MAX_LINK_DISPLAY_LENGTH)}`,
-                    title: item.url,
-                  },
-                ]
-              : undefined,
-            tags: ensureTagsArray(item.tags).map(tag => ({ id: tag, name: tag })),
-            updatedAt: item.updatedAt,
-            onOpen: () => handleView(item),
-            actions: buildItemActions(item),
-          }))}
-        />
-      )}
+        {loading ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <Skeleton key={index} className="h-40" />
+            ))}
+          </div>
+        ) : filteredItems.length === 0 ? (
+          <Empty
+            title={items.length === 0 ? '暂无密码条目' : '未找到匹配的密码'}
+            description={
+              items.length === 0
+                ? '使用右上角的“新增密码”按钮或快捷键 Ctrl/Cmd + N 创建第一条记录。'
+                : '尝试调整关键字或清空搜索条件。'
+            }
+            actionLabel="新增密码"
+            onAction={handleCreate}
+          />
+        ) : viewMode === 'card' ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {filteredItems.map(item => {
+              const actions = buildItemActions(item)
+              const truncatedUrl = item.url ? truncateLink(item.url, MAX_LINK_DISPLAY_LENGTH) : null
+              const itemKey = getPasswordHealthKey(item)
+              const healthBadges = healthBadgeMap.get(itemKey) ?? []
+              const urlBadges =
+                item.url
+                  ? [
+                      {
+                        label: truncatedUrl ?? item.url,
+                        tone: 'info' as const,
+                        title: item.url,
+                      },
+                    ]
+                  : []
+              const badges = [...healthBadges, ...urlBadges]
+              return (
+                <VaultItemCard
+                  key={item.id ?? item.title}
+                  title={item.title}
+                  description={item.username ? `用户名：${item.username}` : '未填写用户名'}
+                  badges={badges.length > 0 ? badges : undefined}
+                  tags={ensureTagsArray(item.tags).map(tag => ({ id: tag, name: tag }))}
+                  updatedAt={item.updatedAt}
+                  onOpen={() => handleView(item)}
+                  actions={actions}
+                />
+              )
+            })}
+          </div>
+        ) : (
+          <VaultItemList
+            items={filteredItems.map(item => {
+              const actions = buildItemActions(item)
+              const tags = ensureTagsArray(item.tags).map(tag => ({ id: tag, name: tag }))
+              const itemKey = getPasswordHealthKey(item)
+              const healthBadges = healthBadgeMap.get(itemKey) ?? []
+              const urlBadges =
+                item.url
+                  ? [
+                      {
+                        label: item.url
+                          ? truncateLink(item.url, MAX_LINK_DISPLAY_LENGTH) ?? item.url
+                          : item.url ?? '',
+                        tone: 'info' as const,
+                        title: item.url,
+                      },
+                    ]
+                  : []
+              const badges = [...healthBadges, ...urlBadges]
+              return {
+                key: item.id ?? item.title,
+                title: item.title,
+                description: item.username ? `用户名：${item.username}` : '未填写用户名',
+                badges: badges.length > 0 ? badges : undefined,
+                tags,
+                updatedAt: item.updatedAt,
+                onOpen: () => handleView(item),
+                actions,
+              }
+            })}
+          />
+        )}
+      </div>
 
       <DetailsDrawer
         open={drawerOpen}
