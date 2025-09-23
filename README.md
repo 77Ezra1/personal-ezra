@@ -1,4 +1,4 @@
-# PMS Web (MVP)
+# Personal (MVP)
 
 基于 React + TypeScript + Vite + Tailwind + Zustand + SQLite 的个人管理系统最小可运行骨架。
 
