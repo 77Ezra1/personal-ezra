@@ -809,35 +809,44 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   }
 
   return (
-    <div className={clsx('space-y-6', className)}>
-      <InspirationHeader
-        onCreate={handleCreate}
-        onRefresh={() => {
-          void refreshNotes()
-        }}
-        loading={loadingList}
-        error={error}
-        searchValue={searchInput}
-        onSearchChange={handleSearchChange}
-        onSearchClear={handleSearchClear}
-      />
-      {(availableTags.length > 0 || hasTagFilter) && (
-        <section className="rounded-3xl border border-border bg-surface p-4 shadow-inner shadow-black/10 transition dark:shadow-black/40">
-          <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
-        </section>
+    <div
+      className={clsx(
+        'flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-6 xl:gap-8',
+        className,
       )}
-      <InspirationNoteList
-        notes={filteredNotes}
-        totalCount={notes.length}
-        loading={loadingList}
-        selectedId={selectedId}
-        onSelect={noteId => {
-          void handleSelectNote(noteId)
-        }}
-        hasTagFilter={hasTagFilter}
-        searchTerm={searchTerm}
-      />
-      <div className="space-y-6">
+    >
+      <div className="flex flex-col gap-6 lg:col-span-2">
+        <InspirationHeader
+          onCreate={handleCreate}
+          onRefresh={() => {
+            void refreshNotes()
+          }}
+          loading={loadingList}
+          error={error}
+          searchValue={searchInput}
+          onSearchChange={handleSearchChange}
+          onSearchClear={handleSearchClear}
+        />
+        {(availableTags.length > 0 || hasTagFilter) && (
+          <section className="rounded-3xl border border-border bg-surface p-4 shadow-inner shadow-black/10 transition dark:shadow-black/40">
+            <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
+          </section>
+        )}
+      </div>
+      <div className="lg:col-span-1 lg:self-start">
+        <InspirationNoteList
+          notes={filteredNotes}
+          totalCount={notes.length}
+          loading={loadingList}
+          selectedId={selectedId}
+          onSelect={noteId => {
+            void handleSelectNote(noteId)
+          }}
+          hasTagFilter={hasTagFilter}
+          searchTerm={searchTerm}
+        />
+      </div>
+      <div className="flex flex-col gap-6 lg:col-span-1">
         <InspirationEditor
           draft={draft}
           onTitleChange={handleTitleChange}
