@@ -2,6 +2,12 @@ import * as SqlPlugin from '@tauri-apps/plugin-sql'
 import type { default as Database } from '@tauri-apps/plugin-sql'
 import { mkdir } from '@tauri-apps/plugin-fs'
 import { appDataDir, join } from '@tauri-apps/api/path'
+import {
+  DATABASE_FILE_NAME,
+  DEFAULT_DATA_DIR_SEGMENTS,
+  loadStoredDataPath,
+  saveStoredDataPath,
+} from '../lib/storage-path'
 import type {
   DatabaseClient,
   DocRecord,
@@ -146,9 +152,26 @@ function normalizeParams(values: unknown[]): unknown[] {
 
 async function resolveDatabasePath() {
   const baseDir = await appDataDir()
-  const dataDir = await join(baseDir, 'data')
-  await mkdir(dataDir, { recursive: true })
-  const dbPath = await join(dataDir, 'pms.db')
+  const defaultDir = await join(baseDir, ...DEFAULT_DATA_DIR_SEGMENTS)
+  let targetDir = defaultDir
+
+  const stored = loadStoredDataPath()
+  if (stored && stored.trim()) {
+    targetDir = stored
+  }
+
+  try {
+    await mkdir(targetDir, { recursive: true })
+  } catch (error) {
+    console.error('Failed to prepare data directory, falling back to default path', error)
+    targetDir = defaultDir
+    await mkdir(targetDir, { recursive: true })
+    if (stored) {
+      saveStoredDataPath(targetDir)
+    }
+  }
+
+  const dbPath = await join(targetDir, DATABASE_FILE_NAME)
   return dbPath
 }
 
