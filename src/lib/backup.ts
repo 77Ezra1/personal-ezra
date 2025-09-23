@@ -16,6 +16,7 @@ import {
   type UserRecord,
 } from '../stores/database'
 import { useAuthStore } from '../stores/auth'
+import { normalizeTotpSecret } from './totp'
 
 export const BACKUP_IMPORTED_EVENT = 'pms-backup-imported'
 
@@ -139,6 +140,7 @@ type PasswordBackupEntry = {
   title: string
   username: string
   password: string
+  totpCipher?: string
   url?: string
   createdAt: number
   updatedAt: number
@@ -297,6 +299,7 @@ async function decryptPasswords(
         title: sanitizeRequiredString(record.title),
         username: sanitizeRequiredString(record.username),
         password,
+        totpCipher: sanitizeOptionalString(record.totpCipher),
         url: sanitizeOptionalString(record.url),
         createdAt,
         updatedAt,
@@ -481,6 +484,7 @@ function parseBackupPayload(data: unknown): BackupPayload {
       title: sanitizeRequiredString(item.title),
       username: sanitizeRequiredString(item.username),
       password,
+      totpCipher: sanitizeOptionalString((item as { totpCipher?: unknown }).totpCipher),
       url: sanitizeOptionalString(item.url),
       createdAt,
       updatedAt,
@@ -572,11 +576,25 @@ async function preparePasswordRecords(
     const cipher = await encryptString(encryptionKey, entry.password)
     const createdAt = normalizeTimestamp(entry.createdAt, Date.now())
     const updatedAt = normalizeTimestamp(entry.updatedAt, createdAt)
+    let totpCipher: string | undefined
+    const backupTotpCipher = sanitizeOptionalString(entry.totpCipher)
+    if (backupTotpCipher) {
+      try {
+        const secret = await decryptString(encryptionKey, backupTotpCipher)
+        const normalized = normalizeTotpSecret(secret)
+        if (normalized) {
+          totpCipher = await encryptString(encryptionKey, normalized)
+        }
+      } catch (error) {
+        console.error('Failed to restore TOTP secret from backup entry', error)
+      }
+    }
     records.push({
       ownerEmail,
       title: sanitizeRequiredString(entry.title),
       username: sanitizeRequiredString(entry.username),
       passwordCipher: cipher,
+      totpCipher,
       url: sanitizeOptionalString(entry.url),
       createdAt,
       updatedAt,
