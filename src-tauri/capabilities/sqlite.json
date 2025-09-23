@@ -9,7 +9,9 @@
       "scope": {
         "allow": [
           "sqlite:$APPDATA/**.db",
-          "sqlite:$APPDATA/**/data/*.db"
+          "sqlite:$APPDATA/**/data/*.db",
+          "sqlite:$HOME/**.db",
+          "sqlite:$HOME/**/data/*.db"
         ]
       }
     },
@@ -18,7 +20,9 @@
       "scope": {
         "allow": [
           "sqlite:$APPDATA/**.db",
-          "sqlite:$APPDATA/**/data/*.db"
+          "sqlite:$APPDATA/**/data/*.db",
+          "sqlite:$HOME/**.db",
+          "sqlite:$HOME/**/data/*.db"
         ]
       }
     },
@@ -27,7 +31,9 @@
       "scope": {
         "allow": [
           "sqlite:$APPDATA/**.db",
-          "sqlite:$APPDATA/**/data/*.db"
+          "sqlite:$APPDATA/**/data/*.db",
+          "sqlite:$HOME/**.db",
+          "sqlite:$HOME/**/data/*.db"
         ]
       }
     },
@@ -36,7 +42,9 @@
       "scope": {
         "allow": [
           "sqlite:$APPDATA/**.db",
-          "sqlite:$APPDATA/**/data/*.db"
+          "sqlite:$APPDATA/**/data/*.db",
+          "sqlite:$HOME/**.db",
+          "sqlite:$HOME/**/data/*.db"
         ]
       }
     }
