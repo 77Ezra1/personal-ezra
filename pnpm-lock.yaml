@@ -23,7 +23,7 @@ importers:
         specifier: ^2.0.0
         version: 2.8.0(patch_hash=54143f80fce915f1cb2b409de8eeaa901536809832a63724c31a8c071ca00a7e)
       '@tauri-apps/plugin-dialog':
-        specifier: ^2.0.0
+        specifier: ^2.4.0
         version: 2.4.0
       '@tauri-apps/plugin-fs':
         specifier: ^2.0.0
