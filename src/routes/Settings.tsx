@@ -1141,13 +1141,13 @@ function DataBackupSection() {
                   {resettingDataPath ? '恢复中…' : '恢复默认'}
                 </button>
               </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                 <input
                   type="text"
                   value={dataPath || '尚未选择存储路径'}
                   readOnly
                   className={clsx(
-                    'w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition',
+                    'w-full min-w-0 truncate rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition sm:flex-1',
                     dataPath ? 'focus:border-primary/60 focus:bg-surface-hover' : 'text-muted',
                   )}
                 />
@@ -1183,13 +1183,13 @@ function DataBackupSection() {
                   {resettingBackupPath ? '恢复中…' : '恢复默认'}
                 </button>
               </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                 <input
                   type="text"
                   value={backupPath || '尚未选择备份路径'}
                   readOnly
                   className={clsx(
-                    'w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition',
+                    'w-full min-w-0 truncate rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition sm:flex-1',
                     backupPath ? 'focus:border-primary/60 focus:bg-surface-hover' : 'text-muted',
                   )}
                 />
