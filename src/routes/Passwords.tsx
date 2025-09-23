@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Fuse from 'fuse.js'
 import { Copy, ExternalLink, Eye, EyeOff, Pencil } from 'lucide-react'
 import { AppLayout } from '../components/AppLayout'
@@ -11,6 +11,7 @@ import { VaultItemList } from '../components/VaultItemList'
 import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyTextAutoClear } from '../lib/clipboard'
 import { BACKUP_IMPORTED_EVENT } from '../lib/backup'
 import { decryptString, encryptString } from '../lib/crypto'
+import { generateTotp, normalizeTotpSecret } from '../lib/totp'
 import { useToast } from '../components/ToastProvider'
 import CopyButton from '../components/CopyButton'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
@@ -27,6 +28,7 @@ type PasswordDraft = {
   title: string
   username: string
   password: string
+  totpSecret: string
   url: string
   tags: string
 }
@@ -35,8 +37,16 @@ const EMPTY_DRAFT: PasswordDraft = {
   title: '',
   username: '',
   password: '',
+  totpSecret: '',
   url: '',
   tags: '',
+}
+
+type TotpEntryState = {
+  secret: string
+  code: string
+  expiresAt: number
+  period: number
 }
 
 export default function Passwords() {
@@ -61,6 +71,15 @@ export default function Passwords() {
     const stored = window.localStorage.getItem(PASSWORD_VIEW_MODE_STORAGE_KEY)
     return stored === 'list' ? 'list' : 'card'
   })
+  const [totpEntries, setTotpEntries] = useState<Record<number, TotpEntryState>>({})
+  const [totpErrors, setTotpErrors] = useState<Record<number, string>>({})
+  const totpEntriesRef = useRef<Record<number, TotpEntryState>>({})
+  const [clockNow, setClockNow] = useState(() => Date.now())
+  const hasTotpEntries = useMemo(() => Object.keys(totpEntries).length > 0, [totpEntries])
+
+  useEffect(() => {
+    totpEntriesRef.current = totpEntries
+  }, [totpEntries])
 
   const reloadItems = useCallback(
     async (currentEmail: string, options: { showLoading?: boolean } = {}) => {
@@ -133,6 +152,142 @@ export default function Passwords() {
     setSelectedTags(prev => prev.filter(tag => availableTags.includes(tag)))
   }, [availableTags])
 
+  useEffect(() => {
+    if (!encryptionKey) {
+      setTotpEntries({})
+      setTotpErrors({})
+      return
+    }
+
+    let cancelled = false
+    const currentKey = encryptionKey
+
+    async function initializeTotp() {
+      const nextEntries: Record<number, TotpEntryState> = {}
+      const nextErrors: Record<number, string> = {}
+
+      for (const item of items) {
+        const id = item.id
+        if (typeof id !== 'number') continue
+        if (typeof item.totpCipher !== 'string' || !item.totpCipher) {
+          continue
+        }
+        try {
+          const decrypted = await decryptString(currentKey, item.totpCipher)
+          const result = await generateTotp(decrypted)
+          nextEntries[id] = {
+            secret: result.normalizedSecret,
+            code: result.code,
+            expiresAt: result.expiresAt,
+            period: result.period,
+          }
+        } catch (error) {
+          console.error('Failed to initialize TOTP for password record', error)
+          nextErrors[id] = '无法生成验证码'
+        }
+      }
+
+      if (!cancelled) {
+        setTotpEntries(nextEntries)
+        setTotpErrors(nextErrors)
+        if (Object.keys(nextEntries).length > 0) {
+          setClockNow(Date.now())
+        }
+      }
+    }
+
+    void initializeTotp()
+
+    return () => {
+      cancelled = true
+    }
+  }, [items, encryptionKey])
+
+  useEffect(() => {
+    if (!encryptionKey || !hasTotpEntries) return
+    if (typeof window === 'undefined') return
+
+    let active = true
+    const interval = window.setInterval(() => {
+      const current = totpEntriesRef.current
+      const now = Date.now()
+      const tasks: Promise<void>[] = []
+
+      for (const [key, entry] of Object.entries(current)) {
+        const id = Number(key)
+        if (!Number.isFinite(id) || !entry) continue
+        if (now + 500 < entry.expiresAt) {
+          continue
+        }
+        tasks.push(
+          (async () => {
+            try {
+              const result = await generateTotp(entry.secret)
+              if (!active) return
+              setTotpEntries(prev => {
+                const existing = prev[id]
+                if (!existing) {
+                  return prev
+                }
+                if (existing.code === result.code && existing.expiresAt === result.expiresAt) {
+                  return prev
+                }
+                return {
+                  ...prev,
+                  [id]: {
+                    secret: result.normalizedSecret,
+                    code: result.code,
+                    expiresAt: result.expiresAt,
+                    period: result.period,
+                  },
+                }
+              })
+              setTotpErrors(prev => {
+                if (!(id in prev)) {
+                  return prev
+                }
+                const next = { ...prev }
+                delete next[id]
+                return next
+              })
+            } catch (error) {
+              console.error('Failed to refresh TOTP code', error)
+              setTotpErrors(prev => ({ ...prev, [id]: '无法生成验证码' }))
+              setTotpEntries(prev => {
+                if (!(id in prev)) return prev
+                const next = { ...prev }
+                delete next[id]
+                return next
+              })
+            }
+          })(),
+        )
+      }
+
+      if (tasks.length > 0) {
+        void Promise.all(tasks)
+      }
+    }, 1_000)
+
+    return () => {
+      active = false
+      clearInterval(interval)
+    }
+  }, [encryptionKey, hasTotpEntries])
+
+  useEffect(() => {
+    if (!hasTotpEntries) return
+    if (typeof window === 'undefined') return
+
+    const interval = window.setInterval(() => {
+      setClockNow(Date.now())
+    }, 1_000)
+
+    return () => {
+      clearInterval(interval)
+    }
+  }, [hasTotpEntries])
+
   function toggleTag(tag: string) {
     setSelectedTags(prev => {
       if (prev.includes(tag)) {
@@ -199,7 +354,54 @@ export default function Passwords() {
     [availableTags, selectedTags],
   )
 
-  const commandItems = useMemo(() => [...tagCommandItems, ...itemCommandItems], [itemCommandItems, tagCommandItems])
+  const totpCommandItems = useMemo(() => {
+    return items
+      .filter(item => typeof item.id === 'number' && typeof item.totpCipher === 'string' && item.totpCipher)
+      .map(item => {
+        const id = item.id as number
+        const tags = ensureTagsArray(item.tags)
+        const entry = totpEntries[id]
+        const error = totpErrors[id]
+        const subtitleParts: string[] = []
+        if (entry) {
+          subtitleParts.push(`当前验证码：${entry.code}`)
+        } else if (error) {
+          subtitleParts.push(error)
+        } else {
+          subtitleParts.push('正在生成验证码…')
+        }
+        if (item.username) {
+          subtitleParts.push(`用户名：${item.username}`)
+        }
+        if (item.url) {
+          subtitleParts.push(item.url)
+        }
+        const keywords = [
+          item.title,
+          item.username,
+          item.url,
+          ...tags,
+          ...tags.map(tag => `#${tag}`),
+          'otp',
+          'totp',
+          '验证码',
+        ]
+          .filter(Boolean)
+          .map(entry => String(entry))
+
+        return {
+          id: `password-otp-${id}`,
+          title: `复制 OTP：${item.title}`,
+          subtitle: subtitleParts.filter(Boolean).join(' · ') || undefined,
+          keywords,
+        }
+      })
+  }, [items, totpEntries, totpErrors])
+
+  const commandItems = useMemo(
+    () => [...tagCommandItems, ...totpCommandItems, ...itemCommandItems],
+    [itemCommandItems, tagCommandItems, totpCommandItems],
+  )
 
   function closeDrawer() {
     setDrawerOpen(false)
@@ -240,11 +442,24 @@ export default function Passwords() {
       title: item.title,
       username: item.username,
       password: '',
+      totpSecret: '',
       url: item.url ?? '',
       tags: ensureTagsArray(item.tags).join(', '),
     })
     setDrawerOpen(true)
     setPasswordVisible(false)
+    if (item.totpCipher && encryptionKey) {
+      const currentKey = encryptionKey
+      const totpCipher = item.totpCipher
+      void (async () => {
+        try {
+          const secret = await decryptString(currentKey, totpCipher)
+          setDraft(prev => ({ ...prev, totpSecret: normalizeTotpSecret(secret) }))
+        } catch (error) {
+          console.error('Failed to decrypt TOTP secret for editing', error)
+        }
+      })()
+    }
   }
 
   async function handleCopyPassword(item: PasswordRecord) {
@@ -266,16 +481,91 @@ export default function Passwords() {
     }
   }
 
+  async function handleCopyTotp(item: PasswordRecord) {
+    if (!encryptionKey) {
+      showToast({ title: '复制失败', description: '登录信息失效，请重新登录后再试。', variant: 'error' })
+      return
+    }
+    const id = typeof item.id === 'number' ? item.id : null
+    const totpCipher = item.totpCipher
+    if (!id || !totpCipher) {
+      showToast({ title: '复制失败', description: '该条目未设置一次性验证码。', variant: 'error' })
+      return
+    }
+
+    try {
+      const currentKey = encryptionKey
+      let entry = totpEntriesRef.current[id]
+      if (!entry) {
+        const decrypted = await decryptString(currentKey, totpCipher)
+        const result = await generateTotp(decrypted)
+        entry = {
+          secret: result.normalizedSecret,
+          code: result.code,
+          expiresAt: result.expiresAt,
+          period: result.period,
+        }
+        setTotpEntries(prev => ({ ...prev, [id]: entry! }))
+      } else if (Date.now() >= entry.expiresAt - 500) {
+        const result = await generateTotp(entry.secret)
+        entry = {
+          secret: result.normalizedSecret,
+          code: result.code,
+          expiresAt: result.expiresAt,
+          period: result.period,
+        }
+        setTotpEntries(prev => ({ ...prev, [id]: entry! }))
+      }
+
+      setTotpErrors(prev => {
+        if (!(id in prev)) {
+          return prev
+        }
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+
+      if (!entry?.code) {
+        throw new Error('Missing TOTP code')
+      }
+
+      const now = Date.now()
+      const remainingMs = Math.max(1_000, entry.expiresAt - now)
+      await copyTextAutoClear(entry.code, Math.min(remainingMs, DEFAULT_CLIPBOARD_CLEAR_DELAY))
+      const secondsLeft = Math.max(1, Math.round((entry.expiresAt - Date.now()) / 1_000))
+      showToast({ title: '已复制一次性验证码', description: `将在 ${secondsLeft} 秒后过期。`, variant: 'success' })
+    } catch (error) {
+      console.error('Failed to copy TOTP code', error)
+      showToast({ title: '复制失败', description: '无法生成一次性验证码，请稍后再试。', variant: 'error' })
+    }
+  }
+
   function buildItemActions(item: PasswordRecord) {
-    const actions: VaultItemAction[] = [
-      {
+    const actions: VaultItemAction[] = []
+    if (typeof item.id === 'number' && item.totpCipher) {
+      const totpEntry = totpEntries[item.id]
+      const totpError = totpErrors[item.id]
+      const label = totpEntry
+        ? `OTP ${totpEntry.code}`
+        : totpError
+        ? 'OTP 无法生成'
+        : 'OTP 加载中…'
+      actions.push({
         icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
-        label: '复制密码',
+        label,
         onClick: () => {
-          void handleCopyPassword(item)
+          void handleCopyTotp(item)
         },
+      })
+    }
+    actions.push({
+      icon: <Copy className="h-3.5 w-3.5" aria-hidden />,
+      label: '复制密码',
+      onClick: () => {
+        void handleCopyPassword(item)
       },
-    ]
+    })
     if (item.url) {
       actions.push({
         icon: <ExternalLink className="h-3.5 w-3.5" aria-hidden />,
@@ -339,6 +629,7 @@ export default function Passwords() {
     const trimmedUsername = draft.username.trim()
     const trimmedUrl = draft.url.trim()
     const passwordInput = draft.password.trim()
+    const totpInput = draft.totpSecret.trim()
     const parsedTags = parseTagsInput(draft.tags)
 
     if (!trimmedTitle) {
@@ -373,12 +664,29 @@ export default function Passwords() {
         return
       }
 
+      let totpCipher: string | undefined
+      const normalizedTotp = normalizeTotpSecret(totpInput)
+      if (normalizedTotp) {
+        try {
+          const result = await generateTotp(normalizedTotp)
+          totpCipher = await encryptString(encryptionKey, result.normalizedSecret)
+        } catch (error) {
+          console.error('Failed to encrypt TOTP secret', error)
+          setFormError('请输入有效的 TOTP 秘钥')
+          setSubmitting(false)
+          return
+        }
+      } else if (drawerMode === 'edit' && activeItem?.totpCipher) {
+        totpCipher = undefined
+      }
+
       if (drawerMode === 'create') {
         await db.passwords.add({
           ownerEmail: email,
           title: trimmedTitle,
           username: trimmedUsername,
           passwordCipher,
+          totpCipher,
           url: trimmedUrl || undefined,
           tags: parsedTags,
           createdAt: now,
@@ -391,6 +699,7 @@ export default function Passwords() {
           title: trimmedTitle,
           username: trimmedUsername,
           passwordCipher,
+          totpCipher,
           url: trimmedUrl || undefined,
           tags: parsedTags,
           updatedAt: now,
@@ -420,6 +729,14 @@ export default function Passwords() {
         toggleTag(tag)
       } catch {
         // ignore malformed tag ids
+      }
+      return
+    }
+    if (commandId.startsWith('password-otp-')) {
+      const id = Number(commandId.replace('password-otp-', ''))
+      const target = items.find(item => item.id === id)
+      if (target) {
+        void handleCopyTotp(target)
       }
       return
     }
@@ -456,6 +773,12 @@ export default function Passwords() {
   })
 
   const editingTitle = draft.title.trim() || activeItem?.title || ''
+  const activeItemId = activeItem && typeof activeItem.id === 'number' ? activeItem.id : null
+  const activeTotpEntry = activeItemId !== null ? totpEntries[activeItemId] : undefined
+  const activeTotpError = activeItemId !== null ? totpErrors[activeItemId] : undefined
+  const activeTotpRemaining = activeTotpEntry
+    ? Math.max(0, Math.ceil((activeTotpEntry.expiresAt - clockNow) / 1_000))
+    : 0
 
   return (
     <AppLayout
@@ -618,6 +941,39 @@ export default function Passwords() {
               <p className="mt-1 text-base text-text">{activeItem.username || '未填写'}</p>
             </div>
             <div>
+              <p className="text-xs text-muted">一次性验证码</p>
+              {activeItem.totpCipher ? (
+                activeTotpError ? (
+                  <p className="mt-1 text-base text-rose-300">{activeTotpError}</p>
+                ) : activeTotpEntry ? (
+                  <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-baseline gap-3">
+                      <span className="font-mono text-2xl tracking-[0.4em] sm:tracking-[0.6em]">
+                        {activeTotpEntry.code}
+                      </span>
+                      <span className="text-xs text-muted">
+                        {activeTotpRemaining > 0 ? `剩余 ${activeTotpRemaining} 秒` : '即将更新'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleCopyTotp(activeItem)
+                      }}
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-text transition hover:bg-surface-hover"
+                    >
+                      <Copy className="h-4 w-4" />
+                      复制 OTP
+                    </button>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-base text-muted">正在生成验证码…</p>
+                )
+              ) : (
+                <p className="mt-1 text-base text-text">未设置</p>
+              )}
+            </div>
+            <div>
               <p className="text-xs text-muted">关联网址</p>
               <p
                 className="mt-1 max-w-full truncate text-base text-primary"
@@ -705,6 +1061,35 @@ export default function Passwords() {
                 {drawerMode === 'edit' ? (
                   <p className="text-xs text-muted">留空将保持原密码不变。</p>
                 ) : null}
+              </div>
+            </label>
+            <label className="block space-y-2">
+              <span className="text-xs uppercase tracking-wide text-muted">TOTP 秘钥</span>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    value={draft.totpSecret}
+                    onChange={event => {
+                      const value = normalizeTotpSecret(event.target.value)
+                      setDraft(prev => ({ ...prev, totpSecret: value }))
+                      setFormError(null)
+                    }}
+                    autoComplete="one-time-code"
+                    className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+                    placeholder="可选，例如：JBSWY3DPEHPK3PXP"
+                  />
+                  <CopyButton
+                    text={() => draft.totpSecret}
+                    idleLabel="复制"
+                    className="shrink-0 px-3 py-2"
+                    disabled={submitting || !draft.totpSecret}
+                  />
+                </div>
+                <p className="text-xs text-muted">
+                  {drawerMode === 'edit'
+                    ? '留空将移除一次性验证码。'
+                    : '用于生成基于时间的一次性验证码（TOTP），支持常见的双重认证。'}
+                </p>
               </div>
             </label>
             <label className="block space-y-2">

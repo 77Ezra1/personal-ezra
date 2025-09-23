@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { decryptString, encryptString, deriveKey } from '../lib/crypto'
+import { normalizeTotpSecret } from '../lib/totp'
 import { generateMnemonicPhrase } from '../lib/mnemonic'
 import { detectSensitiveWords } from '../lib/sensitive-words'
 import { estimatePasswordStrength, PASSWORD_STRENGTH_REQUIREMENT } from '../lib/password-utils'
@@ -328,7 +329,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       const passwordRecords = await db.passwords.where('ownerEmail').equals(email).toArray()
       const now = Date.now()
-      const decrypted: { record: PasswordRecord; plain: string }[] = []
+      const decrypted: { record: PasswordRecord; plain: string; totpSecret?: string }[] = []
 
       for (const row of passwordRecords) {
         if (typeof row.id !== 'number') {
@@ -337,7 +338,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
         try {
           const plain = await decryptString(currentKey, row.passwordCipher)
-          decrypted.push({ record: row, plain })
+          let totpSecret: string | undefined
+          if (typeof row.totpCipher === 'string' && row.totpCipher) {
+            try {
+              totpSecret = await decryptString(currentKey, row.totpCipher)
+            } catch (error) {
+              console.error('Failed to decrypt TOTP secret during password change', error)
+              return { success: false, message: '解密一次性验证码失败，请稍后再试' }
+            }
+          }
+          decrypted.push({ record: row, plain, totpSecret })
         } catch (error) {
           console.error('Failed to decrypt password record during password change', error)
           return { success: false, message: '解密密码数据失败，请稍后再试' }
@@ -352,7 +362,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       for (const item of decrypted) {
         try {
           const cipher = await encryptString(newKey, item.plain)
-          updatedRecords.push({ ...item.record, passwordCipher: cipher, updatedAt: now })
+          let nextTotpCipher: string | undefined
+          if (item.totpSecret) {
+            const normalizedTotp = normalizeTotpSecret(item.totpSecret)
+            const secretForEncryption = normalizedTotp || item.totpSecret
+            nextTotpCipher = await encryptString(newKey, secretForEncryption)
+          }
+          updatedRecords.push({ ...item.record, passwordCipher: cipher, totpCipher: nextTotpCipher, updatedAt: now })
         } catch (error) {
           console.error('Failed to encrypt password record with new key', error)
           return { success: false, message: '重新加密密码数据失败，请稍后再试' }
@@ -446,7 +462,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       const passwordRecords = await db.passwords.where('ownerEmail').equals(email).toArray()
       const now = Date.now()
-      const decrypted: { record: PasswordRecord; plain: string }[] = []
+      const decrypted: { record: PasswordRecord; plain: string; totpSecret?: string }[] = []
 
       for (const row of passwordRecords) {
         if (typeof row.id !== 'number') {
@@ -455,7 +471,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
         try {
           const plain = await decryptString(existingKey, row.passwordCipher)
-          decrypted.push({ record: row, plain })
+          let totpSecret: string | undefined
+          if (typeof row.totpCipher === 'string' && row.totpCipher) {
+            try {
+              totpSecret = await decryptString(existingKey, row.totpCipher)
+            } catch (error) {
+              console.error('Failed to decrypt TOTP secret during password recovery', error)
+              return { success: false, message: '解密一次性验证码失败，请稍后再试' }
+            }
+          }
+          decrypted.push({ record: row, plain, totpSecret })
         } catch (error) {
           console.error('Failed to decrypt password record during password recovery', error)
           return { success: false, message: '解密密码数据失败，请稍后再试' }
@@ -470,7 +495,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       for (const item of decrypted) {
         try {
           const cipher = await encryptString(newKey, item.plain)
-          updatedRecords.push({ ...item.record, passwordCipher: cipher, updatedAt: now })
+          let nextTotpCipher: string | undefined
+          if (item.totpSecret) {
+            const normalizedTotp = normalizeTotpSecret(item.totpSecret)
+            const secretForEncryption = normalizedTotp || item.totpSecret
+            nextTotpCipher = await encryptString(newKey, secretForEncryption)
+          }
+          updatedRecords.push({ ...item.record, passwordCipher: cipher, totpCipher: nextTotpCipher, updatedAt: now })
         } catch (error) {
           console.error('Failed to encrypt password record with recovered key', error)
           return { success: false, message: '重新加密密码数据失败，请稍后再试' }

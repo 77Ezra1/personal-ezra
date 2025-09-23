@@ -31,6 +31,7 @@ export interface PasswordRecord {
   title: string
   username: string
   passwordCipher: string
+  totpCipher?: string
   url?: string
   tags?: string[]
   createdAt: number
@@ -294,6 +295,29 @@ class AppDatabase extends Dexie {
         }
 
         await Promise.all([ensureTags('passwords'), ensureTags('sites'), ensureTags('docs')])
+      })
+    this.version(7)
+      .stores({
+        users: '&email',
+        passwords: '++id, ownerEmail, updatedAt, *tags',
+        sites: '++id, ownerEmail, updatedAt, *tags',
+        docs: '++id, ownerEmail, updatedAt, *tags',
+      })
+      .upgrade(async tx => {
+        type LegacyPasswordRecord = PasswordRecord & { totpCipher?: unknown }
+        const passwordsTable = tx.table('passwords') as Table<LegacyPasswordRecord, number>
+        const rows = await passwordsTable.toArray()
+        if (rows.length === 0) return
+
+        await Promise.all(
+          rows.map(async row => {
+            const next: LegacyPasswordRecord = {
+              ...row,
+              totpCipher: typeof row.totpCipher === 'string' ? row.totpCipher : undefined,
+            }
+            await passwordsTable.put(next)
+          }),
+        )
       })
   }
 }
