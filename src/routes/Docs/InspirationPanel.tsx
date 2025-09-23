@@ -847,22 +847,36 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
           onDelete={() => {
             void handleDelete()
           }}
-          textareaRef={textareaRef}
-          tagInputRef={tagInputRef}
-          tagInput={tagInput}
-          onTagInputChange={handleTagInputChange}
-          onTagSubmit={handleTagSubmit}
-          onTagEdit={handleTagEdit}
-          onTagRemove={handleTagRemove}
-          onTagEditCancel={handleTagEditCancel}
-          editingTagIndex={editingTagIndex}
-          saving={saving}
-          deleting={deleting}
-          loadingNote={loadingNote}
-          canDelete={Boolean(draft.id)}
-          lastSavedAt={activeMeta?.updatedAt}
+          hasTagFilter={hasTagFilter}
+          searchTerm={searchTerm}
         />
-        <InspirationPreview content={draft.content} />
+        <div className="space-y-6">
+          <InspirationEditor
+            draft={draft}
+            onTitleChange={handleTitleChange}
+            onContentChange={handleContentChange}
+            onInsertLink={handleInsertLink}
+            onSubmit={handleSubmit}
+            onDelete={() => {
+              void handleDelete()
+            }}
+            textareaRef={textareaRef}
+            tagInputRef={tagInputRef}
+            tagInput={tagInput}
+            onTagInputChange={handleTagInputChange}
+            onTagSubmit={handleTagSubmit}
+            onTagEdit={handleTagEdit}
+            onTagRemove={handleTagRemove}
+            onTagEditCancel={handleTagEditCancel}
+            editingTagIndex={editingTagIndex}
+            saving={saving}
+            deleting={deleting}
+            loadingNote={loadingNote}
+            canDelete={Boolean(draft.id)}
+            lastSavedAt={activeMeta?.updatedAt}
+          />
+          <InspirationPreview content={draft.content} />
+        </div>
       </div>
     </div>
   )
