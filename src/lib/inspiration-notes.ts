@@ -119,6 +119,20 @@ function sanitizeTags(input?: string[] | null) {
   return result
 }
 
+export function extractTagsFromContent(content: string | null | undefined) {
+  if (!content) return [] as string[]
+  const normalized = normalizeContent(content)
+  const matches = normalized.matchAll(/(^|[^\p{L}\p{N}\p{M}\p{Pc}\p{Pd}])#([\p{L}\p{N}\p{M}\p{Pc}\p{Pd}]{1,50})/gu)
+  const tags: string[] = []
+  for (const match of matches) {
+    const [, , tag] = match
+    if (tag) {
+      tags.push(tag)
+    }
+  }
+  return sanitizeTags(tags)
+}
+
 function parseTagsValue(raw: string) {
   const trimmed = raw.trim()
   if (!trimmed) return []
@@ -267,7 +281,9 @@ export async function listNotes(): Promise<NoteSummary[]> {
           const createdAt = parsed.metadata.createdAt ?? parsed.metadata.updatedAt ?? now
           const updatedAt = parsed.metadata.updatedAt ?? createdAt
           const excerpt = generateExcerpt(parsed.content)
-          const tags = parsed.metadata.tags ?? []
+          const metadataTags = parsed.metadata.tags ?? []
+          const contentTags = extractTagsFromContent(parsed.content)
+          const tags = sanitizeTags([...metadataTags, ...contentTags])
           const summary: NoteSummary = {
             id: entry.name,
             title,
@@ -313,6 +329,9 @@ export async function loadNote(id: string): Promise<NoteDetail> {
   const createdAt = parsed.metadata.createdAt ?? parsed.metadata.updatedAt ?? now
   const updatedAt = parsed.metadata.updatedAt ?? createdAt
   const content = parsed.content
+  const metadataTags = parsed.metadata.tags ?? []
+  const contentTags = extractTagsFromContent(content)
+  const tags = sanitizeTags([...metadataTags, ...contentTags])
   return {
     id: fileName,
     title,
@@ -320,7 +339,7 @@ export async function loadNote(id: string): Promise<NoteDetail> {
     updatedAt,
     excerpt: generateExcerpt(content),
     content,
-    tags: parsed.metadata.tags ?? [],
+    tags,
   }
 }
 
@@ -330,7 +349,9 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
   const now = Date.now()
   const title = sanitizeTitle(draft.title)
   const content = draft.content ?? ''
-  const tags = sanitizeTags(draft.tags)
+  const draftTags = sanitizeTags(draft.tags)
+  const contentTags = extractTagsFromContent(content)
+  const tags = sanitizeTags([...draftTags, ...contentTags])
 
   let fileName = draft.id ? normalizeNoteId(draft.id) : await generateUniqueFileName(dir, title, now)
   let createdAt = now

@@ -140,6 +140,70 @@ describe('inspiration notes storage', () => {
     expect(reloaded.content).toContain('加入新的想法')
   })
 
+  it('extracts hashtags from content and merges with provided tags when saving', async () => {
+    const saved = await saveNote({
+      title: '标签自动归类',
+      content: '记录一些想法 #灵感 #产品-设计\n再提一次 #灵感',
+      tags: ['计划'],
+    })
+    expect(saved.tags).toEqual(['计划', '灵感', '产品-设计'])
+
+    const storedContents = Array.from(files.values())[0]!
+    expect(storedContents).toContain('tags: ["计划", "灵感", "产品-设计"]')
+
+    const summaries = await listNotes()
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]?.tags).toEqual(['计划', '灵感', '产品-设计'])
+
+    const loaded = await loadNote(saved.id)
+    expect(loaded.tags).toEqual(['计划', '灵感', '产品-设计'])
+  })
+
+  it('derives tags from content when metadata tags are missing', async () => {
+    const manualPath = 'C:/mock/AppData/Personal/data/notes/manual-note.md'
+    const manualContents = [
+      '---',
+      'title: 手动补全标签',
+      'createdAt: 1700000000000',
+      'updatedAt: 1700000000000',
+      '---',
+      '',
+      '正文包含 #手动 标签用于测试',
+      '',
+      '下一行还有 #更多 想法。',
+    ].join('\n')
+    files.set(normalizePath(manualPath), manualContents)
+
+    const summaries = await listNotes()
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]?.tags).toEqual(['手动', '更多'])
+
+    const loaded = await loadNote(summaries[0]!.id)
+    expect(loaded.tags).toEqual(['手动', '更多'])
+  })
+
+  it('merges metadata tags with hashtags discovered in content', async () => {
+    const manualPath = 'C:/mock/AppData/Personal/data/notes/legacy-note.md'
+    const manualContents = [
+      '---',
+      'title: 旧版标签',
+      'createdAt: 1690000000000',
+      'updatedAt: 1690000005000',
+      'tags: ["已有"]',
+      '---',
+      '',
+      '正文新增 #补充 标签，仍保留 #已有 标签。',
+    ].join('\n')
+    files.set(normalizePath(manualPath), manualContents)
+
+    const summaries = await listNotes()
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]?.tags).toEqual(['已有', '补充'])
+
+    const loaded = await loadNote(summaries[0]!.id)
+    expect(loaded.tags).toEqual(['已有', '补充'])
+  })
+
   it('honours custom data path when saving and reading notes', async () => {
     loadStoredDataPathMock.mockReturnValue('D:/Workspace/MyNotes')
     const first = await saveNote({ title: 'Alpha', content: '计划A' })
