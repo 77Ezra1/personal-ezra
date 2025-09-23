@@ -5,6 +5,7 @@ import {
   Loader2 as LoaderIcon,
   Pencil as PencilIcon,
   Plus as PlusIcon,
+  Search as SearchIcon,
   RefreshCw as RefreshIcon,
   Save as SaveIcon,
   Trash2 as TrashIcon,
@@ -82,9 +83,20 @@ type InspirationHeaderProps = {
   onRefresh: () => void
   loading: boolean
   error: string | null
+  searchValue: string
+  onSearchChange: (value: string) => void
+  onSearchClear: () => void
 }
 
-function InspirationHeader({ onCreate, onRefresh, loading, error }: InspirationHeaderProps) {
+function InspirationHeader({
+  onCreate,
+  onRefresh,
+  loading,
+  error,
+  searchValue,
+  onSearchChange,
+  onSearchClear,
+}: InspirationHeaderProps) {
   return (
     <header className="space-y-4 rounded-3xl border border-border bg-surface p-6 shadow-lg shadow-black/10 transition-colors dark:shadow-black/40">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -94,7 +106,34 @@ function InspirationHeader({ onCreate, onRefresh, loading, error }: InspirationH
             记录灵感碎片、会议纪要或计划清单，所有 Markdown 文件都保存在离线数据目录下，随时备份与迁移。
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end">
+          <label htmlFor="inspiration-search" className="sr-only">
+            搜索笔记
+          </label>
+          <div className="flex w-full items-center gap-2 rounded-full border border-border bg-surface px-3 py-2 text-sm transition focus-within:border-primary/60 focus-within:bg-surface-hover sm:w-72">
+            <SearchIcon className="h-4 w-4 text-muted" aria-hidden />
+            <input
+              id="inspiration-search"
+              type="search"
+              value={searchValue}
+              onChange={event => {
+                onSearchChange(event.currentTarget.value)
+              }}
+              placeholder="搜索笔记或 #标签"
+              className="flex-1 bg-transparent text-sm text-text outline-none placeholder:text-muted"
+              autoComplete="off"
+            />
+            {searchValue && (
+              <button
+                type="button"
+                onClick={onSearchClear}
+                className="rounded-full p-1 text-muted transition hover:text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              >
+                <XIcon className="h-3.5 w-3.5" aria-hidden />
+                <span className="sr-only">清除搜索</span>
+              </button>
+            )}
+          </div>
           <button
             type="button"
             onClick={onCreate}
@@ -129,7 +168,8 @@ type InspirationNoteListProps = {
   loading: boolean
   selectedId: string | null
   onSelect: (noteId: string) => void
-  isFiltering: boolean
+  hasTagFilter: boolean
+  searchTerm: string
 }
 
 function InspirationNoteList({
@@ -138,13 +178,28 @@ function InspirationNoteList({
   loading,
   selectedId,
   onSelect,
-  isFiltering,
+  hasTagFilter,
+  searchTerm,
 }: InspirationNoteListProps) {
+  const hasSearch = Boolean(searchTerm.trim())
+  const hasActiveFilters = hasTagFilter || hasSearch
+
+  let statusText = `${totalCount} 条`
+  if (hasActiveFilters) {
+    if (hasTagFilter && hasSearch) {
+      statusText = `标签 + 搜索结果 ${notes.length} / ${totalCount} 条`
+    } else if (hasTagFilter) {
+      statusText = `标签筛选结果 ${notes.length} / ${totalCount} 条`
+    } else {
+      statusText = `搜索结果 ${notes.length} / ${totalCount} 条`
+    }
+  }
+
   return (
     <section className="space-y-4 rounded-3xl border border-border bg-surface p-6 shadow-inner shadow-black/10 transition dark:shadow-black/40">
       <div className="flex items-center justify-between text-xs text-muted">
         <span>笔记列表</span>
-        <span>{isFiltering ? `筛选结果 ${notes.length} / ${totalCount} 条` : `${totalCount} 条`}</span>
+        <span>{statusText}</span>
       </div>
       <div className="flex flex-col gap-3">
         {loading && notes.length === 0 ? (
@@ -158,8 +213,8 @@ function InspirationNoteList({
           </div>
         ) : notes.length === 0 ? (
           <div className="rounded-2xl border border-border/60 bg-surface/80 px-4 py-6 text-sm text-muted">
-            {isFiltering
-              ? '未找到匹配的笔记，请调整标签筛选条件。'
+            {hasActiveFilters
+              ? '未找到匹配的笔记，请调整标签筛选或搜索关键字。'
               : '暂无笔记，点击“新建笔记”开始记录灵感。'}
           </div>
         ) : (
@@ -441,6 +496,8 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const [notes, setNotes] = useState<NoteSummary[]>([])
   const [draft, setDraft] = useState<NoteDraft>(createEmptyDraft)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [searchInput, setSearchInput] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const [tagInput, setTagInput] = useState('')
   const [editingTagIndex, setEditingTagIndex] = useState<number | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -471,12 +528,57 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     return list.sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
   }, [notes])
 
-  const filteredNotes = useMemo(() => {
-    if (selectedTags.length === 0) return notes
-    return notes.filter(note => selectedTags.every(tag => note.tags.includes(tag)))
-  }, [notes, selectedTags])
+  useEffect(() => {
+    const handler = window.setTimeout(() => {
+      setSearchTerm(searchInput.trim())
+    }, 200)
+    return () => {
+      window.clearTimeout(handler)
+    }
+  }, [searchInput])
 
-  const isFiltering = selectedTags.length > 0
+  const filteredNotes = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase()
+    const hasSearch = normalizedSearch.length > 0
+    const searchTokens = hasSearch ? normalizedSearch.split(/\s+/).filter(Boolean) : []
+
+    if (selectedTags.length === 0 && !hasSearch) return notes
+
+    return notes.filter(note => {
+      const matchesTags = selectedTags.every(tag => note.tags.includes(tag))
+      if (!matchesTags) return false
+      if (!hasSearch) return true
+
+      const title = note.title.toLowerCase()
+      const excerpt = note.excerpt.toLowerCase()
+      const normalizedTags = note.tags.map(tag => tag.toLowerCase())
+      const excerptHashtags = Array.from(
+        new Set((note.excerpt.match(/#[^\s#]+/g) ?? []).map(item => item.slice(1).toLowerCase())),
+      )
+
+      return searchTokens.every(token => {
+        if (!token) return true
+        const isHashtagQuery = token.startsWith('#')
+        const normalizedToken = isHashtagQuery ? token.slice(1) : token
+        if (!normalizedToken) return true
+        if (isHashtagQuery) {
+          return (
+            normalizedTags.some(tag => tag === normalizedToken) ||
+            excerptHashtags.some(tag => tag === normalizedToken)
+          )
+        }
+
+        return (
+          title.includes(normalizedToken) ||
+          excerpt.includes(normalizedToken) ||
+          normalizedTags.some(tag => tag.includes(normalizedToken)) ||
+          excerptHashtags.some(tag => tag.includes(normalizedToken))
+        )
+      })
+    })
+  }, [notes, searchTerm, selectedTags])
+
+  const hasTagFilter = selectedTags.length > 0
 
   const resetTagEditor = useCallback(() => {
     setTagInput('')
@@ -505,6 +607,8 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       setDraft(createEmptyDraft())
       setSelectedId(null)
       setSelectedTags([])
+      setSearchInput('')
+      setSearchTerm('')
       resetTagEditor()
       return
     }
@@ -611,6 +715,15 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     setSelectedTags([])
   }, [])
 
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchInput(value)
+  }, [])
+
+  const handleSearchClear = useCallback(() => {
+    setSearchInput('')
+    setSearchTerm('')
+  }, [])
+
   const handleSelectNote = useCallback(
     async (noteId: string) => {
       if (!isDesktop) return
@@ -708,8 +821,11 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         }}
         loading={loadingList}
         error={error}
+        searchValue={searchInput}
+        onSearchChange={handleSearchChange}
+        onSearchClear={handleSearchClear}
       />
-      {(availableTags.length > 0 || isFiltering) && (
+      {(availableTags.length > 0 || hasTagFilter) && (
         <section className="rounded-3xl border border-border bg-surface p-4 shadow-inner shadow-black/10 transition dark:shadow-black/40">
           <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
         </section>
@@ -722,7 +838,8 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         onSelect={noteId => {
           void handleSelectNote(noteId)
         }}
-        isFiltering={isFiltering}
+        hasTagFilter={hasTagFilter}
+        searchTerm={searchTerm}
       />
       <InspirationEditor
         draft={draft}
