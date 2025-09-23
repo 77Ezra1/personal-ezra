@@ -13,6 +13,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -149,6 +150,12 @@ type SettingsSection = {
   key: string
   label: string
   render: () => JSX.Element
+}
+
+type SettingsCategory = {
+  key: string
+  label: string
+  sections: SettingsSection[]
 }
 
 function AboutSection() {
@@ -415,18 +422,62 @@ function ProfileSection() {
 }
 
 export default function Settings() {
-  const [activeSection, setActiveSection] = useState<string>('about')
+  const sectionCategories = useMemo<SettingsCategory[]>(
+    () => [
+      {
+        key: 'overview',
+        label: '应用信息',
+        sections: [{ key: 'about', label: '关于', render: () => <AboutSection /> }],
+      },
+      {
+        key: 'profile',
+        label: '个人资料',
+        sections: [{ key: 'profile', label: '用户资料', render: () => <ProfileSection /> }],
+      },
+      {
+        key: 'general',
+        label: '常规设置',
+        sections: [{ key: 'theme-mode', label: '主题模式', render: () => <ThemeModeSection /> }],
+      },
+      {
+        key: 'security',
+        label: '账号安全',
+        sections: [
+          { key: 'change-password', label: '修改密码', render: () => <ChangePasswordSection /> },
+          { key: 'mnemonic-recovery', label: '助记词找回', render: () => <MnemonicRecoverySection /> },
+          { key: 'idle-timeout', label: '自动锁定', render: () => <IdleTimeoutSettingsSection /> },
+          { key: 'delete-account', label: '注销账号', render: () => <DeleteAccountSection /> },
+        ],
+      },
+      {
+        key: 'data',
+        label: '数据管理',
+        sections: [{ key: 'data-backup', label: '数据备份', render: () => <DataBackupSection /> }],
+      },
+    ],
+    [],
+  )
 
-  const sections: SettingsSection[] = [
-    { key: 'about', label: '关于', render: () => <AboutSection /> },
-    { key: 'profile', label: '用户资料', render: () => <ProfileSection /> },
-    { key: 'change-password', label: '修改密码', render: () => <ChangePasswordSection /> },
-    { key: 'mnemonic-recovery', label: '助记词找回', render: () => <MnemonicRecoverySection /> },
-    { key: 'data-backup', label: '数据备份', render: () => <DataBackupSection /> },
-    { key: 'idle-timeout', label: '自动锁定', render: () => <IdleTimeoutSettingsSection /> },
-    { key: 'delete-account', label: '注销账号', render: () => <DeleteAccountSection /> },
-    { key: 'theme-mode', label: '主题模式', render: () => <ThemeModeSection /> },
-  ]
+  const allSections = useMemo(
+    () => sectionCategories.flatMap(category => category.sections),
+    [sectionCategories],
+  )
+
+  const [activeSection, setActiveSection] = useState<string>(
+    () => allSections[0]?.key ?? 'about',
+  )
+
+  const navHeadingBaseId = useId()
+  const contentPanelBaseId = useId()
+
+  useEffect(() => {
+    if (!allSections.some(section => section.key === activeSection)) {
+      const fallbackKey = allSections[0]?.key
+      if (fallbackKey) {
+        setActiveSection(fallbackKey)
+      }
+    }
+  }, [activeSection, allSections])
 
   return (
     <div className="space-y-8 text-text">
@@ -440,35 +491,64 @@ export default function Settings() {
           aria-label="设置导航"
           className="rounded-2xl border border-border/60 bg-surface/80 p-2 shadow-sm"
         >
-          <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
-            {sections.map(section => {
-              const isActive = section.key === activeSection
+          <div className="flex gap-3 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
+            {sectionCategories.map(category => {
+              const headingId = `${navHeadingBaseId}-${category.key}`
               return (
-                <button
-                  key={section.key}
-                  type="button"
-                  onClick={() => setActiveSection(section.key)}
-                  className={clsx(
-                    'flex-shrink-0 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 lg:w-full lg:text-left',
-                    isActive
-                      ? 'bg-primary/10 text-primary shadow-sm ring-1 ring-primary/40'
-                      : 'text-muted hover:bg-surface-hover hover:text-text',
-                  )}
-                  aria-pressed={isActive}
+                <div
+                  key={category.key}
+                  role="group"
+                  aria-labelledby={headingId}
+                  className="flex min-w-[200px] flex-shrink-0 flex-col gap-2 px-1 py-1 lg:min-w-0 lg:px-0"
                 >
-                  {section.label}
-                </button>
+                  <p
+                    id={headingId}
+                    className="px-3 text-xs font-semibold uppercase tracking-[0.28em] text-muted"
+                  >
+                    {category.label}
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {category.sections.map(section => {
+                      const isActive = section.key === activeSection
+                      const panelId = `${contentPanelBaseId}-${section.key}`
+                      const triggerId = `${panelId}-trigger`
+                      return (
+                        <button
+                          key={section.key}
+                          id={triggerId}
+                          type="button"
+                          onClick={() => setActiveSection(section.key)}
+                          className={clsx(
+                            'flex-shrink-0 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 lg:w-full lg:text-left',
+                            isActive
+                              ? 'bg-primary/10 text-primary shadow-sm ring-1 ring-primary/40'
+                              : 'text-muted hover:bg-surface-hover hover:text-text',
+                          )}
+                          aria-pressed={isActive}
+                          aria-controls={panelId}
+                        >
+                          {section.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
               )
             })}
           </div>
         </nav>
 
         <div className="min-w-0 space-y-6">
-          {sections.map(section => {
+          {allSections.map(section => {
             const isActive = section.key === activeSection
+            const panelId = `${contentPanelBaseId}-${section.key}`
+            const triggerId = `${panelId}-trigger`
             return (
               <div
                 key={section.key}
+                id={panelId}
+                role="region"
+                aria-labelledby={triggerId}
                 className={clsx('min-w-0', isActive ? 'block' : 'hidden')}
                 aria-hidden={!isActive}
               >
