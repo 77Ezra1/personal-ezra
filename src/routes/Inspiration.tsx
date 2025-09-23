@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import {
   Link as LinkIcon,
   Loader2 as LoaderIcon,
@@ -29,6 +29,16 @@ import {
   type NoteDraft,
   type NoteSummary,
 } from '../lib/inspiration-notes'
+
+const markdownComponents: Components = {
+  a: ({ node: _node, ...props }) => (
+    <a
+      {...props}
+      target="_blank"
+      rel="noopener noreferrer"
+    />
+  ),
+}
 
 function createEmptyDraft(): NoteDraft {
   return { title: '', content: '' }
@@ -365,7 +375,9 @@ export default function Inspiration() {
               <span className="text-xs text-muted">支持链接、列表、引用等常用语法</span>
             </div>
             <div className="prose prose-invert max-w-none text-sm leading-relaxed">
-              <ReactMarkdown linkTarget="_blank">{draft.content.trim() ? draft.content : '（暂无内容）'}</ReactMarkdown>
+              <ReactMarkdown components={markdownComponents}>
+                {draft.content.trim() ? draft.content : '（暂无内容）'}
+              </ReactMarkdown>
             </div>
           </div>
         </section>
