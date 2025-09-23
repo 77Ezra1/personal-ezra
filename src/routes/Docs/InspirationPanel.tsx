@@ -826,22 +826,6 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
           <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
         </section>
       )}
-    >
-      <div className="flex flex-col gap-4 md:col-span-2">
-        <InspirationHeader
-          onCreate={handleCreate}
-          onRefresh={() => {
-            void refreshNotes()
-          }}
-          loading={loadingList}
-          error={error}
-        />
-        {(availableTags.length > 0 || isFiltering) && (
-          <section className="rounded-3xl border border-border bg-surface p-4 shadow-inner shadow-black/10 transition dark:shadow-black/40">
-            <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
-          </section>
-        )}
-      </div>
       <InspirationNoteList
         notes={filteredNotes}
         totalCount={notes.length}
