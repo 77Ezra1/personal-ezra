@@ -44,9 +44,7 @@ import {
   DATABASE_FILE_NAME,
   DEFAULT_DATA_DIR_SEGMENTS,
   loadStoredDataPath,
-  loadStoredRepositoryPath,
   saveStoredDataPath,
-  saveStoredRepositoryPath,
 } from '../lib/storage-path'
 import { BACKUP_IMPORTED_EVENT, exportUserData, importUserData } from '../lib/backup'
 import { decryptString } from '../lib/crypto'
@@ -1048,9 +1046,6 @@ function DataBackupSection() {
   const [defaultDataPath, setDefaultDataPath] = useState('')
   const [selectingDataPath, setSelectingDataPath] = useState(false)
   const [resettingDataPath, setResettingDataPath] = useState(false)
-  const [repositoryPath, setRepositoryPath] = useState('')
-  const [selectingRepositoryPath, setSelectingRepositoryPath] = useState(false)
-  const [clearingRepositoryPath, setClearingRepositoryPath] = useState(false)
   const [backupPath, setBackupPath] = useState('')
   const [defaultBackupPath, setDefaultBackupPath] = useState('')
   const [selectingBackupPath, setSelectingBackupPath] = useState(false)
@@ -1109,6 +1104,15 @@ function DataBackupSection() {
       }
     } catch (error) {
       console.warn('Failed to persist backup path', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.removeItem('pms-repo-path')
+    } catch (error) {
+      console.warn('Failed to clear legacy repository path', error)
     }
   }, [])
 
@@ -1203,16 +1207,6 @@ function DataBackupSection() {
     return () => {
       mounted = false
     }
-  }, [isTauri])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (!isTauri) {
-      setRepositoryPath('')
-      return
-    }
-    const stored = loadStoredRepositoryPath()
-    setRepositoryPath(stored ?? '')
   }, [isTauri])
 
   useEffect(() => {
@@ -1680,54 +1674,6 @@ function DataBackupSection() {
     }
   }
 
-  const handleSelectRepositoryPath = async () => {
-    if (!isTauri) return
-    try {
-      setSelectingRepositoryPath(true)
-      const selection = await openDialog({ directory: true })
-      const selectedPath = Array.isArray(selection) ? selection[0] : selection
-      if (!selectedPath) {
-        return
-      }
-      await mkdir(selectedPath, { recursive: true })
-      setRepositoryPath(selectedPath)
-      saveStoredRepositoryPath(selectedPath)
-      showToast({
-        title: '已更新灵感妙记镜像路径',
-        description: `${selectedPath}\n保存或删除笔记时会同步到该 Git 副本。`,
-        variant: 'success',
-      })
-    } catch (error) {
-      console.error('Failed to select repository directory', error)
-      const message =
-        error instanceof Error ? error.message : '选择灵感妙记镜像路径失败，请稍后再试。'
-      showToast({ title: '选择失败', description: message, variant: 'error' })
-    } finally {
-      setSelectingRepositoryPath(false)
-    }
-  }
-
-  const handleClearRepositoryPath = () => {
-    if (!isTauri) return
-    try {
-      setClearingRepositoryPath(true)
-      setRepositoryPath('')
-      saveStoredRepositoryPath(null)
-      showToast({
-        title: '已停用灵感妙记镜像',
-        description: '后续笔记将不再同步至 Git 仓库副本。',
-        variant: 'success',
-      })
-    } catch (error) {
-      console.error('Failed to clear repository directory', error)
-      const message =
-        error instanceof Error ? error.message : '清除灵感妙记镜像路径失败，请稍后再试。'
-      showToast({ title: '清除失败', description: message, variant: 'error' })
-    } finally {
-      setClearingRepositoryPath(false)
-    }
-  }
-
   const handleResetDataPath = async () => {
     if (!isTauri) return
     try {
@@ -2172,50 +2118,6 @@ function DataBackupSection() {
               </div>
               <p className="text-xs leading-relaxed text-muted">
                 本地数据库文件（{DATABASE_FILE_NAME}）将存储在所选目录，调整后请重启应用以生效。
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <label className="text-sm font-medium text-text">灵感妙记 Git 镜像</label>
-                <button
-                  type="button"
-                  onClick={handleClearRepositoryPath}
-                  disabled={
-                    clearingRepositoryPath || selectingRepositoryPath || repositoryPath.length === 0
-                  }
-                  className={clsx(
-                    'inline-flex items-center rounded-lg border border-border px-3 py-1 text-xs font-medium transition',
-                    'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
-                  )}
-                >
-                  {clearingRepositoryPath ? '清除中…' : '清除路径'}
-                </button>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                <input
-                  type="text"
-                  value={repositoryPath || '尚未配置镜像路径'}
-                  readOnly
-                  className={clsx(
-                    'w-full min-w-0 truncate rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition sm:flex-1',
-                    repositoryPath ? 'focus:border-primary/60 focus:bg-surface-hover' : 'text-muted',
-                  )}
-                />
-                <button
-                  type="button"
-                  onClick={handleSelectRepositoryPath}
-                  disabled={selectingRepositoryPath || clearingRepositoryPath}
-                  className={clsx(
-                    'inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-sm transition',
-                    'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
-                  )}
-                >
-                  {selectingRepositoryPath ? '选择中…' : '选择路径'}
-                </button>
-              </div>
-              <p className="text-xs leading-relaxed text-muted">
-                若配置此路径，将在创建、保存或删除灵感妙记笔记时同步 Git 镜像副本，便于版本管理与备份。
               </p>
             </div>
 

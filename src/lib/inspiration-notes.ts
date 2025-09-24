@@ -2,7 +2,7 @@ import { mkdir, readDir, readTextFile, remove, writeTextFile } from '@tauri-apps
 import { appDataDir, join } from '@tauri-apps/api/path'
 
 import { isTauriRuntime } from '../env'
-import { DEFAULT_DATA_DIR_SEGMENTS, loadStoredDataPath, loadStoredRepositoryPath } from './storage-path'
+import { DEFAULT_DATA_DIR_SEGMENTS, loadStoredDataPath } from './storage-path'
 
 export const NOTES_DIR_NAME = 'notes'
 export const NOTE_FILE_EXTENSION = '.md'
@@ -742,22 +742,6 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
   const filePath = await join(targetDir, fileName)
   await writeTextFile(filePath, serialized)
 
-  const repositoryRoot = loadStoredRepositoryPath()
-  if (repositoryRoot) {
-    try {
-      const repositoryNotesDir = await join(repositoryRoot, NOTES_DIR_NAME)
-      const repositoryTargetDir =
-        directories.length > 0 ? await join(repositoryNotesDir, ...directories) : repositoryNotesDir
-      await mkdir(repositoryTargetDir, { recursive: true })
-      const repositoryFilePath = await join(repositoryTargetDir, fileName)
-      if (repositoryFilePath !== filePath) {
-        await writeTextFile(repositoryFilePath, serialized)
-      }
-    } catch (error) {
-      console.warn('Failed to synchronize inspiration note to repository path', error)
-    }
-  }
-
   const normalizedContent = normalizeContent(rawContent)
   const searchText = createSearchText(title, normalizedContent, tags)
 
@@ -809,22 +793,6 @@ export async function createNoteFile(titleOrPath: string): Promise<string> {
   const serialized = serializeNoteFile({ title, createdAt: now, updatedAt: now, tags: [] }, '')
   await writeTextFile(filePath, serialized)
 
-  const repositoryRoot = loadStoredRepositoryPath()
-  if (repositoryRoot) {
-    try {
-      const repositoryNotesDir = await join(repositoryRoot, NOTES_DIR_NAME)
-      const repositoryTargetDir =
-        directories.length > 0 ? await join(repositoryNotesDir, ...directories) : repositoryNotesDir
-      await mkdir(repositoryTargetDir, { recursive: true })
-      const repositoryFilePath = await join(repositoryTargetDir, fileName)
-      if (repositoryFilePath !== filePath) {
-        await writeTextFile(repositoryFilePath, serialized)
-      }
-    } catch (error) {
-      console.warn('Failed to synchronize inspiration note to repository path', error)
-    }
-  }
-
   return notePath
 }
 
@@ -835,20 +803,6 @@ export async function createNoteFolder(path: string): Promise<string> {
   const segments = sanitized.split('/').filter(Boolean)
   const targetDir = segments.length > 0 ? await join(dir, ...segments) : dir
   await mkdir(targetDir, { recursive: true })
-
-  const repositoryRoot = loadStoredRepositoryPath()
-  if (repositoryRoot) {
-    try {
-      const repositoryNotesDir = await join(repositoryRoot, NOTES_DIR_NAME)
-      const repositoryTargetDir =
-        segments.length > 0 ? await join(repositoryNotesDir, ...segments) : repositoryNotesDir
-      if (repositoryTargetDir !== targetDir) {
-        await mkdir(repositoryTargetDir, { recursive: true })
-      }
-    } catch (error) {
-      console.warn('Failed to create repository folder for inspiration notes', error)
-    }
-  }
 
   return sanitized
 }
@@ -868,24 +822,4 @@ export async function deleteNote(id: string): Promise<void> {
     }
   }
 
-  const repositoryRoot = loadStoredRepositoryPath()
-  if (repositoryRoot) {
-    try {
-      const repositoryNotesDir = await join(repositoryRoot, NOTES_DIR_NAME)
-      const repositoryTargetDir =
-        directories.length > 0 ? await join(repositoryNotesDir, ...directories) : repositoryNotesDir
-      const repositoryFilePath = await join(repositoryTargetDir, fileName)
-      if (repositoryFilePath !== filePath) {
-        try {
-          await remove(repositoryFilePath)
-        } catch (error) {
-          if (!isMissingFsEntryError(error)) {
-            throw error
-          }
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to remove repository note copy', error)
-    }
-  }
 }

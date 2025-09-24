@@ -9,7 +9,6 @@ vi.mock('../src/lib/storage-path', async () => {
   return {
     ...actual,
     loadStoredDataPath: vi.fn(() => null),
-    loadStoredRepositoryPath: vi.fn(() => null),
   }
 })
 
@@ -23,13 +22,12 @@ import {
   saveNote,
 } from '../src/lib/inspiration-notes'
 import { isTauriRuntime } from '../src/env'
-import { loadStoredDataPath, loadStoredRepositoryPath } from '../src/lib/storage-path'
+import { loadStoredDataPath } from '../src/lib/storage-path'
 import { readDir, readTextFile, writeTextFile, mkdir, remove } from '@tauri-apps/plugin-fs'
 import { appDataDir, join } from '@tauri-apps/api/path'
 
 const isTauriRuntimeMock = vi.mocked(isTauriRuntime)
 const loadStoredDataPathMock = vi.mocked(loadStoredDataPath)
-const loadStoredRepositoryPathMock = vi.mocked(loadStoredRepositoryPath)
 const readDirMock = vi.mocked(readDir)
 const readTextFileMock = vi.mocked(readTextFile)
 const writeTextFileMock = vi.mocked(writeTextFile)
@@ -66,7 +64,6 @@ describe('inspiration notes storage', () => {
     directories.clear()
     isTauriRuntimeMock.mockReturnValue(true)
     loadStoredDataPathMock.mockReturnValue(null)
-    loadStoredRepositoryPathMock.mockReturnValue(null)
     appDataDirMock.mockResolvedValue('C:/mock/AppData/Personal')
     joinMock.mockImplementation(async (...parts: string[]) => normalizePath(parts.join('/')))
     mkdirMock.mockImplementation(async (path: string) => {
@@ -143,34 +140,19 @@ describe('inspiration notes storage', () => {
     expect(created.tags).toEqual([])
   })
 
-  it('synchronizes newly created note file to repository path when configured', async () => {
-    loadStoredRepositoryPathMock.mockReturnValue('D:/Backups/KnowledgeBase')
-    const noteId = await createNoteFile('灵感/素材收集')
-
-    const storedPaths = Array.from(files.keys())
-    expect(storedPaths.some(path => path.includes('/data/notes/灵感/'))).toBe(true)
-    expect(storedPaths.some(path => path.includes('D:/Backups/KnowledgeBase/notes/灵感/'))).toBe(true)
-
-    const loaded = await loadNote(noteId)
-    expect(loaded.id).toBe(noteId)
-    expect(loadStoredRepositoryPathMock).toHaveBeenCalled()
-  })
-
   it('prevents overwriting an existing note when creating file with same path', async () => {
     const firstId = await createNoteFile('重复检查')
     await expect(createNoteFile(firstId)).rejects.toThrow('同名笔记已存在')
   })
 
-  it('creates nested folder structures locally and in repository', async () => {
-    loadStoredRepositoryPathMock.mockReturnValue('D:/Backups/KnowledgeBase')
+  it('creates nested folder structures in the local notes directory', async () => {
     const relative = await createNoteFolder('规划/2024 OKR')
     expect(relative).toBe('规划/2024-OKR')
 
+    expect(directories.has('C:/mock/AppData/Personal/data/notes')).toBe(true)
     expect(directories.has('C:/mock/AppData/Personal/data/notes/规划')).toBe(true)
     expect(directories.has('C:/mock/AppData/Personal/data/notes/规划/2024-OKR')).toBe(true)
-    expect(directories.has('D:/Backups/KnowledgeBase/notes/规划')).toBe(true)
-    expect(directories.has('D:/Backups/KnowledgeBase/notes/规划/2024-OKR')).toBe(true)
-    expect(loadStoredRepositoryPathMock).toHaveBeenCalled()
+    expect(Array.from(directories).every(path => !path.startsWith('D:/Backups'))).toBe(true)
   })
 
   it('creates markdown file and lists it from default directory', async () => {
@@ -333,59 +315,6 @@ describe('inspiration notes storage', () => {
     const listB = await listNotes()
     expect(listB).toHaveLength(1)
     expect(listB[0]?.id).toBe(second.id)
-  })
-
-  it('saves and removes repository copies when repository path is configured', async () => {
-    loadStoredDataPathMock.mockReturnValue('D:/Workspace/MyNotes')
-    loadStoredRepositoryPathMock.mockReturnValue('C:/Projects/Repo')
-
-    const saved = await saveNote({ title: '双向同步', content: '仓库副本' })
-
-    const localFilePath = normalizePath(`D:/Workspace/MyNotes/notes/${saved.id}`)
-    const repositoryFilePath = normalizePath(`C:/Projects/Repo/notes/${saved.id}`)
-
-    expect(files.get(localFilePath)).toBeDefined()
-    expect(files.get(repositoryFilePath)).toBeDefined()
-    expect(files.get(repositoryFilePath)).toBe(files.get(localFilePath))
-
-    await deleteNote(saved.id)
-
-    expect(files.has(localFilePath)).toBe(false)
-    expect(files.has(repositoryFilePath)).toBe(false)
-
-    const removedPaths = removeMock.mock.calls.map(([path]) => normalizePath(path as string))
-    expect(removedPaths).toContain(localFilePath)
-    expect(removedPaths).toContain(repositoryFilePath)
-    expect(loadStoredRepositoryPathMock).toHaveBeenCalled()
-  })
-
-  it('preserves nested directories when syncing notes to repository path', async () => {
-    loadStoredDataPathMock.mockReturnValue('D:/Workspace/MyNotes')
-    loadStoredRepositoryPathMock.mockReturnValue('C:/Projects/Repo')
-
-    const saved = await saveNote({ title: '会议记录/周会', content: '讨论纪要' })
-
-    expect(saved.id).toContain('/')
-
-    const localFilePath = normalizePath(`D:/Workspace/MyNotes/notes/${saved.id}`)
-    const repositoryFilePath = normalizePath(`C:/Projects/Repo/notes/${saved.id}`)
-
-    expect(files.has(localFilePath)).toBe(true)
-    expect(files.has(repositoryFilePath)).toBe(true)
-    expect(files.get(repositoryFilePath)).toBe(files.get(localFilePath))
-
-    expect(directories.has('D:/Workspace/MyNotes/notes/会议记录')).toBe(true)
-    expect(directories.has('C:/Projects/Repo/notes/会议记录')).toBe(true)
-
-    await deleteNote(saved.id)
-
-    expect(files.has(localFilePath)).toBe(false)
-    expect(files.has(repositoryFilePath)).toBe(false)
-
-    const removedPaths = removeMock.mock.calls.map(([path]) => normalizePath(path as string))
-    expect(removedPaths).toContain(localFilePath)
-    expect(removedPaths).toContain(repositoryFilePath)
-    expect(loadStoredRepositoryPathMock).toHaveBeenCalled()
   })
 
   it('removes note files when deleting', async () => {
