@@ -1,5 +1,4 @@
 import clsx from 'clsx'
-import ReactMarkdown, { type Components } from 'react-markdown'
 import {
   Link as LinkIcon,
   Loader2 as LoaderIcon,
@@ -37,16 +36,6 @@ import {
   type NoteDraft,
   type NoteSummary,
 } from '../../lib/inspiration-notes'
-
-const markdownComponents: Components = {
-  a: ({ node: _node, ...props }) => (
-    <a
-      {...props}
-      target="_blank"
-      rel="noopener noreferrer"
-    />
-  ),
-}
 
 function createEmptyDraft(): NoteDraft {
   return { title: '', content: '', tags: [] }
@@ -493,26 +482,6 @@ function InspirationEditor({
   )
 }
 
-type InspirationPreviewProps = {
-  content: string
-}
-
-function InspirationPreview({ content }: InspirationPreviewProps) {
-  return (
-    <div className="space-y-3 rounded-3xl border border-border bg-surface/80 p-6 shadow-inner shadow-black/10 transition dark:shadow-black/40">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-text">Markdown 预览</h3>
-        <span className="text-xs text-muted">支持链接、列表、引用等常用语法</span>
-      </div>
-      <div className="markdown-preview text-sm">
-        <ReactMarkdown components={markdownComponents}>
-          {content.trim() ? content : '（暂无内容）'}
-        </ReactMarkdown>
-      </div>
-    </div>
-  )
-}
-
 function InspirationDisabledNotice({ className }: { className?: string }) {
   return (
     <div
@@ -922,7 +891,6 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
           canDelete={Boolean(draft.id)}
           lastSavedAt={activeMeta?.updatedAt}
         />
-        <InspirationPreview content={draft.content} />
       </div>
     </div>
   )
