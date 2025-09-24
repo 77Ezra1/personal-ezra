@@ -98,6 +98,30 @@ function normalizeContent(raw: string) {
   return raw.replace(/\r\n/g, '\n')
 }
 
+function extractErrorMessage(error: unknown) {
+  if (typeof error === 'string') return error
+  if (error instanceof Error) return error.message
+  if (error && typeof error === 'object') {
+    const message = Reflect.get(error, 'message')
+    if (typeof message === 'string') {
+      return message
+    }
+  }
+  return ''
+}
+
+function isMissingFsEntryError(error: unknown) {
+  const message = extractErrorMessage(error)
+  if (!message) return false
+  return (
+    /not found/i.test(message) ||
+    /no such file/i.test(message) ||
+    /enoent/i.test(message) ||
+    /不存在/.test(message) ||
+    /cannot find the path specified/i.test(message)
+  )
+}
+
 function deriveTitleFromFileName(fileName: string) {
   const withoutExt = fileName.replace(new RegExp(`${NOTE_FILE_EXTENSION}$`, 'i'), '')
   const cleaned = withoutExt.replace(/^\d{8}(?:-\d{6})?-?/, '').replace(/[-_]+/g, ' ').trim()
@@ -500,9 +524,11 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
   if (repositoryRoot) {
     try {
       const repositoryNotesDir = await join(repositoryRoot, NOTES_DIR_NAME)
-      const repositoryFilePath = await join(repositoryNotesDir, fileName)
+      const repositoryTargetDir =
+        directories.length > 0 ? await join(repositoryNotesDir, ...directories) : repositoryNotesDir
+      await mkdir(repositoryTargetDir, { recursive: true })
+      const repositoryFilePath = await join(repositoryTargetDir, fileName)
       if (repositoryFilePath !== filePath) {
-        await mkdir(repositoryNotesDir, { recursive: true })
         await writeTextFile(repositoryFilePath, serialized)
       }
     } catch (error) {
@@ -531,17 +557,30 @@ export async function deleteNote(id: string): Promise<void> {
   const normalizedId = normalizeNoteId(id)
   const { directories, fileName } = splitNotePath(normalizedId)
   const targetDir = directories.length > 0 ? await join(dir, ...directories) : dir
-  await mkdir(targetDir, { recursive: true })
   const filePath = await join(targetDir, fileName)
-  await remove(filePath)
+  try {
+    await remove(filePath)
+  } catch (error) {
+    if (!isMissingFsEntryError(error)) {
+      throw error
+    }
+  }
 
   const repositoryRoot = loadStoredRepositoryPath()
   if (repositoryRoot) {
     try {
       const repositoryNotesDir = await join(repositoryRoot, NOTES_DIR_NAME)
-      const repositoryFilePath = await join(repositoryNotesDir, fileName)
+      const repositoryTargetDir =
+        directories.length > 0 ? await join(repositoryNotesDir, ...directories) : repositoryNotesDir
+      const repositoryFilePath = await join(repositoryTargetDir, fileName)
       if (repositoryFilePath !== filePath) {
-        await remove(repositoryFilePath)
+        try {
+          await remove(repositoryFilePath)
+        } catch (error) {
+          if (!isMissingFsEntryError(error)) {
+            throw error
+          }
+        }
       }
     } catch (error) {
       console.warn('Failed to remove repository note copy', error)
