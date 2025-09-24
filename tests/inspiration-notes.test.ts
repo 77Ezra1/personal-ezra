@@ -153,6 +153,7 @@ describe('inspiration notes storage', () => {
 
     const loaded = await loadNote(noteId)
     expect(loaded.id).toBe(noteId)
+    expect(loadStoredRepositoryPathMock).toHaveBeenCalled()
   })
 
   it('prevents overwriting an existing note when creating file with same path', async () => {
@@ -169,6 +170,7 @@ describe('inspiration notes storage', () => {
     expect(directories.has('C:/mock/AppData/Personal/data/notes/规划/2024-OKR')).toBe(true)
     expect(directories.has('D:/Backups/KnowledgeBase/notes/规划')).toBe(true)
     expect(directories.has('D:/Backups/KnowledgeBase/notes/规划/2024-OKR')).toBe(true)
+    expect(loadStoredRepositoryPathMock).toHaveBeenCalled()
   })
 
   it('creates markdown file and lists it from default directory', async () => {
@@ -354,6 +356,7 @@ describe('inspiration notes storage', () => {
     const removedPaths = removeMock.mock.calls.map(([path]) => normalizePath(path as string))
     expect(removedPaths).toContain(localFilePath)
     expect(removedPaths).toContain(repositoryFilePath)
+    expect(loadStoredRepositoryPathMock).toHaveBeenCalled()
   })
 
   it('preserves nested directories when syncing notes to repository path', async () => {
@@ -382,6 +385,7 @@ describe('inspiration notes storage', () => {
     const removedPaths = removeMock.mock.calls.map(([path]) => normalizePath(path as string))
     expect(removedPaths).toContain(localFilePath)
     expect(removedPaths).toContain(repositoryFilePath)
+    expect(loadStoredRepositoryPathMock).toHaveBeenCalled()
   })
 
   it('removes note files when deleting', async () => {
