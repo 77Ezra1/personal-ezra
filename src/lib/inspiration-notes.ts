@@ -2,7 +2,11 @@ import { mkdir, readDir, readTextFile, remove, writeTextFile } from '@tauri-apps
 import { appDataDir, join } from '@tauri-apps/api/path'
 
 import { isTauriRuntime } from '../env'
-import { DEFAULT_DATA_DIR_SEGMENTS, loadStoredDataPath } from './storage-path'
+import {
+  DEFAULT_DATA_DIR_SEGMENTS,
+  loadStoredDataPath,
+  loadStoredRepositoryPath,
+} from './storage-path'
 
 export const NOTES_DIR_NAME = 'notes'
 export const NOTE_FILE_EXTENSION = '.md'
