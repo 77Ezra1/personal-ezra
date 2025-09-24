@@ -22,8 +22,9 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type MutableRefObject,
+  type ComponentPropsWithoutRef,
 } from 'react'
-import ReactMarkdown, { type Components } from 'react-markdown'
+import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown'
 
 import { isTauriRuntime } from '../../env'
 import { useToast } from '../../components/ToastProvider'
@@ -306,6 +307,10 @@ type InspirationEditorProps = {
   lastSavedAt?: number
 }
 
+type MarkdownCodeProps = ComponentPropsWithoutRef<'code'> & ExtraProps & {
+  inline?: boolean
+}
+
 const markdownComponents: Components = {
   h1: ({ node: _node, ...props }) => (
     <h1 className="mt-6 text-2xl font-semibold text-text first:mt-0" {...props} />
@@ -347,7 +352,7 @@ const markdownComponents: Components = {
   pre: ({ node: _node, ...props }) => (
     <pre className="overflow-x-auto rounded-2xl bg-surface-hover p-4 text-xs leading-relaxed text-text" {...props} />
   ),
-  code: ({ node: _node, inline, className, children, ...props }) => {
+  code: ({ node: _node, inline, className, children, ...props }: MarkdownCodeProps) => {
     if (inline) {
       return (
         <code
@@ -534,12 +539,9 @@ function InspirationEditor({
             aria-live="polite"
           >
             {hasContent ? (
-              <ReactMarkdown
-                className="flex flex-col gap-3 text-sm leading-relaxed text-text"
-                components={markdownComponents}
-              >
-                {draft.content}
-              </ReactMarkdown>
+              <div className="flex flex-col gap-3 text-sm leading-relaxed text-text">
+                <ReactMarkdown components={markdownComponents}>{draft.content}</ReactMarkdown>
+              </div>
             ) : (
               <p className="text-sm text-muted">Markdown 预览将在此显示。</p>
             )}
