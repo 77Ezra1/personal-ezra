@@ -14,6 +14,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -183,6 +184,18 @@ function InspirationNoteList({
 }: InspirationNoteListProps) {
   const hasSearch = Boolean(searchTerm.trim())
   const hasActiveFilters = hasTagFilter || hasSearch
+  const MAX_VISIBLE = 8
+  const [expanded, setExpanded] = useState(false)
+  const listId = useId()
+  const canExpand = notes.length > MAX_VISIBLE
+  const displayedNotes = !canExpand || expanded ? notes : notes.slice(0, MAX_VISIBLE)
+  const isCollapsed = canExpand && !expanded
+
+  useEffect(() => {
+    if (!canExpand && expanded) {
+      setExpanded(false)
+    }
+  }, [canExpand, expanded])
 
   let statusText = `${totalCount} 条`
   if (hasActiveFilters) {
@@ -201,50 +214,80 @@ function InspirationNoteList({
         <span>笔记列表</span>
         <span>{statusText}</span>
       </div>
-      <div className="flex flex-col gap-2">
-        {loading && notes.length === 0 ? (
-          <div className="space-y-2">
-            {[0, 1, 2].map(index => (
-              <div
-                key={index}
-                className="h-12 animate-pulse rounded-2xl border border-border/60 bg-surface/60"
-              />
-            ))}
-          </div>
-        ) : notes.length === 0 ? (
-          <div className="rounded-2xl border border-border/60 bg-surface/80 px-4 py-6 text-sm text-muted">
-            {hasActiveFilters
-              ? '未找到匹配的笔记，请调整标签筛选或搜索关键字。'
-              : '暂无笔记，点击“新建笔记”开始记录灵感。'}
-          </div>
-        ) : (
-          notes.map(note => (
-            <button
-              key={note.id}
-              type="button"
-              onClick={() => onSelect(note.id)}
-              className={clsx(
-                'group flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-border/60 bg-surface/80 px-3 py-2 text-left transition hover:border-border hover:bg-surface-hover',
-                selectedId === note.id && 'border-primary bg-primary/10 text-primary',
-              )}
-            >
-              <span className="min-w-0 flex-1 text-sm font-medium text-text group-hover:text-text">{note.title}</span>
-              {note.tags.length > 0 && (
-                <div className="flex shrink-0 flex-wrap items-center gap-1">
-                  {note.tags.map(tag => (
-                    <span
-                      key={tag}
-                      className="inline-flex items-center rounded-full border border-border/60 bg-surface px-1.5 py-0.5 text-[0.65rem] font-semibold text-muted transition group-hover:text-muted"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </button>
-          ))
+      <div
+        className={clsx(
+          'relative transition-all',
+          isCollapsed && 'max-h-96 overflow-hidden',
+          canExpand && expanded && 'max-h-none overflow-y-auto',
+        )}
+      >
+        <div
+          id={listId}
+          className={clsx('flex flex-col gap-2', isCollapsed && 'pb-6')}
+        >
+          {loading && notes.length === 0 ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map(index => (
+                <div
+                  key={index}
+                  className="h-12 animate-pulse rounded-2xl border border-border/60 bg-surface/60"
+                />
+              ))}
+            </div>
+          ) : notes.length === 0 ? (
+            <div className="rounded-2xl border border-border/60 bg-surface/80 px-4 py-6 text-sm text-muted">
+              {hasActiveFilters
+                ? '未找到匹配的笔记，请调整标签筛选或搜索关键字。'
+                : '暂无笔记，点击“新建笔记”开始记录灵感。'}
+            </div>
+          ) : (
+            displayedNotes.map(note => (
+              <button
+                key={note.id}
+                type="button"
+                onClick={() => onSelect(note.id)}
+                className={clsx(
+                  'group flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-border/60 bg-surface/80 px-3 py-2 text-left transition hover:border-border hover:bg-surface-hover',
+                  selectedId === note.id && 'border-primary bg-primary/10 text-primary',
+                )}
+              >
+                <span className="min-w-0 flex-1 text-sm font-medium text-text group-hover:text-text">{note.title}</span>
+                {note.tags.length > 0 && (
+                  <div className="flex shrink-0 flex-wrap items-center gap-1">
+                    {note.tags.map(tag => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center rounded-full border border-border/60 bg-surface px-1.5 py-0.5 text-[0.65rem] font-semibold text-muted transition group-hover:text-muted"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+        {isCollapsed && (
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-surface via-surface/90 to-transparent dark:from-surface dark:via-surface/80"
+            aria-hidden
+          />
         )}
       </div>
+      {canExpand && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => setExpanded(prev => !prev)}
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition hover:border-border/70 hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            aria-expanded={expanded}
+            aria-controls={listId}
+          >
+            {expanded ? '收起' : '展开全部'}
+          </button>
+        </div>
+      )}
     </section>
   )
 }
