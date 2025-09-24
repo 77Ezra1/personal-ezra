@@ -69,12 +69,21 @@ function sanitizeTitle(raw: string) {
 
 function slugifyTitle(raw: string) {
   const sanitized = sanitizeTitle(raw)
-    .replace(/[<>:"/\\|?*]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  const truncated = sanitized.slice(0, 60)
-  return truncated || 'note'
+  const segments = sanitized
+    .split('/')
+    .map(segment =>
+      segment
+        .trim()
+        .replace(/[<>:"\\|?*]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 60),
+    )
+    .filter(Boolean)
+    .map(segment => (segment === '.' || segment === '..' ? 'note' : segment))
+  const slug = segments.join('/')
+  return slug || 'note'
 }
 
 function formatTimestamp(value: number) {
@@ -201,20 +210,57 @@ function parseTagsValue(raw: string) {
 }
 
 async function generateUniqueFileName(dir: string, title: string, timestamp: number) {
-  const existingEntries = await readDir(dir)
+  const slug = slugifyTitle(title)
+  const segments = slug.split('/').filter(Boolean)
+  const directories = segments.slice(0, -1)
+  const baseSlug = segments[segments.length - 1] || 'note'
+  const prefix = `${formatTimestamp(timestamp)}-${baseSlug}`
+
+  const targetDir = directories.length > 0 ? await join(dir, ...directories) : dir
+  let existingEntries: Awaited<ReturnType<typeof readDir>> = []
+  try {
+    existingEntries = await readDir(targetDir)
+  } catch {
+    existingEntries = []
+  }
+
   const existing = new Set(
     existingEntries.filter(entry => entry.isFile).map(entry => entry.name.toLowerCase()),
   )
 
-  const slug = slugifyTitle(title)
-  const prefix = `${formatTimestamp(timestamp)}-${slug}`
   let candidate = `${prefix}${NOTE_FILE_EXTENSION}`
   let counter = 1
   while (existing.has(candidate.toLowerCase())) {
     candidate = `${prefix}-${counter}${NOTE_FILE_EXTENSION}`
     counter += 1
   }
-  return candidate
+
+  const relativePath = directories.length > 0 ? `${directories.join('/')}/${candidate}` : candidate
+  return relativePath
+}
+
+async function collectNoteFiles(
+  baseDir: string,
+  relativeSegments: string[] = [],
+): Promise<string[]> {
+  const currentDir = relativeSegments.length > 0 ? await join(baseDir, ...relativeSegments) : baseDir
+  let entries: Awaited<ReturnType<typeof readDir>> = []
+  try {
+    entries = await readDir(currentDir)
+  } catch {
+    return []
+  }
+
+  const files: string[] = []
+  for (const entry of entries) {
+    if (entry.isFile && entry.name.toLowerCase().endsWith(NOTE_FILE_EXTENSION)) {
+      files.push([...relativeSegments, entry.name].join('/'))
+    } else if (entry.isDirectory) {
+      const nested = await collectNoteFiles(baseDir, [...relativeSegments, entry.name])
+      files.push(...nested)
+    }
+  }
+  return files
 }
 
 function normalizeNoteId(id: string) {
@@ -222,10 +268,46 @@ function normalizeNoteId(id: string) {
   if (!trimmed) {
     throw new Error('无效的笔记标识')
   }
-  if (/[\\/]/.test(trimmed)) {
+  if (trimmed.includes('\\')) {
     throw new Error('笔记标识不允许包含路径分隔符')
   }
-  return trimmed.endsWith(NOTE_FILE_EXTENSION) ? trimmed : `${trimmed}${NOTE_FILE_EXTENSION}`
+
+  if (trimmed.startsWith('/') || trimmed.endsWith('/')) {
+    throw new Error('笔记标识不允许以路径分隔符开头或结尾')
+  }
+
+  const rawSegments = trimmed.split('/')
+  if (rawSegments.some(segment => segment.trim() === '')) {
+    throw new Error('笔记标识包含无效的路径片段')
+  }
+
+  const segments = rawSegments.map(segment => segment.trim())
+  for (const segment of segments) {
+    if (segment === '.' || segment === '..') {
+      throw new Error('笔记标识包含非法的路径片段')
+    }
+  }
+
+  const lastSegment = segments[segments.length - 1]
+  const hasExtension = lastSegment
+    .toLowerCase()
+    .endsWith(NOTE_FILE_EXTENSION.toLowerCase())
+  if (!hasExtension) {
+    segments[segments.length - 1] = `${lastSegment}${NOTE_FILE_EXTENSION}`
+  }
+
+  return segments.join('/')
+}
+
+function splitNotePath(notePath: string): { directories: string[]; fileName: string } {
+  const rawSegments = notePath.split('/')
+  const segments = rawSegments.filter(segment => segment.length > 0)
+  if (segments.length === 0) {
+    throw new Error('无效的笔记路径')
+  }
+  const fileName = segments[segments.length - 1]!
+  const directories = segments.slice(0, -1)
+  return { directories, fileName }
 }
 
 function parseNumber(value?: string) {
@@ -300,49 +382,48 @@ function serializeNoteFile(
 export async function listNotes(): Promise<NoteSummary[]> {
   assertTauriRuntime()
   const dir = await ensureNotesDirectory()
-  const entries = await readDir(dir)
+  const files = await collectNoteFiles(dir)
 
   const summaries = await Promise.all(
-    entries
-      .filter(entry => entry.isFile && entry.name.toLowerCase().endsWith(NOTE_FILE_EXTENSION))
-      .map(async entry => {
-        const filePath = await join(dir, entry.name)
-        try {
-          const fileText = await readTextFile(filePath)
-          const parsed = parseFrontMatter(fileText)
-          const now = Date.now()
-          const title = sanitizeTitle(parsed.metadata.title ?? deriveTitleFromFileName(entry.name))
-          const createdAt = parsed.metadata.createdAt ?? parsed.metadata.updatedAt ?? now
-          const updatedAt = parsed.metadata.updatedAt ?? createdAt
-          const excerpt = generateExcerpt(parsed.content)
-          const metadataTags = parsed.metadata.tags ?? []
-          const contentTags = extractTagsFromContent(parsed.content)
-          const tags = sanitizeTags([...metadataTags, ...contentTags])
-          const searchText = createSearchText(title, parsed.content, tags)
-          const summary: NoteSummary = {
-            id: entry.name,
-            title,
-            createdAt,
-            updatedAt,
-            excerpt,
-            searchText,
-            tags,
-          }
-          return summary
-        } catch (error) {
-          console.warn('Failed to parse inspiration note', error)
-          const fallback: NoteSummary = {
-            id: entry.name,
-            title: deriveTitleFromFileName(entry.name),
-            createdAt: 0,
-            updatedAt: 0,
-            excerpt: '',
-            searchText: '',
-            tags: [],
-          }
-          return fallback
+    files.map(async relativePath => {
+      const { directories, fileName } = splitNotePath(relativePath)
+      const filePath = await join(dir, ...directories, fileName)
+      try {
+        const fileText = await readTextFile(filePath)
+        const parsed = parseFrontMatter(fileText)
+        const now = Date.now()
+        const title = sanitizeTitle(parsed.metadata.title ?? deriveTitleFromFileName(fileName))
+        const createdAt = parsed.metadata.createdAt ?? parsed.metadata.updatedAt ?? now
+        const updatedAt = parsed.metadata.updatedAt ?? createdAt
+        const excerpt = generateExcerpt(parsed.content)
+        const metadataTags = parsed.metadata.tags ?? []
+        const contentTags = extractTagsFromContent(parsed.content)
+        const tags = sanitizeTags([...metadataTags, ...contentTags])
+        const searchText = createSearchText(title, parsed.content, tags)
+        const summary: NoteSummary = {
+          id: relativePath,
+          title,
+          createdAt,
+          updatedAt,
+          excerpt,
+          searchText,
+          tags,
         }
-      }),
+        return summary
+      } catch (error) {
+        console.warn('Failed to parse inspiration note', error)
+        const fallback: NoteSummary = {
+          id: relativePath,
+          title: deriveTitleFromFileName(fileName),
+          createdAt: 0,
+          updatedAt: 0,
+          excerpt: '',
+          searchText: '',
+          tags: [],
+        }
+        return fallback
+      }
+    }),
   )
 
   summaries.sort((a, b) => {
@@ -357,8 +438,9 @@ export async function listNotes(): Promise<NoteSummary[]> {
 export async function loadNote(id: string): Promise<NoteDetail> {
   assertTauriRuntime()
   const dir = await ensureNotesDirectory()
-  const fileName = normalizeNoteId(id)
-  const filePath = await join(dir, fileName)
+  const normalizedId = normalizeNoteId(id)
+  const { directories, fileName } = splitNotePath(normalizedId)
+  const filePath = await join(dir, ...directories, fileName)
   const fileText = await readTextFile(filePath)
   const parsed = parseFrontMatter(fileText)
   const now = Date.now()
@@ -371,7 +453,7 @@ export async function loadNote(id: string): Promise<NoteDetail> {
   const tags = sanitizeTags([...metadataTags, ...contentTags])
   const searchText = createSearchText(title, content, tags)
   return {
-    id: fileName,
+    id: normalizedId,
     title,
     createdAt,
     updatedAt,
@@ -392,7 +474,7 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
   const contentTags = extractTagsFromContent(rawContent)
   const tags = sanitizeTags([...draftTags, ...contentTags])
 
-  let fileName = draft.id ? normalizeNoteId(draft.id) : await generateUniqueFileName(dir, title, now)
+  let notePath = draft.id ? normalizeNoteId(draft.id) : await generateUniqueFileName(dir, title, now)
   let createdAt = now
 
   if (draft.id) {
@@ -400,7 +482,7 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
       const existing = await loadNote(draft.id)
       createdAt = existing.createdAt
       // 使用原有文件名，避免外部引用失效
-      fileName = existing.id
+      notePath = existing.id
     } catch (error) {
       console.warn('Failed to load existing inspiration note, creating a new file instead', error)
     }
@@ -408,14 +490,17 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
 
   const meta = { title, createdAt, updatedAt: now, tags }
   const serialized = serializeNoteFile(meta, rawContent)
-  const filePath = await join(dir, fileName)
+  const { directories, fileName } = splitNotePath(notePath)
+  const targetDir = directories.length > 0 ? await join(dir, ...directories) : dir
+  await mkdir(targetDir, { recursive: true })
+  const filePath = await join(targetDir, fileName)
   await writeTextFile(filePath, serialized)
 
   const normalizedContent = normalizeContent(rawContent)
   const searchText = createSearchText(title, normalizedContent, tags)
 
   return {
-    id: fileName,
+    id: notePath,
     title,
     createdAt,
     updatedAt: now,
@@ -429,7 +514,10 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
 export async function deleteNote(id: string): Promise<void> {
   assertTauriRuntime()
   const dir = await ensureNotesDirectory()
-  const fileName = normalizeNoteId(id)
-  const filePath = await join(dir, fileName)
+  const normalizedId = normalizeNoteId(id)
+  const { directories, fileName } = splitNotePath(normalizedId)
+  const targetDir = directories.length > 0 ? await join(dir, ...directories) : dir
+  await mkdir(targetDir, { recursive: true })
+  const filePath = await join(targetDir, fileName)
   await remove(filePath)
 }

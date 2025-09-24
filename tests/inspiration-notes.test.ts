@@ -41,6 +41,17 @@ function normalizePath(path: string) {
   return path.replace(/\\/g, '/')
 }
 
+function trackDirectory(directories: Set<string>, path: string) {
+  const normalized = normalizePath(path)
+  const parts = normalized.split('/')
+  let current = ''
+  for (const part of parts) {
+    if (!part) continue
+    current = current ? `${current}/${part}` : part
+    directories.add(current)
+  }
+}
+
 describe('inspiration notes storage', () => {
   const files: FileMap = new Map()
   const directories = new Set<string>()
@@ -54,14 +65,14 @@ describe('inspiration notes storage', () => {
     appDataDirMock.mockResolvedValue('C:/mock/AppData/Personal')
     joinMock.mockImplementation(async (...parts: string[]) => normalizePath(parts.join('/')))
     mkdirMock.mockImplementation(async (path: string) => {
-      directories.add(normalizePath(path))
+      trackDirectory(directories, path)
     })
     writeTextFileMock.mockImplementation(async (path: string, contents: string) => {
       const normalized = normalizePath(path)
       files.set(normalized, contents)
       const index = normalized.lastIndexOf('/')
       if (index > 0) {
-        directories.add(normalizePath(normalized.slice(0, index)))
+        trackDirectory(directories, normalized.slice(0, index))
       }
     })
     readTextFileMock.mockImplementation(async (path: string) => {
@@ -173,6 +184,7 @@ describe('inspiration notes storage', () => {
       '下一行还有 #更多 想法。',
     ].join('\n')
     files.set(normalizePath(manualPath), manualContents)
+    trackDirectory(directories, manualPath.slice(0, manualPath.lastIndexOf('/')))
 
     const summaries = await listNotes()
     expect(summaries).toHaveLength(1)
@@ -195,6 +207,7 @@ describe('inspiration notes storage', () => {
       '正文新增 #补充 标签，仍保留 #已有 标签。',
     ].join('\n')
     files.set(normalizePath(manualPath), manualContents)
+    trackDirectory(directories, manualPath.slice(0, manualPath.lastIndexOf('/')))
 
     const summaries = await listNotes()
     expect(summaries).toHaveLength(1)
@@ -202,6 +215,46 @@ describe('inspiration notes storage', () => {
 
     const loaded = await loadNote(summaries[0]!.id)
     expect(loaded.tags).toEqual(['已有', '补充'])
+  })
+
+  it('supports managing notes stored in nested directories', async () => {
+    const saved = await saveNote({
+      title: '产品规划/路线图',
+      content: '# 初稿内容\n- 聚焦 #目标A',
+      tags: ['路线'],
+    })
+
+    expect(saved.id).toMatch(/\//)
+    expect(saved.id.endsWith('.md')).toBe(true)
+    const storedPaths = Array.from(files.keys())
+    expect(storedPaths.some(path => path.includes('/notes/产品规划/'))).toBe(true)
+
+    const summaries = await listNotes()
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]?.id).toBe(saved.id)
+
+    const loaded = await loadNote(saved.id)
+    expect(loaded.content).toContain('# 初稿内容')
+    expect(loaded.tags).toEqual(['路线', '目标A'])
+
+    const updated = await saveNote({
+      id: saved.id,
+      title: '产品规划/路线图',
+      content: '# 修订版\n- 聚焦 #目标B',
+      tags: ['路线'],
+    })
+    expect(updated.id).toBe(saved.id)
+    const updatedPaths = Array.from(files.keys())
+    expect(updatedPaths.some(path => path.includes('/notes/产品规划/'))).toBe(true)
+
+    const reloaded = await loadNote(updated.id)
+    expect(reloaded.content).toContain('# 修订版')
+    expect(reloaded.tags).toEqual(['路线', '目标B'])
+
+    await deleteNote(saved.id)
+    expect(files.size).toBe(0)
+    const afterDelete = await listNotes()
+    expect(afterDelete).toHaveLength(0)
   })
 
   it('honours custom data path when saving and reading notes', async () => {
