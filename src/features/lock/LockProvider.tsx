@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { useAuthStore } from '../../stores/auth'
 
@@ -11,24 +11,19 @@ type LockContextValue = {
 const LockContext = createContext<LockContextValue | undefined>(undefined)
 
 export function LockProvider({ children }: { children: ReactNode }) {
-  const email = useAuthStore(s => s.email)
-  const [locked, setLocked] = useState(false)
+  const locked = useAuthStore(state => (state.email ? state.locked : false))
+  const lockSession = useAuthStore(state => state.lockSession)
 
   const lock = useCallback(() => {
-    if (!email) return
-    setLocked(true)
-    useAuthStore.setState({ encryptionKey: null })
-  }, [email])
+    lockSession()
+  }, [lockSession])
 
   const unlock = useCallback(() => {
-    setLocked(false)
-  }, [])
-
-  useEffect(() => {
-    if (!email) {
-      setLocked(false)
+    const { encryptionKey } = useAuthStore.getState()
+    if (encryptionKey) {
+      useAuthStore.setState({ locked: false })
     }
-  }, [email])
+  }, [])
 
   const value = useMemo(() => ({ locked, lock, unlock }), [locked, lock, unlock])
 

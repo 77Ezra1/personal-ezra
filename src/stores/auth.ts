@@ -44,12 +44,21 @@ type ProfileUpdatePayload = {
   avatar: UserAvatarMeta | null
 }
 
+type SessionPersistencePayload = {
+  email: string
+  key?: Uint8Array | null
+  locked?: boolean
+}
+
+type RestoredSession = { email: string; key: Uint8Array | null; locked: boolean }
+
 type AuthState = {
   email: string | null
   encryptionKey: Uint8Array | null
   initialized: boolean
   profile: UserProfile | null
   mustChangePassword: boolean
+  locked: boolean
   init: () => Promise<void>
   register: (email: string, password: string) => Promise<AuthResult>
   login: (email: string, password: string) => Promise<AuthResult>
@@ -60,19 +69,34 @@ type AuthState = {
   recoverPassword: (payload: RecoverPasswordPayload) => Promise<AuthResult>
   deleteAccount: (password: string) => Promise<AuthResult>
   revealMnemonic: (password: string) => Promise<MnemonicResult>
+  lockSession: () => void
 }
 
-function saveSession(email: string, key: Uint8Array) {
+function saveSession(payload: SessionPersistencePayload) {
   if (typeof window === 'undefined') return
   try {
-    const payload = JSON.stringify({ email, key: toBase64(key) })
-    window.localStorage.setItem(SESSION_STORAGE_KEY, payload)
+    const locked = payload.locked === true ? true : false
+    const data: { email: string; locked: boolean; key?: string } = {
+      email: payload.email,
+      locked,
+    }
+
+    if (!locked) {
+      const { key } = payload
+      if (!(key instanceof Uint8Array) || key.length === 0) {
+        console.error('Failed to persist session: missing encryption key for unlocked session')
+        return
+      }
+      data.key = toBase64(key)
+    }
+
+    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(data))
   } catch (error) {
     console.error('Failed to persist session', error)
   }
 }
 
-function restoreSession(): { email: string; key: Uint8Array } | null {
+function restoreSession(): RestoredSession | null {
   if (typeof window === 'undefined') return null
   try {
     const raw = window.localStorage.getItem(SESSION_STORAGE_KEY)
@@ -81,13 +105,23 @@ function restoreSession(): { email: string; key: Uint8Array } | null {
     if (
       !parsed ||
       typeof parsed !== 'object' ||
-      typeof (parsed as { email?: unknown }).email !== 'string' ||
-      typeof (parsed as { key?: unknown }).key !== 'string'
+      typeof (parsed as { email?: unknown }).email !== 'string'
     ) {
       return null
     }
-    const { email, key } = parsed as { email: string; key: string }
-    return { email, key: fromBase64(key) }
+    const { email } = parsed as { email: string }
+    const lockedValue = (parsed as { locked?: unknown }).locked
+    const locked = typeof lockedValue === 'boolean' ? lockedValue : false
+    const keyValue = (parsed as { key?: unknown }).key
+
+    if (!locked) {
+      if (typeof keyValue !== 'string' || !keyValue) {
+        return null
+      }
+      return { email, key: fromBase64(keyValue), locked }
+    }
+
+    return { email, key: null, locked }
   } catch (error) {
     console.error('Failed to restore session', error)
     return null
@@ -137,6 +171,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   initialized: false,
   profile: null,
   mustChangePassword: false,
+  locked: false,
   async init() {
     try {
       await db.open()
@@ -144,23 +179,46 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (session) {
         const record = await db.users.get(session.email)
         if (record) {
+          const nextKey = !session.locked && session.key ? session.key : null
           set({
             email: session.email,
-            encryptionKey: session.key,
+            encryptionKey: nextKey,
             profile: mapRecordToProfile(record),
             mustChangePassword: Boolean(record.mustChangePassword),
             initialized: true,
+            locked: session.locked,
           })
         } else {
           clearSession()
-          set({ email: null, encryptionKey: null, profile: null, mustChangePassword: false, initialized: true })
+          set({
+            email: null,
+            encryptionKey: null,
+            profile: null,
+            mustChangePassword: false,
+            initialized: true,
+            locked: false,
+          })
         }
       } else {
-        set({ email: null, encryptionKey: null, profile: null, mustChangePassword: false, initialized: true })
+        set({
+          email: null,
+          encryptionKey: null,
+          profile: null,
+          mustChangePassword: false,
+          initialized: true,
+          locked: false,
+        })
       }
     } catch (error) {
       console.error('Failed to initialize auth store', error)
-      set({ email: null, encryptionKey: null, profile: null, mustChangePassword: false, initialized: true })
+      set({
+        email: null,
+        encryptionKey: null,
+        profile: null,
+        mustChangePassword: false,
+        initialized: true,
+        locked: false,
+      })
     }
   },
   async register(rawEmail, password) {
@@ -196,12 +254,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       updatedAt: now,
     }
     await db.users.put(record)
-    saveSession(email, key)
+    saveSession({ email, key, locked: false })
     set({
       email,
       encryptionKey: key,
       profile: mapRecordToProfile(record),
       mustChangePassword: true,
+      locked: false,
     })
     return { success: true, mustChangePassword: true }
   },
@@ -220,19 +279,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (hash !== record.keyHash) {
       return { success: false, message: '密码错误' }
     }
-    saveSession(email, key)
+    saveSession({ email, key, locked: false })
     const mustChangePassword = Boolean(record.mustChangePassword)
     set({
       email,
       encryptionKey: key,
       profile: mapRecordToProfile(record),
       mustChangePassword,
+      locked: false,
     })
     return { success: true, mustChangePassword }
   },
   async logout() {
     clearSession()
-    set({ email: null, encryptionKey: null, profile: null, mustChangePassword: false })
+    set({ email: null, encryptionKey: null, profile: null, mustChangePassword: false, locked: false })
+  },
+  lockSession() {
+    const { email } = get()
+    if (!email) return
+    saveSession({ email, locked: true })
+    set({ encryptionKey: null, locked: true })
   },
   async loadProfile() {
     const { email } = get()
@@ -385,11 +451,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         updatedAt: now,
       }
       await db.users.put(nextRecord)
-      saveSession(email, newKey)
+      saveSession({ email, key: newKey, locked: false })
       set({
         encryptionKey: newKey,
         profile: mapRecordToProfile(nextRecord),
         mustChangePassword: false,
+        locked: false,
       })
       return { success: true }
     } catch (error) {
@@ -525,8 +592,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           encryptionKey: newKey,
           profile: mapRecordToProfile(nextRecord),
           mustChangePassword: false,
+          locked: false,
         })
-        saveSession(email, newKey)
+        saveSession({ email, key: newKey, locked: false })
       }
 
       return { success: true }
@@ -616,7 +684,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       clearSession()
-      set({ email: null, encryptionKey: null, profile: null, mustChangePassword: false })
+      set({ email: null, encryptionKey: null, profile: null, mustChangePassword: false, locked: false })
       return { success: true }
     } catch (error) {
       console.error('Failed to delete account', error)
