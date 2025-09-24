@@ -1,5 +1,6 @@
 import clsx from 'clsx'
 import {
+  FilePlus as FilePlusIcon,
   FolderPlus as FolderPlusIcon,
   Link as LinkIcon,
   Loader2 as LoaderIcon,
@@ -104,7 +105,7 @@ type InspirationPanelProps = {
 }
 
 type InspirationHeaderProps = {
-  onCreate: () => void
+  onCreateFile: () => void
   onCreateFolder: () => void
   onRefresh: () => void
   loading: boolean
@@ -115,7 +116,7 @@ type InspirationHeaderProps = {
 }
 
 function InspirationHeader({
-  onCreate,
+  onCreateFile,
   onCreateFolder,
   onRefresh,
   loading,
@@ -161,14 +162,26 @@ function InspirationHeader({
               </button>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onCreate}
-            className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition hover:border-border/70 hover:bg-surface-hover"
-          >
-            <PlusIcon className="h-4 w-4" aria-hidden />
-            新建笔记
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onCreateFile}
+              className="inline-flex items-center justify-center rounded-full border border-border bg-surface p-2 text-text transition hover:border-border/70 hover:bg-surface-hover"
+              aria-label="新建 Markdown 笔记"
+              title="新建 Markdown 笔记"
+            >
+              <FilePlusIcon className="h-4 w-4" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={onCreateFolder}
+              className="inline-flex items-center justify-center rounded-full border border-border bg-surface p-2 text-text transition hover:border-border/70 hover:bg-surface-hover"
+              aria-label="新建笔记文件夹"
+              title="新建笔记文件夹"
+            >
+              <FolderPlusIcon className="h-4 w-4" aria-hidden />
+            </button>
+          </div>
           <button
             type="button"
             onClick={onCreateFolder}
@@ -862,73 +875,33 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     })
   }, [availableTags])
 
-  const handleCreateFile = useCallback(
-    async (titleOrPath?: string) => {
-      if (!isDesktop) return
-      const input = typeof titleOrPath === 'string' ? titleOrPath : ''
-      try {
-        setLoadingNote(true)
-        const relativePath = await createNoteFile(input)
-        let createdNote: Awaited<ReturnType<typeof loadNote>> | null = null
-        try {
-          createdNote = await loadNote(relativePath)
-        } catch (error) {
-          console.error('Failed to load inspiration note after creation', error)
-        }
+  const handleCreateFile = useCallback(() => {
+    setSelectedId(null)
+    setDraft(createEmptyDraft())
+    resetTagEditor()
+  }, [resetTagEditor])
 
-        if (createdNote) {
-          setDraft({ id: createdNote.id, title: createdNote.title, content: createdNote.content, tags: createdNote.tags })
-          setSelectedId(createdNote.id)
-          showToast({ title: '新建成功', description: '新的 Markdown 笔记已创建，可立即开始编辑。', variant: 'success' })
-        } else {
-          setDraft({ id: relativePath, title: '', content: '', tags: [] })
-          setSelectedId(relativePath)
-          showToast({ title: '笔记已创建', description: '文件已写入，但加载失败，请稍后重试。', variant: 'error' })
-        }
-        resetTagEditor()
-        await refreshNotes()
-      } catch (err) {
-        console.error('Failed to create inspiration note file', err)
-        const message = err instanceof Error ? err.message : '创建笔记失败，请稍后再试。'
-        showToast({ title: '创建失败', description: message, variant: 'error' })
-      } finally {
-        setLoadingNote(false)
-      }
-    },
-    [isDesktop, refreshNotes, resetTagEditor, showToast],
-  )
-
-  const handleCreateFolder = useCallback(
-    async (path?: string) => {
-      if (!isDesktop) return
-      const rawValue =
-        typeof path === 'string'
-          ? path
-          : window.prompt('请输入要创建的文件夹路径（例如：项目/会议纪要）')
-      if (typeof path === 'undefined' && rawValue === null) {
-        return
-      }
-      const trimmed = (rawValue ?? '').trim()
-      if (!trimmed) {
-        showToast({ title: '创建失败', description: '文件夹名称不能为空。', variant: 'error' })
-        return
-      }
-      try {
-        const relativePath = await createNoteFolder(trimmed)
-        showToast({
-          title: '文件夹已创建',
-          description: `成功创建 ${relativePath}。`,
-          variant: 'success',
-        })
-        await refreshNotes()
-      } catch (err) {
-        console.error('Failed to create inspiration note folder', err)
-        const message = err instanceof Error ? err.message : '创建文件夹失败，请稍后再试。'
-        showToast({ title: '创建失败', description: message, variant: 'error' })
-      }
-    },
-    [isDesktop, refreshNotes, showToast],
-  )
+  const handleCreateFolder = useCallback(() => {
+    if (typeof window === 'undefined') return
+    const folderName = window.prompt('请输入要创建的文件夹名称（可使用 / 表示层级）')
+    if (!folderName) return
+    const normalized = folderName
+      .split('/')
+      .map(segment => segment.trim())
+      .filter(Boolean)
+      .join('/')
+    if (!normalized) return
+    const draftTemplate = createEmptyDraft()
+    draftTemplate.title = `${normalized}/`
+    setSelectedId(null)
+    setDraft(draftTemplate)
+    resetTagEditor()
+    showToast({
+      title: '已准备新建文件夹',
+      description: '已为新文件夹插入路径前缀，请继续输入笔记名称后保存。',
+      variant: 'info',
+    })
+  }, [resetTagEditor, showToast])
 
   const handleTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const { value } = event.currentTarget
@@ -1161,12 +1134,8 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     >
       <div className="flex flex-col gap-6 lg:col-span-2">
         <InspirationHeader
-          onCreate={() => {
-            void handleCreateFile('')
-          }}
-          onCreateFolder={() => {
-            void handleCreateFolder()
-          }}
+          onCreateFile={handleCreateFile}
+          onCreateFolder={handleCreateFolder}
           onRefresh={() => {
             void refreshNotes()
           }}
