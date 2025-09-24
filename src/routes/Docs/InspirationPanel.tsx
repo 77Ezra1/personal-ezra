@@ -1,5 +1,7 @@
 import clsx from 'clsx'
 import {
+  FilePlus as FilePlusIcon,
+  FolderPlus as FolderPlusIcon,
   Link as LinkIcon,
   Loader2 as LoaderIcon,
   Pencil as PencilIcon,
@@ -71,7 +73,8 @@ type InspirationPanelProps = {
 }
 
 type InspirationHeaderProps = {
-  onCreate: () => void
+  onCreateFile: () => void
+  onCreateFolder: () => void
   onRefresh: () => void
   loading: boolean
   error: string | null
@@ -81,7 +84,8 @@ type InspirationHeaderProps = {
 }
 
 function InspirationHeader({
-  onCreate,
+  onCreateFile,
+  onCreateFolder,
   onRefresh,
   loading,
   error,
@@ -126,14 +130,26 @@ function InspirationHeader({
               </button>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onCreate}
-            className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition hover:border-border/70 hover:bg-surface-hover"
-          >
-            <PlusIcon className="h-4 w-4" aria-hidden />
-            新建笔记
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onCreateFile}
+              className="inline-flex items-center justify-center rounded-full border border-border bg-surface p-2 text-text transition hover:border-border/70 hover:bg-surface-hover"
+              aria-label="新建 Markdown 笔记"
+              title="新建 Markdown 笔记"
+            >
+              <FilePlusIcon className="h-4 w-4" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={onCreateFolder}
+              className="inline-flex items-center justify-center rounded-full border border-border bg-surface p-2 text-text transition hover:border-border/70 hover:bg-surface-hover"
+              aria-label="新建笔记文件夹"
+              title="新建笔记文件夹"
+            >
+              <FolderPlusIcon className="h-4 w-4" aria-hidden />
+            </button>
+          </div>
           <button
             type="button"
             onClick={onRefresh}
@@ -724,11 +740,33 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     })
   }, [availableTags])
 
-  const handleCreate = useCallback(() => {
+  const handleCreateFile = useCallback(() => {
     setSelectedId(null)
     setDraft(createEmptyDraft())
     resetTagEditor()
   }, [resetTagEditor])
+
+  const handleCreateFolder = useCallback(() => {
+    if (typeof window === 'undefined') return
+    const folderName = window.prompt('请输入要创建的文件夹名称（可使用 / 表示层级）')
+    if (!folderName) return
+    const normalized = folderName
+      .split('/')
+      .map(segment => segment.trim())
+      .filter(Boolean)
+      .join('/')
+    if (!normalized) return
+    const draftTemplate = createEmptyDraft()
+    draftTemplate.title = `${normalized}/`
+    setSelectedId(null)
+    setDraft(draftTemplate)
+    resetTagEditor()
+    showToast({
+      title: '已准备新建文件夹',
+      description: '已为新文件夹插入路径前缀，请继续输入笔记名称后保存。',
+      variant: 'info',
+    })
+  }, [resetTagEditor, showToast])
 
   const handleTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const { value } = event.currentTarget
@@ -922,7 +960,8 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     >
       <div className="flex flex-col gap-6 lg:col-span-2">
         <InspirationHeader
-          onCreate={handleCreate}
+          onCreateFile={handleCreateFile}
+          onCreateFolder={handleCreateFolder}
           onRefresh={() => {
             void refreshNotes()
           }}
