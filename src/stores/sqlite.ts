@@ -15,6 +15,7 @@ import type {
   PasswordRecord,
   SiteRecord,
   UserAvatarMeta,
+  UserGithubConnection,
   UserRecord,
   UsersTable,
 } from './database'
@@ -150,6 +151,54 @@ function normalizeParams(values: unknown[]): unknown[] {
   return values.map(item => (item === undefined ? null : item))
 }
 
+function serializeGithubConnection(connection: UserRecord['github']): string | null {
+  if (!connection) return null
+  try {
+    return JSON.stringify(connection)
+  } catch (error) {
+    console.warn('Failed to serialize GitHub connection payload for SQLite storage', error)
+    return null
+  }
+}
+
+function parseGithubConnection(value: unknown): UserGithubConnection | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  try {
+    const parsed = JSON.parse(value) as Partial<UserGithubConnection>
+    if (!parsed || typeof parsed !== 'object') return null
+
+    const username = typeof parsed.username === 'string' ? parsed.username.trim() : ''
+    const tokenCipher = typeof parsed.tokenCipher === 'string' ? parsed.tokenCipher : ''
+    if (!username || !tokenCipher) {
+      return null
+    }
+
+    const connectedAt =
+      typeof parsed.connectedAt === 'number' && Number.isFinite(parsed.connectedAt)
+        ? parsed.connectedAt
+        : Date.now()
+    const updatedAt =
+      typeof parsed.updatedAt === 'number' && Number.isFinite(parsed.updatedAt)
+        ? parsed.updatedAt
+        : connectedAt
+    const lastValidationAt =
+      typeof parsed.lastValidationAt === 'number' && Number.isFinite(parsed.lastValidationAt)
+        ? parsed.lastValidationAt
+        : updatedAt
+
+    return {
+      username,
+      tokenCipher,
+      connectedAt,
+      updatedAt,
+      lastValidationAt,
+    }
+  } catch (error) {
+    console.warn('Failed to parse GitHub connection payload from SQLite', error)
+    return null
+  }
+}
+
 async function resolveDatabasePath() {
   const baseDir = await appDataDir()
   const defaultDir = await join(baseDir, ...DEFAULT_DATA_DIR_SEGMENTS)
@@ -185,7 +234,8 @@ const MIGRATIONS: Migration[] = [
           salt TEXT NOT NULL,
           keyHash TEXT NOT NULL,
           createdAt INTEGER NOT NULL,
-          updatedAt INTEGER NOT NULL
+          updatedAt INTEGER NOT NULL,
+          github TEXT
         )
       `)
       await connection.execute(`
@@ -334,6 +384,17 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 7,
+    async run(connection) {
+      const columns = await connection.select<{ name?: string }[]>(`PRAGMA table_info(users)`)
+      type ColumnInfo = { name: string }
+      const hasGithub = (columns as ColumnInfo[]).some(column => column.name === 'github')
+      if (!hasGithub) {
+        await connection.execute('ALTER TABLE users ADD COLUMN github TEXT')
+      }
+    },
+  },
 ]
 
 async function runMigrations(connection: Database) {
@@ -353,7 +414,7 @@ function createUsersCollection(connection: Database): UsersTable {
   return {
     async get(key) {
       const rows = await connection.select<SqliteRow[]>(
-        'SELECT email, salt, keyHash, displayName, avatar, mnemonic, mustChangePassword, createdAt, updatedAt FROM users WHERE email = ? LIMIT 1',
+        'SELECT email, salt, keyHash, displayName, avatar, mnemonic, mustChangePassword, createdAt, updatedAt, github FROM users WHERE email = ? LIMIT 1',
         [key],
       )
       const row = rows[0]
@@ -368,11 +429,12 @@ function createUsersCollection(connection: Database): UsersTable {
         mustChangePassword: toBoolean(row.mustChangePassword),
         createdAt: toNumber(row.createdAt),
         updatedAt: toNumber(row.updatedAt),
+        github: parseGithubConnection(row.github),
       }
     },
     async put(record) {
       await connection.execute(
-        'INSERT OR REPLACE INTO users (email, salt, keyHash, displayName, avatar, mnemonic, mustChangePassword, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT OR REPLACE INTO users (email, salt, keyHash, displayName, avatar, mnemonic, mustChangePassword, createdAt, updatedAt, github) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           record.email,
           record.salt,
@@ -383,6 +445,7 @@ function createUsersCollection(connection: Database): UsersTable {
           record.mustChangePassword ? 1 : 0,
           record.createdAt,
           record.updatedAt,
+          serializeGithubConnection(record.github),
         ],
       )
       return record.email

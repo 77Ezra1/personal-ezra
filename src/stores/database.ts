@@ -206,6 +206,7 @@ class AppDatabase extends Dexie {
           createdAt?: number
           updatedAt?: number
           mustChangePassword?: boolean
+          github?: UserRecord['github']
         }
         const usersTable = tx.table('users') as Table<LegacyUserRecord, string>
         const users = await usersTable.toArray()
@@ -237,6 +238,7 @@ class AppDatabase extends Dexie {
               mnemonic: typeof legacy.mnemonic === 'string' ? legacy.mnemonic : '',
               createdAt,
               updatedAt,
+              github: legacy.github ?? null,
             }
             await usersTable.put(next)
           }),
