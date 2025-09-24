@@ -1849,6 +1849,8 @@ function DataBackupSection() {
 function IdleTimeoutSettingsSection() {
   const duration = useIdleTimeoutStore(state => state.duration)
   const setDuration = useIdleTimeoutStore(state => state.setDuration)
+  const lockOnBlur = useIdleTimeoutStore(state => state.lockOnBlur)
+  const setLockOnBlur = useIdleTimeoutStore(state => state.setLockOnBlur)
 
   const handleDurationChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const value = event.currentTarget.value
@@ -1858,6 +1860,10 @@ function IdleTimeoutSettingsSection() {
     }
     const parsed = Number(value)
     setDuration(Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT)
+  }
+
+  const handleLockOnBlurChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setLockOnBlur(event.currentTarget.checked)
   }
 
   return (
@@ -1886,6 +1892,40 @@ function IdleTimeoutSettingsSection() {
           ))}
         </select>
         <p className="text-xs text-muted">未操作超过设定时间后应用会自动锁定，需要重新输入主密码才能继续使用。</p>
+      </div>
+      <div className="rounded-2xl border border-border/60 bg-surface/60 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-text">窗口失焦立即锁定</h3>
+            <p className="text-xs text-muted">
+              启用后，窗口被隐藏或失去焦点时会立即锁定密码库，保护敏感数据（默认关闭）。
+            </p>
+          </div>
+          <label className="inline-flex items-center gap-2">
+            <span className="text-xs font-medium text-muted">{lockOnBlur ? '已开启' : '未开启'}</span>
+            <span className="relative inline-flex h-6 w-11 items-center">
+              <input
+                type="checkbox"
+                className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                checked={lockOnBlur}
+                onChange={handleLockOnBlurChange}
+              />
+              <span
+                className={clsx(
+                  'h-6 w-11 rounded-full bg-border/80 transition-colors',
+                  'peer-checked:bg-primary/70 peer-disabled:cursor-not-allowed peer-disabled:opacity-60',
+                )}
+              />
+              <span
+                className={clsx(
+                  'absolute left-1 top-1 h-4 w-4 rounded-full bg-surface shadow transition-transform',
+                  lockOnBlur ? 'translate-x-5' : 'translate-x-0',
+                  'peer-disabled:cursor-not-allowed',
+                )}
+              />
+            </span>
+          </label>
+        </div>
       </div>
     </section>
   )

@@ -2,8 +2,10 @@ import { useEffect, useRef } from 'react'
 import { create } from 'zustand'
 import { useAuthStore } from '../../stores/auth'
 import { useLock } from './LockProvider'
+import { isTauriRuntime } from '../../env'
 
 const STORAGE_KEY = 'Personal-idle-timeout'
+const LOCK_ON_BLUR_STORAGE_KEY = 'Personal-idle-lock-on-blur'
 export const DEFAULT_TIMEOUT = 5 * 60 * 1000
 
 export type IdleDuration = number | 'off'
@@ -20,7 +22,9 @@ export const IDLE_TIMEOUT_OPTIONS: IdleTimeoutOption[] = [
 
 type IdleTimeoutState = {
   duration: IdleDuration
+  lockOnBlur: boolean
   setDuration: (duration: IdleDuration) => void
+  setLockOnBlur: (lockOnBlur: boolean) => void
 }
 
 function readInitialDuration(): IdleDuration {
@@ -53,11 +57,37 @@ function persistDuration(duration: IdleDuration) {
   }
 }
 
+function readInitialLockOnBlur(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    const raw = window.localStorage.getItem(LOCK_ON_BLUR_STORAGE_KEY)
+    if (!raw) return false
+    return raw === 'true' || raw === '1'
+  } catch (error) {
+    console.error('Failed to read aggressive lock preference from storage', error)
+    return false
+  }
+}
+
+function persistLockOnBlur(lockOnBlur: boolean) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(LOCK_ON_BLUR_STORAGE_KEY, lockOnBlur ? 'true' : 'false')
+  } catch (error) {
+    console.error('Failed to persist aggressive lock preference', error)
+  }
+}
+
 const useIdleTimeoutStore = create<IdleTimeoutState>(set => ({
   duration: readInitialDuration(),
+  lockOnBlur: readInitialLockOnBlur(),
   setDuration(duration) {
     persistDuration(duration)
     set({ duration })
+  },
+  setLockOnBlur(lockOnBlur) {
+    persistLockOnBlur(lockOnBlur)
+    set({ lockOnBlur })
   },
 }))
 
@@ -103,11 +133,12 @@ export function IdleLockSelector() {
 export default function IdleLock() {
   const { lock, locked } = useLock()
   const duration = useIdleTimeoutStore(state => state.duration)
+  const lockOnBlur = useIdleTimeoutStore(state => state.lockOnBlur)
   const email = useAuthStore(state => state.email)
   const timerRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined
+    if (typeof window === 'undefined' || typeof document === 'undefined') return undefined
 
     function cancelTimer() {
       if (timerRef.current !== null) {
@@ -163,18 +194,86 @@ export default function IdleLock() {
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
 
+    const handleImmediateLock = () => {
+      if (!lockOnBlur || !email || locked) return
+      lock()
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        handleImmediateLock()
+      }
+    }
+
+    window.addEventListener('blur', handleImmediateLock)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    let removeTauriListener: (() => void) | null = null
+    let disposed = false
+
+    if (isTauriRuntime()) {
+      void (async () => {
+        try {
+          const { listen, TauriEvent } = await import('@tauri-apps/api/event')
+          if (disposed) {
+            return
+          }
+          const unlisten = await listen(TauriEvent.WINDOW_BLUR, handleImmediateLock)
+          if (disposed) {
+            unlisten()
+          } else {
+            removeTauriListener = unlisten
+          }
+        } catch (error) {
+          console.error('Failed to register Tauri window blur listener', error)
+        }
+      })()
+    }
+
+    return () => {
+      disposed = true
+      window.removeEventListener('blur', handleImmediateLock)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      if (removeTauriListener) {
+        removeTauriListener()
+        removeTauriListener = null
+      }
+    }
+  }, [email, lock, lockOnBlur, locked])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
     function handleStorage(event: StorageEvent) {
-      if (event.key !== STORAGE_KEY) return
-      const next = event.newValue
-      if (next === 'off' || next === '0') {
-        useIdleTimeoutStore.setState({ duration: 'off' })
-      } else if (typeof next === 'string') {
-        const parsed = Number(next)
-        useIdleTimeoutStore.setState({
-          duration: Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT,
-        })
-      } else {
-        useIdleTimeoutStore.setState({ duration: DEFAULT_TIMEOUT })
+      if (event.key === STORAGE_KEY) {
+        const next = event.newValue
+        if (next === 'off' || next === '0') {
+          useIdleTimeoutStore.setState({ duration: 'off' })
+        } else if (typeof next === 'string') {
+          const parsed = Number(next)
+          useIdleTimeoutStore.setState({
+            duration: Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT,
+          })
+        } else {
+          useIdleTimeoutStore.setState({ duration: DEFAULT_TIMEOUT })
+        }
+        return
+      }
+
+      if (event.key === LOCK_ON_BLUR_STORAGE_KEY) {
+        const next = event.newValue
+        if (next === 'true' || next === '1') {
+          useIdleTimeoutStore.setState({ lockOnBlur: true })
+        } else if (next === 'false' || next === '0' || next === null) {
+          useIdleTimeoutStore.setState({ lockOnBlur: false })
+        } else {
+          useIdleTimeoutStore.setState({ lockOnBlur: false })
+        }
+        return
+      }
+
+      if (event.key === null) {
+        useIdleTimeoutStore.setState({ duration: DEFAULT_TIMEOUT, lockOnBlur: false })
       }
     }
 
