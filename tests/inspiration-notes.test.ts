@@ -305,6 +305,34 @@ describe('inspiration notes storage', () => {
     expect(removedPaths).toContain(repositoryFilePath)
   })
 
+  it('preserves nested directories when syncing notes to repository path', async () => {
+    loadStoredDataPathMock.mockReturnValue('D:/Workspace/MyNotes')
+    loadStoredRepositoryPathMock.mockReturnValue('C:/Projects/Repo')
+
+    const saved = await saveNote({ title: '会议记录/周会', content: '讨论纪要' })
+
+    expect(saved.id).toContain('/')
+
+    const localFilePath = normalizePath(`D:/Workspace/MyNotes/notes/${saved.id}`)
+    const repositoryFilePath = normalizePath(`C:/Projects/Repo/notes/${saved.id}`)
+
+    expect(files.has(localFilePath)).toBe(true)
+    expect(files.has(repositoryFilePath)).toBe(true)
+    expect(files.get(repositoryFilePath)).toBe(files.get(localFilePath))
+
+    expect(directories.has('D:/Workspace/MyNotes/notes/会议记录')).toBe(true)
+    expect(directories.has('C:/Projects/Repo/notes/会议记录')).toBe(true)
+
+    await deleteNote(saved.id)
+
+    expect(files.has(localFilePath)).toBe(false)
+    expect(files.has(repositoryFilePath)).toBe(false)
+
+    const removedPaths = removeMock.mock.calls.map(([path]) => normalizePath(path as string))
+    expect(removedPaths).toContain(localFilePath)
+    expect(removedPaths).toContain(repositoryFilePath)
+  })
+
   it('removes note files when deleting', async () => {
     const saved = await saveNote({ title: '临时草稿', content: '准备删除' })
     expect(files.size).toBe(1)
