@@ -23,6 +23,7 @@ import {
   type KeyboardEvent,
   type MutableRefObject,
 } from 'react'
+import ReactMarkdown, { type Components } from 'react-markdown'
 
 import { isTauriRuntime } from '../../env'
 import { useToast } from '../../components/ToastProvider'
@@ -305,6 +306,78 @@ type InspirationEditorProps = {
   lastSavedAt?: number
 }
 
+const markdownComponents: Components = {
+  h1: ({ node: _node, ...props }) => (
+    <h1 className="mt-6 text-2xl font-semibold text-text first:mt-0" {...props} />
+  ),
+  h2: ({ node: _node, ...props }) => (
+    <h2 className="mt-6 text-xl font-semibold text-text first:mt-0" {...props} />
+  ),
+  h3: ({ node: _node, ...props }) => (
+    <h3 className="mt-5 text-lg font-semibold text-text first:mt-0" {...props} />
+  ),
+  h4: ({ node: _node, ...props }) => (
+    <h4 className="mt-4 text-base font-semibold text-text first:mt-0" {...props} />
+  ),
+  h5: ({ node: _node, ...props }) => (
+    <h5 className="mt-4 text-sm font-semibold text-text first:mt-0" {...props} />
+  ),
+  h6: ({ node: _node, ...props }) => (
+    <h6 className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted first:mt-0" {...props} />
+  ),
+  p: ({ node: _node, ...props }) => (
+    <p className="text-sm leading-relaxed text-text" {...props} />
+  ),
+  ul: ({ node: _node, ...props }) => (
+    <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-text" {...props} />
+  ),
+  ol: ({ node: _node, ...props }) => (
+    <ol className="list-decimal space-y-1 pl-5 text-sm leading-relaxed text-text" {...props} />
+  ),
+  li: ({ node: _node, ...props }) => <li className="text-sm leading-relaxed text-text" {...props} />,
+  blockquote: ({ node: _node, ...props }) => (
+    <blockquote className="border-l-2 border-primary/40 pl-4 text-sm italic text-muted" {...props} />
+  ),
+  a: ({ node: _node, ...props }) => (
+    <a className="font-medium text-primary underline-offset-4 hover:underline" {...props} />
+  ),
+  hr: ({ node: _node, ...props }) => (
+    <hr className="my-4 border-border/60" {...props} />
+  ),
+  pre: ({ node: _node, ...props }) => (
+    <pre className="overflow-x-auto rounded-2xl bg-surface-hover p-4 text-xs leading-relaxed text-text" {...props} />
+  ),
+  code: ({ node: _node, inline, className, children, ...props }) => {
+    if (inline) {
+      return (
+        <code
+          className={clsx('rounded bg-surface-hover px-1.5 py-0.5 font-mono text-xs text-text', className)}
+          {...props}
+        >
+          {children}
+        </code>
+      )
+    }
+    return (
+      <code className={clsx('font-mono text-xs text-text', className)} {...props}>
+        {children}
+      </code>
+    )
+  },
+  table: ({ node: _node, ...props }) => (
+    <table className="w-full border-collapse text-sm text-text" {...props} />
+  ),
+  thead: ({ node: _node, ...props }) => (
+    <thead className="bg-surface-hover text-left text-xs uppercase tracking-wide text-muted" {...props} />
+  ),
+  tbody: ({ node: _node, ...props }) => <tbody className="divide-y divide-border/60" {...props} />,
+  tr: ({ node: _node, ...props }) => <tr className="align-top" {...props} />,
+  th: ({ node: _node, ...props }) => (
+    <th className="border border-border/60 px-3 py-2 font-semibold text-text" {...props} />
+  ),
+  td: ({ node: _node, ...props }) => <td className="border border-border/60 px-3 py-2" {...props} />,
+}
+
 function InspirationEditor({
   draft,
   onTitleChange,
@@ -328,6 +401,7 @@ function InspirationEditor({
   lastSavedAt,
 }: InspirationEditorProps) {
   const tagActionsDisabled = saving || deleting || loadingNote
+  const hasContent = draft.content.trim().length > 0
   const handleTagInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
       event.preventDefault()
@@ -445,15 +519,32 @@ function InspirationEditor({
             插入链接
           </button>
         </div>
-        <textarea
-          id="note-content"
-          ref={textareaRef}
-          value={draft.content}
-          onChange={onContentChange}
-          placeholder="使用 Markdown 语法编写内容，支持标题、列表、引用等格式。"
-          className="min-h-[200px] w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm leading-relaxed text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
-          disabled={saving || deleting || loadingNote}
-        />
+        <div className="grid gap-3 lg:grid-cols-2">
+          <textarea
+            id="note-content"
+            ref={textareaRef}
+            value={draft.content}
+            onChange={onContentChange}
+            placeholder="使用 Markdown 语法编写内容，支持标题、列表、引用等格式。"
+            className="min-h-[200px] w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm leading-relaxed text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+            disabled={saving || deleting || loadingNote}
+          />
+          <div
+            className="min-h-[200px] rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text"
+            aria-live="polite"
+          >
+            {hasContent ? (
+              <ReactMarkdown
+                className="flex flex-col gap-3 text-sm leading-relaxed text-text"
+                components={markdownComponents}
+              >
+                {draft.content}
+              </ReactMarkdown>
+            ) : (
+              <p className="text-sm text-muted">Markdown 预览将在此显示。</p>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
