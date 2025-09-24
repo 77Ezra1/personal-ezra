@@ -1028,6 +1028,17 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         }
       }
 
+      if (!draftToSave.id) {
+        if (!isAuto) {
+          showToast({
+            title: '无法保存',
+            description: '请先创建 Markdown 文件，再开始编辑。',
+            variant: 'error',
+          })
+        }
+        return null
+      }
+
       if (isAuto) {
         setAutoSaving(true)
       } else {
@@ -1107,11 +1118,69 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     })
   }, [availableTags])
 
-  const handleCreateFile = useCallback(() => {
-    setSelectedId(null)
-    setDraft(createEmptyDraft())
-    resetTagEditor()
-  }, [resetTagEditor])
+  const handleCreateFile = useCallback(async () => {
+    if (!isDesktop) return
+    if (typeof window === 'undefined') return
+
+    const raw = window.prompt('请输入要创建的 Markdown 文件名称（可使用 / 表示层级）')
+    if (raw === null) return
+
+    const normalized = raw
+      .split('/')
+      .map(segment => segment.trim())
+      .filter(Boolean)
+      .join('/')
+
+    if (!normalized) {
+      showToast({
+        title: '创建失败',
+        description: '文件名称不能为空，请重新输入。',
+        variant: 'error',
+      })
+      return
+    }
+
+    setLoadingNote(true)
+    try {
+      const createdPath = await createNoteFile(normalized)
+      const parentPath = createdPath
+        .split('/')
+        .slice(0, -1)
+        .join('/')
+      if (parentPath) {
+        expandFolderPath(parentPath)
+      }
+
+      await refreshNotes()
+
+      const note = await loadNote(createdPath)
+      setDraft({ id: note.id, title: note.title, content: note.content, tags: note.tags })
+      setSelectedId(note.id)
+      setLastSavedAt(note.updatedAt)
+      draftSnapshotRef.current = createDraftSnapshot(note)
+      skipNextAutoSaveRef.current = true
+      lastAttemptedSnapshotRef.current = null
+      resetTagEditor()
+
+      showToast({
+        title: '文件已创建',
+        description: `已新建 Markdown 文件：${note.id}`,
+        variant: 'success',
+      })
+    } catch (err) {
+      console.error('Failed to create inspiration note file', err)
+      const message = err instanceof Error ? err.message : '创建 Markdown 文件失败，请稍后再试。'
+      showToast({ title: '创建失败', description: message, variant: 'error' })
+    } finally {
+      setLoadingNote(false)
+    }
+  }, [
+    expandFolderPath,
+    isDesktop,
+    refreshNotes,
+    resetTagEditor,
+    showToast,
+  ])
 
   const handleCreateFolder = useCallback(async () => {
     if (typeof window === 'undefined') return
@@ -1139,14 +1208,9 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       })
       expandFolderPath(sanitized)
       await refreshNotes()
-      const draftTemplate = createEmptyDraft()
-      draftTemplate.title = `${sanitized}/`
-      setSelectedId(null)
-      setDraft(draftTemplate)
-      resetTagEditor()
       showToast({
         title: '文件夹已创建',
-        description: `已为新文件夹准备好路径前缀：${sanitized}/`,
+        description: `已在本地数据目录中创建：${sanitized}`,
         variant: 'success',
       })
     } catch (err) {
@@ -1154,7 +1218,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       const message = err instanceof Error ? err.message : '创建文件夹失败，请稍后再试。'
       showToast({ title: '创建失败', description: message, variant: 'error' })
     }
-  }, [expandFolderPath, refreshNotes, resetTagEditor, showToast])
+  }, [expandFolderPath, refreshNotes, showToast])
 
   const handleTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const { value } = event.currentTarget
