@@ -18,6 +18,11 @@
       }
     }
   },
+  "plugins": {
+    "shell": {
+      "open": "(mailto:\\w+|tel:\\w+|https?://.+|/.*|[A-Za-z]:\\\\.*)"
+    }
+  },
   "app": {
     "security": {
       "csp": null,
