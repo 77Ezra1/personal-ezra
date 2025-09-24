@@ -1,6 +1,10 @@
 import clsx from 'clsx'
 import {
+  ChevronDown as ChevronDownIcon,
+  ChevronRight as ChevronRightIcon,
   FilePlus as FilePlusIcon,
+  FileText as FileTextIcon,
+  Folder as FolderIcon,
   FolderPlus as FolderPlusIcon,
   Link as LinkIcon,
   Loader2 as LoaderIcon,
@@ -15,7 +19,6 @@ import {
 import {
   useCallback,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
@@ -210,6 +213,90 @@ function InspirationHeader({
   )
 }
 
+type NoteTreeNode = NoteTreeFolderNode | NoteTreeNoteNode
+
+type NoteTreeFolderNode = {
+  type: 'folder'
+  name: string
+  path: string
+  children: NoteTreeNode[]
+}
+
+type NoteTreeNoteNode = {
+  type: 'note'
+  path: string
+  note: NoteSummary
+}
+
+function buildNoteTree(notes: NoteSummary[], extraFolders: string[]): NoteTreeFolderNode {
+  const root: NoteTreeFolderNode = { type: 'folder', name: '', path: '', children: [] }
+  const folderCache = new Map<string, NoteTreeFolderNode>([['', root]])
+
+  const ensureFolder = (segments: string[]) => {
+    let currentPath = ''
+    let current = root
+    for (const rawSegment of segments) {
+      const segment = rawSegment.trim()
+      if (!segment) continue
+      currentPath = currentPath ? `${currentPath}/${segment}` : segment
+      let folder = folderCache.get(currentPath)
+      if (!folder) {
+        folder = { type: 'folder', name: segment, path: currentPath, children: [] }
+        current.children.push(folder)
+        folderCache.set(currentPath, folder)
+      }
+      current = folder
+    }
+    return current
+  }
+
+  const normalizedExtraFolders = Array.from(
+    new Set(
+      extraFolders
+        .map(folder =>
+          folder
+            .split('/')
+            .map(segment => segment.trim())
+            .filter(Boolean)
+            .join('/'),
+        )
+        .filter(Boolean),
+    ),
+  )
+
+  for (const folderPath of normalizedExtraFolders) {
+    const segments = folderPath.split('/').filter(Boolean)
+    ensureFolder(segments)
+  }
+
+  for (const note of notes) {
+    const segments = note.id.split('/').filter(Boolean)
+    if (segments.length === 0) {
+      continue
+    }
+    segments.pop()
+    const parent = ensureFolder(segments)
+    parent.children.push({ type: 'note', path: note.id, note })
+  }
+
+  const sortFolder = (folder: NoteTreeFolderNode) => {
+    const folderChildren = folder.children.filter(
+      (child): child is NoteTreeFolderNode => child.type === 'folder',
+    )
+    folderChildren.sort((a, b) => a.name.localeCompare(b.name))
+    for (const child of folderChildren) {
+      sortFolder(child)
+    }
+    const noteChildren = folder.children.filter(
+      (child): child is NoteTreeNoteNode => child.type === 'note',
+    )
+    folder.children = [...folderChildren, ...noteChildren]
+  }
+
+  sortFolder(root)
+  return root
+}
+
 type InspirationNoteListProps = {
   notes: NoteSummary[]
   totalCount: number
@@ -218,6 +305,9 @@ type InspirationNoteListProps = {
   onSelect: (noteId: string) => void
   hasTagFilter: boolean
   searchTerm: string
+  extraFolders: string[]
+  expandedFolders: string[]
+  onToggleFolder: (path: string) => void
 }
 
 function InspirationNoteList({
@@ -228,31 +318,108 @@ function InspirationNoteList({
   onSelect,
   hasTagFilter,
   searchTerm,
+  extraFolders,
+  expandedFolders,
+  onToggleFolder,
 }: InspirationNoteListProps) {
   const hasSearch = Boolean(searchTerm.trim())
   const hasActiveFilters = hasTagFilter || hasSearch
-  const MAX_VISIBLE = 8
-  const [expanded, setExpanded] = useState(false)
-  const listId = useId()
-  const canExpand = notes.length > MAX_VISIBLE
-  const displayedNotes = !canExpand || expanded ? notes : notes.slice(0, MAX_VISIBLE)
-  const isCollapsed = canExpand && !expanded
-
-  useEffect(() => {
-    if (!canExpand && expanded) {
-      setExpanded(false)
+  const statusText = useMemo(() => {
+    if (!hasActiveFilters) {
+      return `${totalCount} 条`
     }
-  }, [canExpand, expanded])
-
-  let statusText = `${totalCount} 条`
-  if (hasActiveFilters) {
     if (hasTagFilter && hasSearch) {
-      statusText = `标签 + 搜索结果 ${notes.length} / ${totalCount} 条`
-    } else if (hasTagFilter) {
-      statusText = `标签筛选结果 ${notes.length} / ${totalCount} 条`
-    } else {
-      statusText = `搜索结果 ${notes.length} / ${totalCount} 条`
+      return `标签 + 搜索结果 ${notes.length} / ${totalCount} 条`
     }
+    if (hasTagFilter) {
+      return `标签筛选结果 ${notes.length} / ${totalCount} 条`
+    }
+    return `搜索结果 ${notes.length} / ${totalCount} 条`
+  }, [hasActiveFilters, hasSearch, hasTagFilter, notes.length, totalCount])
+
+  const expandedSet = useMemo(() => new Set(expandedFolders), [expandedFolders])
+  const tree = useMemo(() => buildNoteTree(notes, extraFolders), [notes, extraFolders])
+  const shouldShowEmptyState = hasActiveFilters ? notes.length === 0 : tree.children.length === 0
+
+  const indentStyle = (depth: number) => ({
+    paddingLeft: `${12 + depth * 16}px`,
+  })
+
+  const renderNodes = (nodes: NoteTreeNode[], depth: number): React.ReactNode => {
+    return nodes.map(node => {
+      if (node.type === 'folder') {
+        const isExpanded = expandedSet.has(node.path)
+        return (
+          <div key={`folder-${node.path}`} className="space-y-2">
+            <button
+              type="button"
+              onClick={() => onToggleFolder(node.path)}
+              className="group flex w-full items-center gap-2 rounded-2xl border border-border/60 bg-surface/70 py-2 pr-3 text-left text-sm font-medium text-text transition hover:border-border hover:bg-surface-hover"
+              style={indentStyle(depth)}
+              aria-expanded={isExpanded}
+            >
+              {isExpanded ? (
+                <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted transition group-hover:text-text" aria-hidden />
+              ) : (
+                <ChevronRightIcon className="h-4 w-4 shrink-0 text-muted transition group-hover:text-text" aria-hidden />
+              )}
+              <FolderIcon className="h-4 w-4 shrink-0 text-muted transition group-hover:text-text" aria-hidden />
+              <span className="truncate text-sm">{node.name}</span>
+            </button>
+            {isExpanded && (
+              node.children.length > 0 ? (
+                <div className="space-y-2">{renderNodes(node.children, depth + 1)}</div>
+              ) : (
+                <div
+                  className="rounded-2xl border border-dashed border-border/60 bg-surface/60 px-3 py-2 text-xs italic text-muted"
+                  style={indentStyle(depth + 1)}
+                >
+                  空文件夹
+                </div>
+              )
+            )}
+          </div>
+        )
+      }
+
+      const { note } = node
+      const isSelected = selectedId === note.id
+      return (
+        <div key={`note-${node.path}`}>
+          <button
+            type="button"
+            onClick={() => onSelect(note.id)}
+            className={clsx(
+              'group flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-border/60 bg-surface/80 px-3 py-2 text-left transition hover:border-border hover:bg-surface-hover',
+              isSelected && 'border-primary bg-primary/10 text-primary',
+            )}
+            style={indentStyle(depth)}
+          >
+            <div className="flex items-center gap-2">
+              <FileTextIcon className="h-4 w-4 shrink-0 text-muted transition group-hover:text-text" aria-hidden />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-text group-hover:text-text">
+                {note.title}
+              </span>
+            </div>
+            {note.tags.length > 0 && (
+              <div className="flex shrink-0 flex-wrap items-center gap-1">
+                {note.tags.map(tag => (
+                  <span
+                    key={tag}
+                    className={clsx(
+                      'inline-flex items-center rounded-full border border-border/60 bg-surface px-1.5 py-0.5 text-[0.65rem] font-semibold text-muted transition group-hover:text-muted',
+                      isSelected && 'border-primary/50 text-primary',
+                    )}
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </button>
+        </div>
+      )
+    })
   }
 
   return (
@@ -261,79 +428,23 @@ function InspirationNoteList({
         <span>笔记列表</span>
         <span>{statusText}</span>
       </div>
-      <div
-        className={clsx(
-          'relative transition-all',
-          isCollapsed && 'max-h-96 overflow-hidden',
-          canExpand && expanded && 'max-h-none overflow-y-auto',
-        )}
-      >
-        <div
-          id={listId}
-          className={clsx('flex flex-col gap-2', isCollapsed && 'pb-6')}
-        >
-          {loading && notes.length === 0 ? (
-            <div className="space-y-2">
-              {[0, 1, 2].map(index => (
-                <div
-                  key={index}
-                  className="h-12 animate-pulse rounded-2xl border border-border/60 bg-surface/60"
-                />
-              ))}
-            </div>
-          ) : notes.length === 0 ? (
-            <div className="rounded-2xl border border-border/60 bg-surface/80 px-4 py-6 text-sm text-muted">
-              {hasActiveFilters
-                ? '未找到匹配的笔记，请调整标签筛选或搜索关键字。'
-                : '暂无笔记，点击“新建笔记”开始记录灵感。'}
-            </div>
-          ) : (
-            displayedNotes.map(note => (
-              <button
-                key={note.id}
-                type="button"
-                onClick={() => onSelect(note.id)}
-                className={clsx(
-                  'group flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-border/60 bg-surface/80 px-3 py-2 text-left transition hover:border-border hover:bg-surface-hover',
-                  selectedId === note.id && 'border-primary bg-primary/10 text-primary',
-                )}
-              >
-                <span className="min-w-0 flex-1 text-sm font-medium text-text group-hover:text-text">{note.title}</span>
-                {note.tags.length > 0 && (
-                  <div className="flex shrink-0 flex-wrap items-center gap-1">
-                    {note.tags.map(tag => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center rounded-full border border-border/60 bg-surface px-1.5 py-0.5 text-[0.65rem] font-semibold text-muted transition group-hover:text-muted"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </button>
-            ))
-          )}
+      {loading && notes.length === 0 ? (
+        <div className="space-y-2">
+          {[0, 1, 2].map(index => (
+            <div
+              key={index}
+              className="h-12 animate-pulse rounded-2xl border border-border/60 bg-surface/60"
+            />
+          ))}
         </div>
-        {isCollapsed && (
-          <div
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-surface via-surface/90 to-transparent dark:from-surface dark:via-surface/80"
-            aria-hidden
-          />
-        )}
-      </div>
-      {canExpand && (
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={() => setExpanded(prev => !prev)}
-            className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition hover:border-border/70 hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-            aria-expanded={expanded}
-            aria-controls={listId}
-          >
-            {expanded ? '收起' : '展开全部'}
-          </button>
+      ) : shouldShowEmptyState ? (
+        <div className="rounded-2xl border border-border/60 bg-surface/80 px-4 py-6 text-sm text-muted">
+          {hasActiveFilters
+            ? '未找到匹配的笔记，请调整标签筛选或搜索关键字。'
+            : '暂无笔记，点击“新建笔记”开始记录灵感。'}
         </div>
+      ) : (
+        <div className="space-y-2">{renderNodes(tree.children, 0)}</div>
       )}
     </section>
   )
@@ -663,6 +774,8 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const [tagInput, setTagInput] = useState('')
   const [editingTagIndex, setEditingTagIndex] = useState<number | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [extraFolders, setExtraFolders] = useState<string[]>([])
+  const [expandedFolders, setExpandedFolders] = useState<string[]>([])
   const [loadingList, setLoadingList] = useState(false)
   const [loadingNote, setLoadingNote] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -675,6 +788,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const draftSnapshotRef = useRef<string>(createDraftSnapshot(createEmptyDraft()))
   const skipNextAutoSaveRef = useRef(false)
   const lastAttemptedSnapshotRef = useRef<string | null>(null)
+  const knownFoldersRef = useRef<Set<string>>(new Set())
 
   const availableTags = useMemo(() => {
     const seen = new Set<string>()
@@ -689,6 +803,124 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     }
     return list.sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
   }, [notes])
+
+  const collectAllFolderPaths = useCallback(() => {
+    const paths = new Set<string>()
+    for (const note of notes) {
+      const segments = note.id.split('/').filter(Boolean)
+      if (segments.length <= 1) continue
+      segments.pop()
+      let current = ''
+      for (const segment of segments) {
+        current = current ? `${current}/${segment}` : segment
+        if (current) {
+          paths.add(current)
+        }
+      }
+    }
+    for (const folder of extraFolders) {
+      if (!folder) continue
+      const segments = folder
+        .split('/')
+        .map(segment => segment.trim())
+        .filter(Boolean)
+      let current = ''
+      for (const segment of segments) {
+        current = current ? `${current}/${segment}` : segment
+        if (current) {
+          paths.add(current)
+        }
+      }
+    }
+    return paths
+  }, [extraFolders, notes])
+
+  const expandFolderPath = useCallback(
+    (path: string) => {
+      if (!path) return
+      const segments = path
+        .split('/')
+        .map(segment => segment.trim())
+        .filter(Boolean)
+      if (segments.length === 0) return
+      const targets: string[] = []
+      let current = ''
+      for (const segment of segments) {
+        current = current ? `${current}/${segment}` : segment
+        if (!current) continue
+        targets.push(current)
+        knownFoldersRef.current.add(current)
+      }
+      setExpandedFolders(prev => {
+        const set = new Set(prev)
+        const initialSize = set.size
+        for (const target of targets) {
+          set.add(target)
+        }
+        if (set.size === initialSize) {
+          return prev
+        }
+        return Array.from(set)
+      })
+    },
+    [],
+  )
+
+  const handleFolderToggle = useCallback((path: string) => {
+    if (!path) return
+    setExpandedFolders(prev => {
+      const set = new Set(prev)
+      if (set.has(path)) {
+        set.delete(path)
+      } else {
+        set.add(path)
+        knownFoldersRef.current.add(path)
+      }
+      return Array.from(set)
+    })
+  }, [])
+
+  const hasExpandedFolders = expandedFolders.length > 0
+
+  useEffect(() => {
+    const allPaths = collectAllFolderPaths()
+    if (!hasExpandedFolders) {
+      if (allPaths.size > 0) {
+        const initial = Array.from(allPaths).sort((a, b) => a.localeCompare(b))
+        setExpandedFolders(initial)
+      }
+      knownFoldersRef.current = new Set(allPaths)
+      return
+    }
+
+    const known = knownFoldersRef.current
+    const newlyDiscovered: string[] = []
+    for (const path of allPaths) {
+      if (!known.has(path)) {
+        known.add(path)
+        newlyDiscovered.push(path)
+      }
+    }
+
+    if (newlyDiscovered.length > 0) {
+      setExpandedFolders(prev => {
+        const set = new Set(prev)
+        for (const path of newlyDiscovered) {
+          set.add(path)
+        }
+        return Array.from(set)
+      })
+    }
+  }, [collectAllFolderPaths, hasExpandedFolders])
+
+  useEffect(() => {
+    if (!selectedId) return
+    const segments = selectedId.split('/').filter(Boolean)
+    if (segments.length <= 1) return
+    segments.pop()
+    const targetPath = segments.join('/')
+    expandFolderPath(targetPath)
+  }, [expandFolderPath, selectedId])
 
   useEffect(() => {
     const handler = window.setTimeout(() => {
@@ -900,6 +1132,12 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     }
     try {
       const sanitized = await createNoteFolder(normalized)
+      setExtraFolders(prev => {
+        const set = new Set(prev)
+        set.add(sanitized)
+        return Array.from(set)
+      })
+      expandFolderPath(sanitized)
       await refreshNotes()
       const draftTemplate = createEmptyDraft()
       draftTemplate.title = `${sanitized}/`
@@ -916,7 +1154,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       const message = err instanceof Error ? err.message : '创建文件夹失败，请稍后再试。'
       showToast({ title: '创建失败', description: message, variant: 'error' })
     }
-  }, [refreshNotes, resetTagEditor, showToast])
+  }, [expandFolderPath, refreshNotes, resetTagEditor, showToast])
 
   const handleTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const { value } = event.currentTarget
@@ -1177,6 +1415,9 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
           }}
           hasTagFilter={hasTagFilter}
           searchTerm={searchTerm}
+          extraFolders={extraFolders}
+          expandedFolders={expandedFolders}
+          onToggleFolder={handleFolderToggle}
         />
       </div>
       <div className="flex flex-col gap-6 lg:col-span-1">

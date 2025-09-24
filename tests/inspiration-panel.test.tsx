@@ -94,6 +94,7 @@ describe('InspirationPanel handleCreateFolder', () => {
     expect(await screen.findByText('文件夹已创建')).toBeInTheDocument()
     expect(await screen.findByText('已为新文件夹准备好路径前缀：foo/bar/')).toBeInTheDocument()
     expect(await screen.findByDisplayValue('foo/bar/')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'bar' })).toBeInTheDocument()
 
     promptSpy.mockRestore()
   })
