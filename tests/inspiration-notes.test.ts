@@ -15,6 +15,8 @@ vi.mock('../src/lib/storage-path', async () => {
 
 import {
   NOTE_FEATURE_DISABLED_MESSAGE,
+  createNoteFile,
+  createNoteFolder,
   deleteNote,
   listNotes,
   loadNote,
@@ -118,6 +120,55 @@ describe('inspiration notes storage', () => {
     isTauriRuntimeMock.mockReturnValue(false)
     await expect(listNotes()).rejects.toThrow(NOTE_FEATURE_DISABLED_MESSAGE)
     await expect(saveNote({ title: '测试', content: '内容' })).rejects.toThrow(NOTE_FEATURE_DISABLED_MESSAGE)
+  })
+
+  it('creates empty markdown file with basic front matter', async () => {
+    const noteId = await createNoteFile('项目规划')
+    expect(noteId).toMatch(/\.md$/)
+
+    const storedPaths = Array.from(files.keys())
+    expect(storedPaths.some(path => path.includes('/data/notes/'))).toBe(true)
+    const localPath = storedPaths.find(path => path.includes('/data/notes/'))
+    expect(localPath).toBeDefined()
+    const localContents = files.get(localPath!)
+    if (!localContents) {
+      throw new Error('Expected local note file to be created')
+    }
+    expect(localContents).toContain('title: 项目规划')
+    expect(localContents).toContain('tags: []')
+
+    const created = await loadNote(noteId)
+    expect(created.title).toBe('项目规划')
+    expect(created.content).toBe('')
+    expect(created.tags).toEqual([])
+  })
+
+  it('synchronizes newly created note file to repository path when configured', async () => {
+    loadStoredRepositoryPathMock.mockReturnValue('D:/Backups/KnowledgeBase')
+    const noteId = await createNoteFile('灵感/素材收集')
+
+    const storedPaths = Array.from(files.keys())
+    expect(storedPaths.some(path => path.includes('/data/notes/灵感/'))).toBe(true)
+    expect(storedPaths.some(path => path.includes('D:/Backups/KnowledgeBase/notes/灵感/'))).toBe(true)
+
+    const loaded = await loadNote(noteId)
+    expect(loaded.id).toBe(noteId)
+  })
+
+  it('prevents overwriting an existing note when creating file with same path', async () => {
+    const firstId = await createNoteFile('重复检查')
+    await expect(createNoteFile(firstId)).rejects.toThrow('同名笔记已存在')
+  })
+
+  it('creates nested folder structures locally and in repository', async () => {
+    loadStoredRepositoryPathMock.mockReturnValue('D:/Backups/KnowledgeBase')
+    const relative = await createNoteFolder('规划/2024 OKR')
+    expect(relative).toBe('规划/2024-OKR')
+
+    expect(directories.has('C:/mock/AppData/Personal/data/notes/规划')).toBe(true)
+    expect(directories.has('C:/mock/AppData/Personal/data/notes/规划/2024-OKR')).toBe(true)
+    expect(directories.has('D:/Backups/KnowledgeBase/notes/规划')).toBe(true)
+    expect(directories.has('D:/Backups/KnowledgeBase/notes/规划/2024-OKR')).toBe(true)
   })
 
   it('creates markdown file and lists it from default directory', async () => {

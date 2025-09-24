@@ -61,6 +61,47 @@ async function ensureNotesDirectory() {
   return notesDir
 }
 
+function sanitizeDirectoryPath(raw: string) {
+  const trimmed = raw.trim()
+  if (!trimmed) {
+    throw new Error('文件夹名称不能为空')
+  }
+
+  const segments = trimmed
+    .split('/')
+    .map(segment => segment.trim())
+    .filter(Boolean)
+
+  if (segments.length === 0) {
+    throw new Error('文件夹名称不能为空')
+  }
+
+  const sanitized = segments.map(segment => {
+    if (segment === '.' || segment === '..') {
+      throw new Error('文件夹路径包含非法片段')
+    }
+
+    const withoutInvalid = segment.replace(/[<>:"\\|?*]/g, '')
+    const collapsedWhitespace = withoutInvalid.replace(/\s+/g, ' ')
+    const dashed = collapsedWhitespace
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '')
+    const fallback = withoutInvalid.replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '')
+    const normalized = (dashed || fallback || withoutInvalid || segment).slice(0, 60)
+    const cleaned = normalized || 'folder'
+    const withoutExtension = cleaned.toLowerCase().endsWith(NOTE_FILE_EXTENSION.toLowerCase())
+      ? cleaned.slice(0, -NOTE_FILE_EXTENSION.length)
+      : cleaned
+    if (!withoutExtension) {
+      throw new Error('文件夹名称不能为空')
+    }
+    return withoutExtension
+  })
+
+  return sanitized.join('/')
+}
+
 function sanitizeTitle(raw: string) {
   const trimmed = raw.trim()
   if (!trimmed) return '未命名笔记'
@@ -549,6 +590,86 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
     content: normalizedContent,
     tags,
   }
+}
+
+export async function createNoteFile(titleOrPath: string): Promise<string> {
+  assertTauriRuntime()
+  const dir = await ensureNotesDirectory()
+  const now = Date.now()
+  const trimmed = titleOrPath?.trim() ?? ''
+
+  let notePath: string
+  if (!trimmed) {
+    notePath = await generateUniqueFileName(dir, '未命名笔记', now)
+  } else if (
+    trimmed.includes('/') ||
+    trimmed.toLowerCase().endsWith(NOTE_FILE_EXTENSION.toLowerCase())
+  ) {
+    notePath = normalizeNoteId(trimmed)
+  } else {
+    notePath = await generateUniqueFileName(dir, trimmed, now)
+  }
+
+  const { directories, fileName } = splitNotePath(notePath)
+  const targetDir = directories.length > 0 ? await join(dir, ...directories) : dir
+  await mkdir(targetDir, { recursive: true })
+  const filePath = await join(targetDir, fileName)
+
+  try {
+    await readTextFile(filePath)
+    throw new Error('同名笔记已存在，请更换名称。')
+  } catch (error) {
+    if (!isMissingFsEntryError(error)) {
+      throw error
+    }
+  }
+
+  const title = sanitizeTitle(deriveTitleFromFileName(fileName))
+  const serialized = serializeNoteFile({ title, createdAt: now, updatedAt: now, tags: [] }, '')
+  await writeTextFile(filePath, serialized)
+
+  const repositoryRoot = loadStoredRepositoryPath()
+  if (repositoryRoot) {
+    try {
+      const repositoryNotesDir = await join(repositoryRoot, NOTES_DIR_NAME)
+      const repositoryTargetDir =
+        directories.length > 0 ? await join(repositoryNotesDir, ...directories) : repositoryNotesDir
+      await mkdir(repositoryTargetDir, { recursive: true })
+      const repositoryFilePath = await join(repositoryTargetDir, fileName)
+      if (repositoryFilePath !== filePath) {
+        await writeTextFile(repositoryFilePath, serialized)
+      }
+    } catch (error) {
+      console.warn('Failed to synchronize inspiration note to repository path', error)
+    }
+  }
+
+  return notePath
+}
+
+export async function createNoteFolder(path: string): Promise<string> {
+  assertTauriRuntime()
+  const dir = await ensureNotesDirectory()
+  const sanitized = sanitizeDirectoryPath(path)
+  const segments = sanitized.split('/').filter(Boolean)
+  const targetDir = segments.length > 0 ? await join(dir, ...segments) : dir
+  await mkdir(targetDir, { recursive: true })
+
+  const repositoryRoot = loadStoredRepositoryPath()
+  if (repositoryRoot) {
+    try {
+      const repositoryNotesDir = await join(repositoryRoot, NOTES_DIR_NAME)
+      const repositoryTargetDir =
+        segments.length > 0 ? await join(repositoryNotesDir, ...segments) : repositoryNotesDir
+      if (repositoryTargetDir !== targetDir) {
+        await mkdir(repositoryTargetDir, { recursive: true })
+      }
+    } catch (error) {
+      console.warn('Failed to create repository folder for inspiration notes', error)
+    }
+  }
+
+  return sanitized
 }
 
 export async function deleteNote(id: string): Promise<void> {
