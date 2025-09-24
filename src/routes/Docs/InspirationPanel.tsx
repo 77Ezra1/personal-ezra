@@ -881,27 +881,42 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     resetTagEditor()
   }, [resetTagEditor])
 
-  const handleCreateFolder = useCallback(() => {
+  const handleCreateFolder = useCallback(async () => {
     if (typeof window === 'undefined') return
     const folderName = window.prompt('请输入要创建的文件夹名称（可使用 / 表示层级）')
-    if (!folderName) return
+    if (folderName === null) return
     const normalized = folderName
       .split('/')
       .map(segment => segment.trim())
       .filter(Boolean)
       .join('/')
-    if (!normalized) return
-    const draftTemplate = createEmptyDraft()
-    draftTemplate.title = `${normalized}/`
-    setSelectedId(null)
-    setDraft(draftTemplate)
-    resetTagEditor()
-    showToast({
-      title: '已准备新建文件夹',
-      description: '已为新文件夹插入路径前缀，请继续输入笔记名称后保存。',
-      variant: 'info',
-    })
-  }, [resetTagEditor, showToast])
+    if (!normalized) {
+      showToast({
+        title: '创建失败',
+        description: '文件夹名称不能为空，请重新输入。',
+        variant: 'error',
+      })
+      return
+    }
+    try {
+      const sanitized = await createNoteFolder(normalized)
+      await refreshNotes()
+      const draftTemplate = createEmptyDraft()
+      draftTemplate.title = `${sanitized}/`
+      setSelectedId(null)
+      setDraft(draftTemplate)
+      resetTagEditor()
+      showToast({
+        title: '文件夹已创建',
+        description: `已为新文件夹准备好路径前缀：${sanitized}/`,
+        variant: 'success',
+      })
+    } catch (err) {
+      console.error('Failed to create inspiration note folder', err)
+      const message = err instanceof Error ? err.message : '创建文件夹失败，请稍后再试。'
+      showToast({ title: '创建失败', description: message, variant: 'error' })
+    }
+  }, [refreshNotes, resetTagEditor, showToast])
 
   const handleTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const { value } = event.currentTarget
