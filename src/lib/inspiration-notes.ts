@@ -29,6 +29,17 @@ export interface NoteDraft {
   tags: string[]
 }
 
+export interface InspirationNoteBackupEntry {
+  path: string
+  meta: {
+    title: string
+    createdAt: number
+    updatedAt: number
+    tags: string[]
+  }
+  content: string
+}
+
 type ParsedFrontMatter = {
   title?: string
   createdAt?: number
@@ -442,6 +453,176 @@ function serializeNoteFile(
   ]
     .join('\n')
     .replace(/\n+$/, match => (match.length > 1 ? '\n' : match))
+}
+
+export async function exportNotesForBackup(): Promise<InspirationNoteBackupEntry[]> {
+  if (!isTauriRuntime()) {
+    return []
+  }
+
+  try {
+    const dir = await ensureNotesDirectory()
+    const files = await collectNoteFiles(dir)
+    const entries: InspirationNoteBackupEntry[] = []
+
+    for (const relativePath of files) {
+      const { directories, fileName } = splitNotePath(relativePath)
+      const filePath = await join(dir, ...directories, fileName)
+      try {
+        const fileText = await readTextFile(filePath)
+        const parsed = parseFrontMatter(fileText)
+        const now = Date.now()
+        const title = sanitizeTitle(parsed.metadata.title ?? deriveTitleFromFileName(fileName))
+        const createdAt = parsed.metadata.createdAt ?? parsed.metadata.updatedAt ?? now
+        const updatedAt = parsed.metadata.updatedAt ?? createdAt
+        const tags = parsed.metadata.tags ?? []
+        entries.push({
+          path: relativePath,
+          meta: {
+            title,
+            createdAt,
+            updatedAt,
+            tags,
+          },
+          content: parsed.content,
+        })
+      } catch (error) {
+        console.warn('Failed to serialize inspiration note for backup export', error)
+      }
+    }
+
+    return entries
+  } catch (error) {
+    console.warn('Failed to enumerate inspiration notes for backup export', error)
+    return []
+  }
+}
+
+function sanitizeBackupNoteMeta(
+  input: InspirationNoteBackupEntry['meta'] | undefined,
+  fallbackTitle: string,
+): InspirationNoteBackupEntry['meta'] {
+  const now = Date.now()
+  const title = sanitizeTitle(input?.title ?? fallbackTitle)
+  const createdAt = typeof input?.createdAt === 'number' && Number.isFinite(input.createdAt) && input.createdAt > 0
+    ? input.createdAt
+    : now
+  const updatedAt =
+    typeof input?.updatedAt === 'number' && Number.isFinite(input.updatedAt) && input.updatedAt > 0
+      ? input.updatedAt
+      : createdAt
+  const tags = sanitizeTags(input?.tags ?? [])
+  return { title, createdAt, updatedAt, tags }
+}
+
+async function removeExistingNoteFiles(baseDir: string) {
+  const existingFiles = await collectNoteFiles(baseDir)
+  const directorySet = new Set<string>()
+
+  for (const relativePath of existingFiles) {
+    const { directories, fileName } = splitNotePath(relativePath)
+    directories.forEach((_, index) => {
+      const key = directories.slice(0, index + 1).join('/')
+      if (key) {
+        directorySet.add(key)
+      }
+    })
+
+    try {
+      const targetDir = directories.length > 0 ? await join(baseDir, ...directories) : baseDir
+      const filePath = await join(targetDir, fileName)
+      await remove(filePath)
+    } catch (error) {
+      if (!isMissingFsEntryError(error)) {
+        console.warn('Failed to remove existing inspiration note during backup import', error)
+      }
+    }
+  }
+
+  const sortedDirectories = Array.from(directorySet).sort((a, b) => b.length - a.length)
+  for (const relativeDir of sortedDirectories) {
+    try {
+      const target = await join(baseDir, ...relativeDir.split('/'))
+      await remove(target)
+    } catch (error) {
+      if (!isMissingFsEntryError(error)) {
+        continue
+      }
+    }
+  }
+}
+
+export async function restoreNotesFromBackup(entries: InspirationNoteBackupEntry[]): Promise<number> {
+  if (!isTauriRuntime()) {
+    return 0
+  }
+
+  try {
+    const dir = await ensureNotesDirectory()
+    await removeExistingNoteFiles(dir)
+
+    const repositoryRoot = loadStoredRepositoryPath()
+    let repositoryNotesDir: string | null = null
+    if (repositoryRoot) {
+      try {
+        repositoryNotesDir = await join(repositoryRoot, NOTES_DIR_NAME)
+        await removeExistingNoteFiles(repositoryNotesDir)
+      } catch (error) {
+        console.warn('Failed to remove repository notes before backup import', error)
+        repositoryNotesDir = null
+      }
+    }
+
+    const normalized = new Map<string, InspirationNoteBackupEntry>()
+    for (const entry of entries) {
+      if (!entry) continue
+      const rawPath = typeof entry.path === 'string' ? entry.path.trim() : ''
+      if (!rawPath) continue
+      try {
+        const normalizedPath = normalizeNoteId(rawPath.replace(/\\/g, '/'))
+        const { fileName } = splitNotePath(normalizedPath)
+        const meta = sanitizeBackupNoteMeta(entry.meta, deriveTitleFromFileName(fileName))
+        const content = typeof entry.content === 'string' ? entry.content : ''
+        normalized.set(normalizedPath, { path: normalizedPath, meta, content })
+      } catch (error) {
+        console.warn('Skipped invalid inspiration note entry during backup import', error)
+      }
+    }
+
+    let restored = 0
+    for (const [relativePath, entry] of normalized) {
+      try {
+        const { directories, fileName } = splitNotePath(relativePath)
+        const targetDir = directories.length > 0 ? await join(dir, ...directories) : dir
+        await mkdir(targetDir, { recursive: true })
+        const filePath = await join(targetDir, fileName)
+        const serialized = serializeNoteFile(entry.meta, entry.content)
+        await writeTextFile(filePath, serialized)
+        restored += 1
+
+        if (repositoryNotesDir) {
+          try {
+            const repositoryTargetDir =
+              directories.length > 0 ? await join(repositoryNotesDir, ...directories) : repositoryNotesDir
+            await mkdir(repositoryTargetDir, { recursive: true })
+            const repositoryFilePath = await join(repositoryTargetDir, fileName)
+            if (repositoryFilePath !== filePath) {
+              await writeTextFile(repositoryFilePath, serialized)
+            }
+          } catch (error) {
+            console.warn('Failed to synchronize restored inspiration note to repository', error)
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to restore inspiration note from backup entry', error)
+      }
+    }
+
+    return restored
+  } catch (error) {
+    console.warn('Failed to restore inspiration notes from backup', error)
+    return 0
+  }
 }
 
 export async function listNotes(): Promise<NoteSummary[]> {
