@@ -38,6 +38,7 @@ import {
   loadNote,
   saveNote,
   type NoteDraft,
+  type NoteDetail,
   type NoteSummary,
 } from '../../lib/inspiration-notes'
 
@@ -66,6 +67,35 @@ function formatDateTime(timestamp?: number) {
     return new Date(timestamp).toLocaleString()
   } catch {
     return '尚未保存'
+  }
+}
+
+function createDraftSnapshot(value: { id?: string | null; title: string; content: string; tags: string[] }) {
+  return JSON.stringify({
+    id: value.id ?? null,
+    title: value.title,
+    content: value.content,
+    tags: [...value.tags],
+  })
+}
+
+function sortNoteSummaries(list: NoteSummary[]) {
+  return [...list].sort((a, b) => {
+    const diff = (b.updatedAt ?? 0) - (a.updatedAt ?? 0)
+    if (diff !== 0) return diff
+    return a.title.localeCompare(b.title)
+  })
+}
+
+function toNoteSummary(detail: NoteDetail): NoteSummary {
+  return {
+    id: detail.id,
+    title: detail.title,
+    createdAt: detail.createdAt,
+    updatedAt: detail.updatedAt,
+    excerpt: detail.excerpt,
+    searchText: detail.searchText,
+    tags: detail.tags,
   }
 }
 
@@ -313,6 +343,7 @@ type InspirationEditorProps = {
   onTagEditCancel: () => void
   editingTagIndex: number | null
   saving: boolean
+  autoSaving: boolean
   deleting: boolean
   loadingNote: boolean
   canDelete: boolean
@@ -412,12 +443,13 @@ function InspirationEditor({
   onTagEditCancel,
   editingTagIndex,
   saving,
+  autoSaving,
   deleting,
   loadingNote,
   canDelete,
   lastSavedAt,
 }: InspirationEditorProps) {
-  const tagActionsDisabled = saving || deleting || loadingNote
+  const tagActionsDisabled = saving || autoSaving || deleting || loadingNote
   const hasContent = draft.content.trim().length > 0
   const handleTagInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
@@ -446,7 +478,7 @@ function InspirationEditor({
           onChange={onTitleChange}
           placeholder="例如：季度复盘、产品灵感、会议纪要……"
           className="h-11 w-full rounded-2xl border border-border bg-surface px-4 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
-          disabled={saving || deleting || loadingNote}
+          disabled={saving || autoSaving || deleting || loadingNote}
           autoComplete="off"
         />
       </div>
@@ -530,7 +562,7 @@ function InspirationEditor({
             type="button"
             onClick={onInsertLink}
             className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text transition hover:border-border/70 hover:bg-surface-hover"
-            disabled={saving || deleting || loadingNote}
+            disabled={saving || autoSaving || deleting || loadingNote}
           >
             <LinkIcon className="h-3.5 w-3.5" aria-hidden />
             插入链接
@@ -544,7 +576,7 @@ function InspirationEditor({
             onChange={onContentChange}
             placeholder="使用 Markdown 语法编写内容，支持标题、列表、引用等格式。"
             className="h-64 w-full resize-none overflow-y-auto rounded-2xl border border-border bg-surface px-4 py-3 text-sm leading-relaxed text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
-            disabled={saving || deleting || loadingNote}
+            disabled={saving || autoSaving || deleting || loadingNote}
           />
           <div
             className="h-64 overflow-y-auto rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text"
@@ -565,7 +597,7 @@ function InspirationEditor({
         <button
           type="submit"
           className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 text-sm font-semibold text-background transition hover:bg-primary/90 disabled:opacity-70"
-          disabled={saving || deleting}
+          disabled={saving || autoSaving || deleting}
         >
           {saving ? <LoaderIcon className="h-4 w-4 animate-spin" aria-hidden /> : <SaveIcon className="h-4 w-4" aria-hidden />}
           保存笔记
@@ -575,13 +607,16 @@ function InspirationEditor({
             type="button"
             onClick={onDelete}
             className="inline-flex items-center gap-2 rounded-full border border-border px-5 py-2 text-sm font-semibold text-text transition hover:border-border/70 hover:bg-surface-hover disabled:opacity-60"
-            disabled={deleting || saving}
+            disabled={deleting || saving || autoSaving}
           >
             {deleting ? <LoaderIcon className="h-4 w-4 animate-spin" aria-hidden /> : <TrashIcon className="h-4 w-4" aria-hidden />}
             删除
           </button>
         )}
-        <span className="text-xs text-muted">最后保存时间：{formatDateTime(lastSavedAt)}</span>
+        <span className="flex items-center gap-2 text-xs text-muted">
+          {autoSaving && <LoaderIcon className="h-3.5 w-3.5 animate-spin" aria-hidden />}
+          {autoSaving ? '正在同步…' : `最后保存时间：${formatDateTime(lastSavedAt)}`}
+        </span>
       </div>
     </form>
   )
@@ -618,15 +653,15 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const [loadingList, setLoadingList] = useState(false)
   const [loadingNote, setLoadingNote] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [autoSaving, setAutoSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lastSavedAt, setLastSavedAt] = useState<number | undefined>(undefined)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const tagInputRef = useRef<HTMLInputElement | null>(null)
-
-  const activeMeta = useMemo(() => {
-    if (!selectedId) return null
-    return notes.find(item => item.id === selectedId) ?? null
-  }, [notes, selectedId])
+  const draftSnapshotRef = useRef<string>(createDraftSnapshot(createEmptyDraft()))
+  const skipNextAutoSaveRef = useRef(false)
+  const lastAttemptedSnapshotRef = useRef<string | null>(null)
 
   const availableTags = useMemo(() => {
     const seen = new Set<string>()
@@ -694,6 +729,19 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
 
   const hasTagFilter = selectedTags.length > 0
 
+  useEffect(() => {
+    if (!selectedId) {
+      if (lastSavedAt !== undefined) {
+        setLastSavedAt(undefined)
+      }
+      return
+    }
+    const target = notes.find(item => item.id === selectedId)
+    if (target && target.updatedAt !== lastSavedAt) {
+      setLastSavedAt(target.updatedAt)
+    }
+  }, [lastSavedAt, notes, selectedId])
+
   const resetTagEditor = useCallback(() => {
     setTagInput('')
     setEditingTagIndex(null)
@@ -714,6 +762,83 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       setLoadingList(false)
     }
   }, [isDesktop])
+
+  const performSave = useCallback(
+    async (
+      draftToSave: NoteDraft,
+      options: { isAuto?: boolean; showSuccessToast?: boolean } = {},
+    ) => {
+      if (!isDesktop) return null
+      const { isAuto = false, showSuccessToast = false } = options
+      if (isAuto && (autoSaving || saving || deleting || loadingNote)) {
+        return null
+      }
+      if (isAuto && !draftToSave.id) {
+        const hasContent =
+          draftToSave.title.trim().length > 0 ||
+          draftToSave.content.trim().length > 0 ||
+          draftToSave.tags.length > 0
+        if (!hasContent) {
+          return null
+        }
+      }
+
+      if (isAuto) {
+        setAutoSaving(true)
+      } else {
+        setSaving(true)
+      }
+
+      try {
+        const saved = await saveNote(draftToSave)
+        skipNextAutoSaveRef.current = true
+        draftSnapshotRef.current = createDraftSnapshot(saved)
+        lastAttemptedSnapshotRef.current = null
+        setDraft({ id: saved.id, title: saved.title, content: saved.content, tags: saved.tags })
+        if (!isAuto) {
+          resetTagEditor()
+        }
+        setSelectedId(saved.id)
+        setLastSavedAt(saved.updatedAt)
+        setNotes(prev => {
+          const summary = toNoteSummary(saved)
+          const remaining = prev.filter(item => item.id !== summary.id)
+          return sortNoteSummaries([summary, ...remaining])
+        })
+        if (showSuccessToast) {
+          showToast({ title: '保存成功', description: '笔记内容已更新。', variant: 'success' })
+        }
+        return saved
+      } catch (err) {
+        console.error('Failed to save inspiration note', err)
+        const message = err instanceof Error ? err.message : '保存失败，请稍后再试。'
+        showToast({
+          title: isAuto ? '自动保存失败' : '保存失败',
+          description: message,
+          variant: 'error',
+        })
+        if (isAuto) {
+          lastAttemptedSnapshotRef.current = createDraftSnapshot(draftToSave)
+        }
+        throw err
+      } finally {
+        if (isAuto) {
+          setAutoSaving(false)
+        } else {
+          setSaving(false)
+        }
+      }
+    },
+    [
+      autoSaving,
+      deleting,
+      isDesktop,
+      loadingNote,
+      resetTagEditor,
+      saving,
+      showToast,
+    ],
+  )
 
   useEffect(() => {
     if (!isDesktop) {
@@ -908,6 +1033,10 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       try {
         const note = await loadNote(noteId)
         setDraft({ id: note.id, title: note.title, content: note.content, tags: note.tags })
+        setLastSavedAt(note.updatedAt)
+        draftSnapshotRef.current = createDraftSnapshot(note)
+        skipNextAutoSaveRef.current = true
+        lastAttemptedSnapshotRef.current = null
         resetTagEditor()
       } catch (err) {
         console.error('Failed to open inspiration note', err)
@@ -940,27 +1069,57 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     })
   }, [])
 
+  useEffect(() => {
+    if (!isDesktop) return undefined
+    if (loadingNote || saving || autoSaving || deleting) return undefined
+
+    const snapshot = createDraftSnapshot(draft)
+    if (skipNextAutoSaveRef.current) {
+      skipNextAutoSaveRef.current = false
+      draftSnapshotRef.current = snapshot
+      lastAttemptedSnapshotRef.current = null
+      return undefined
+    }
+
+    if (snapshot === draftSnapshotRef.current) {
+      return undefined
+    }
+
+    if (snapshot === lastAttemptedSnapshotRef.current) {
+      return undefined
+    }
+
+    if (!draft.id) {
+      const hasContent =
+        draft.title.trim().length > 0 || draft.content.trim().length > 0 || draft.tags.length > 0
+      if (!hasContent) {
+        return undefined
+      }
+    }
+
+    const handler = window.setTimeout(() => {
+      lastAttemptedSnapshotRef.current = snapshot
+      void performSave(draft, { isAuto: true }).catch(() => {
+        // 错误已在 performSave 内部处理
+      })
+    }, 800)
+
+    return () => {
+      window.clearTimeout(handler)
+    }
+  }, [autoSaving, deleting, draft, isDesktop, loadingNote, performSave, saving])
+
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault()
       if (!isDesktop) return
       try {
-        setSaving(true)
-        const saved = await saveNote(draft)
-        setDraft({ id: saved.id, title: saved.title, content: saved.content, tags: saved.tags })
-        resetTagEditor()
-        setSelectedId(saved.id)
-        showToast({ title: '保存成功', description: '笔记内容已更新。', variant: 'success' })
-        await refreshNotes()
-      } catch (err) {
-        console.error('Failed to save inspiration note', err)
-        const message = err instanceof Error ? err.message : '保存失败，请稍后再试。'
-        showToast({ title: '保存失败', description: message, variant: 'error' })
-      } finally {
-        setSaving(false)
+        await performSave(draft, { showSuccessToast: true })
+      } catch {
+        // 错误已通过 performSave 处理
       }
     },
-    [draft, isDesktop, refreshNotes, resetTagEditor, showToast],
+    [draft, isDesktop, performSave],
   )
 
   const handleDelete = useCallback(async () => {
@@ -971,7 +1130,12 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       setDeleting(true)
       await deleteNote(draft.id)
       showToast({ title: '已删除', description: '笔记已从本地移除。', variant: 'success' })
-      setDraft(createEmptyDraft())
+      const empty = createEmptyDraft()
+      setDraft(empty)
+      setLastSavedAt(undefined)
+      draftSnapshotRef.current = createDraftSnapshot(empty)
+      skipNextAutoSaveRef.current = true
+      lastAttemptedSnapshotRef.current = null
       resetTagEditor()
       setSelectedId(null)
       await refreshNotes()
@@ -1051,10 +1215,11 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
           onTagEditCancel={handleTagEditCancel}
           editingTagIndex={editingTagIndex}
           saving={saving}
+          autoSaving={autoSaving}
           deleting={deleting}
           loadingNote={loadingNote}
           canDelete={Boolean(draft.id)}
-          lastSavedAt={activeMeta?.updatedAt}
+          lastSavedAt={lastSavedAt}
         />
       </div>
     </div>
