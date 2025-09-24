@@ -69,6 +69,15 @@ export interface DocRecord {
   updatedAt: number
 }
 
+function ensureGithubValue<T extends { github?: UserGithubConnection | null }>(
+  record: T,
+): T & { github: UserGithubConnection | null } {
+  if (typeof record.github === 'undefined') {
+    return { ...record, github: null }
+  }
+  return record as T & { github: UserGithubConnection | null }
+}
+
 export type OwnerWhereClause<T> = {
   equals(value: string): { toArray(): Promise<T[]> }
 }
@@ -214,6 +223,7 @@ class AppDatabase extends Dexie {
 
         await Promise.all(
           users.map(async legacy => {
+            const legacyWithGithub = ensureGithubValue(legacy)
             const email = typeof legacy.email === 'string' ? legacy.email : ''
             const existing = typeof legacy.displayName === 'string' ? legacy.displayName.trim() : ''
             const fallback = email.split('@')[0]?.trim()
@@ -252,7 +262,8 @@ class AppDatabase extends Dexie {
         docs: '++id, ownerEmail, updatedAt',
       })
       .upgrade(async tx => {
-        type LegacyUserRecord = Omit<UserRecord, 'mnemonic' | 'mustChangePassword'> & {
+        type LegacyUserRecord = Omit<UserRecord, 'mnemonic' | 'mustChangePassword' | 'github'> & {
+          github?: UserRecord['github']
           mnemonic?: string
           mustChangePassword?: boolean
         }
@@ -265,11 +276,13 @@ class AppDatabase extends Dexie {
             if (typeof legacy.mnemonic === 'string' && legacy.mnemonic.trim()) {
               return
             }
+            const legacyWithGithub = ensureGithubValue(legacy)
             const mnemonic = generateMnemonicPhrase()
             const mustChangePassword =
               typeof legacy.mustChangePassword === 'boolean' ? legacy.mustChangePassword : false
             const next: UserRecord = {
               ...legacy,
+              github: legacyWithGithub.github,
               mnemonic,
               mustChangePassword,
               updatedAt: legacy.updatedAt ?? Date.now(),
@@ -348,10 +361,7 @@ class AppDatabase extends Dexie {
             if (typeof legacy.github !== 'undefined') {
               return
             }
-            const next: UserRecord = {
-              ...legacy,
-              github: null,
-            }
+            const next: UserRecord = ensureGithubValue({ ...legacy })
             await usersTable.put(next as LegacyUserRecord)
           }),
         )
@@ -381,8 +391,11 @@ function createDexieClient(): DatabaseClient {
       await database.open()
     },
     users: {
-      get: key => database.users.get(key),
-      put: record => database.users.put(record),
+      get: async key => {
+        const record = await database.users.get(key)
+        return record ? ensureGithubValue(record) : record
+      },
+      put: record => database.users.put(ensureGithubValue({ ...record })),
       delete: key => database.users.delete(key),
     },
     passwords: createDexieOwnedCollection(database.passwords),
