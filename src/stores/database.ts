@@ -248,7 +248,7 @@ class AppDatabase extends Dexie {
               mnemonic: typeof legacy.mnemonic === 'string' ? legacy.mnemonic : '',
               createdAt,
               updatedAt,
-              github: legacyWithGithub.github,
+              github: legacy.github ?? null,
             }
             await usersTable.put(next)
           }),
