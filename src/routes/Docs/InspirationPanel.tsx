@@ -854,7 +854,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   return (
     <div
       className={clsx(
-        'flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-6 xl:gap-8',
+        'flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)] lg:gap-6 xl:grid-cols-[minmax(0,0.65fr)_minmax(0,1.35fr)] xl:gap-8',
         className,
       )}
     >
