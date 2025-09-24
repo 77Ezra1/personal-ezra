@@ -534,7 +534,7 @@ function InspirationEditor({
             disabled={saving || deleting || loadingNote}
           />
           <div
-            className="min-h-[200px] rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text"
+            className="h-64 overflow-y-auto rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text"
             aria-live="polite"
           >
             {hasContent ? (
