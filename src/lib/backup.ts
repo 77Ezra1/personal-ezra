@@ -13,6 +13,7 @@ import {
   type PasswordRecord,
   type SiteRecord,
   type UserAvatarMeta,
+  type UserGithubConnection,
   type UserRecord,
 } from '../stores/database'
 import { useAuthStore } from '../stores/auth'
@@ -20,7 +21,7 @@ import { normalizeTotpSecret } from './totp'
 
 export const BACKUP_IMPORTED_EVENT = 'pms-backup-imported'
 
-const BACKUP_VERSION = 1
+const BACKUP_VERSION = 2
 const BACKUP_FILE_VERSION = 2
 const BACKUP_FILE_MAGIC = 'pms-backup'
 
@@ -167,6 +168,14 @@ type BackupProfile = {
   avatar: UserAvatarMeta | null
 }
 
+type BackupGithubConnection = {
+  username: string
+  token: string
+  connectedAt: number
+  updatedAt: number
+  lastValidationAt?: number | null
+}
+
 type BackupPayloadV1 = {
   version: typeof BACKUP_VERSION
   exportedAt: number
@@ -177,7 +186,7 @@ type BackupPayloadV1 = {
   profile?: BackupProfile
 }
 
-type BackupPayload = BackupPayloadV1
+type BackupPayload = BackupPayloadV1 & { github?: BackupGithubConnection | null }
 
 type ImportResult = {
   email: string
@@ -283,6 +292,40 @@ function sanitizeDocument(value: unknown): DocRecord['document'] | undefined {
   }
 
   return undefined
+}
+
+function sanitizeGithubConnection(
+  value: unknown,
+  fallbackTimestamp: number,
+): BackupGithubConnection | undefined {
+  if (!isObject(value)) {
+    return undefined
+  }
+  const username = sanitizeOptionalString((value as { username?: unknown }).username)
+  const token = sanitizeOptionalString((value as { token?: unknown }).token)
+  if (!username || !token) {
+    return undefined
+  }
+  const connectedAt = normalizeTimestamp((value as { connectedAt?: unknown }).connectedAt, fallbackTimestamp)
+  const updatedAt = normalizeTimestamp((value as { updatedAt?: unknown }).updatedAt ?? connectedAt, connectedAt)
+  const lastValidationRaw = (value as { lastValidationAt?: unknown }).lastValidationAt
+  let lastValidationAt: number | null | undefined
+  if (lastValidationRaw === null) {
+    lastValidationAt = null
+  } else if (lastValidationRaw !== undefined) {
+    lastValidationAt = normalizeTimestamp(lastValidationRaw, updatedAt)
+  }
+
+  const result: BackupGithubConnection = {
+    username,
+    token,
+    connectedAt,
+    updatedAt,
+  }
+  if (lastValidationAt !== undefined) {
+    result.lastValidationAt = lastValidationAt
+  }
+  return result
 }
 
 async function decryptPasswords(
@@ -403,14 +446,44 @@ export async function exportUserData(
     avatar: avatarResult.ok ? avatarResult.value : null,
   }
 
-  const payload: BackupPayloadV1 = {
+  const exportedAt = Date.now()
+  let githubConnection: BackupGithubConnection | undefined
+  if (userRecord.github && typeof userRecord.github.tokenCipher === 'string') {
+    const username = typeof userRecord.github.username === 'string' ? userRecord.github.username.trim() : ''
+    if (username) {
+      try {
+        const token = await decryptString(encryptionKey, userRecord.github.tokenCipher)
+        const connectedAt = normalizeTimestamp(userRecord.github.connectedAt, exportedAt)
+        const updatedAt = normalizeTimestamp(userRecord.github.updatedAt ?? userRecord.github.connectedAt, connectedAt)
+        const lastValidationAt = normalizeTimestamp(
+          userRecord.github.lastValidationAt ?? userRecord.github.updatedAt ?? updatedAt,
+          updatedAt,
+        )
+        githubConnection = {
+          username,
+          token,
+          connectedAt,
+          updatedAt,
+          lastValidationAt,
+        }
+      } catch (error) {
+        console.error('Failed to decrypt GitHub token for backup export', error)
+      }
+    }
+  }
+
+  const payload: BackupPayload = {
     version: BACKUP_VERSION,
-    exportedAt: Date.now(),
+    exportedAt,
     email: normalizedEmail,
     passwords: await decryptPasswords(passwordRows, encryptionKey),
     sites: mapSites(siteRows),
     docs: mapDocs(docRows),
     profile,
+  }
+
+  if (githubConnection) {
+    payload.github = githubConnection
   }
 
   let encryptedPayload: LegacyEncryptedPayload
@@ -555,7 +628,17 @@ function parseBackupPayload(data: unknown): BackupPayload {
     }
   }
 
-  return {
+  let github: BackupGithubConnection | null | undefined
+  if (Object.prototype.hasOwnProperty.call(data, 'github')) {
+    const githubRaw = (data as { github?: unknown }).github
+    if (githubRaw === null) {
+      github = null
+    } else {
+      github = sanitizeGithubConnection(githubRaw, exportedAt) ?? null
+    }
+  }
+
+  const result: BackupPayload = {
     version: version as typeof BACKUP_VERSION,
     exportedAt,
     email,
@@ -564,6 +647,10 @@ function parseBackupPayload(data: unknown): BackupPayload {
     docs,
     profile,
   }
+  if (github !== undefined) {
+    result.github = github
+  }
+  return result
 }
 
 async function preparePasswordRecords(
@@ -778,17 +865,49 @@ export async function importUserData(
     Promise.resolve(prepareDocRecords(parsed.docs, ownerEmail)),
   ])
 
-  if (parsed.profile) {
+  const shouldUpdateUserProfile = Boolean(parsed.profile) || parsed.github !== undefined
+  if (shouldUpdateUserProfile) {
     try {
       const existingUser = await db.users.get(ownerEmail)
       if (existingUser) {
-        const nextDisplayName = fallbackDisplayName(ownerEmail, parsed.profile.displayName)
         const nextRecord: UserRecord = {
           ...existingUser,
-          displayName: nextDisplayName,
-          avatar: parsed.profile.avatar,
           updatedAt: Date.now(),
         }
+
+        if (parsed.profile) {
+          const nextDisplayName = fallbackDisplayName(ownerEmail, parsed.profile.displayName)
+          nextRecord.displayName = nextDisplayName
+          nextRecord.avatar = parsed.profile.avatar
+        }
+
+        if (parsed.github !== undefined) {
+          if (parsed.github) {
+            try {
+              const encryptedToken = await encryptString(encryptionKey, parsed.github.token)
+              const connectedAt = normalizeTimestamp(parsed.github.connectedAt, nextRecord.updatedAt)
+              const updatedAt = normalizeTimestamp(parsed.github.updatedAt ?? parsed.github.connectedAt, connectedAt)
+              const lastValidationSource =
+                parsed.github.lastValidationAt === null
+                  ? updatedAt
+                  : normalizeTimestamp(parsed.github.lastValidationAt, updatedAt)
+              const githubRecord: UserGithubConnection = {
+                username: parsed.github.username,
+                tokenCipher: encryptedToken,
+                connectedAt,
+                updatedAt,
+                lastValidationAt: lastValidationSource,
+              }
+              nextRecord.github = githubRecord
+            } catch (error) {
+              console.error('Failed to restore GitHub metadata from backup', error)
+              nextRecord.github = existingUser.github ?? null
+            }
+          } else {
+            nextRecord.github = null
+          }
+        }
+
         await db.users.put(nextRecord)
         try {
           await useAuthStore.getState().loadProfile()

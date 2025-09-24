@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { decryptString, encryptString } from '../src/lib/crypto'
 import type { DatabaseClient } from '../src/stores/database'
 
@@ -64,6 +64,10 @@ beforeEach(async () => {
   await clearUserData(email)
 })
 
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
 describe('user data backup', () => {
   it(
     'imports password-protected backup after re-registering the same account',
@@ -74,6 +78,19 @@ describe('user data backup', () => {
 
     const firstRegister = await auth.register(email, masterPassword)
     expect(firstRegister.success).toBe(true)
+
+    const githubToken = 'github_pat_BACKUP_TEST'
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ login: 'octocat' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+    const connectGithubResult = await useAuthStore.getState().connectGithub(githubToken)
+    expect(connectGithubResult.success).toBe(true)
+    expect(fetchMock).toHaveBeenCalled()
+    vi.unstubAllGlobals()
 
     const firstKey = useAuthStore.getState().encryptionKey
     expect(firstKey).toBeInstanceOf(Uint8Array)
@@ -116,6 +133,12 @@ describe('user data backup', () => {
     expect(stored).toHaveLength(1)
     const decrypted = await decryptString(secondKeyBytes, stored[0]!.passwordCipher)
     expect(decrypted).toBe('initial-secret')
+
+    const importedRecord = await databaseClient.users.get(email)
+    expect(importedRecord?.github?.username).toBe('octocat')
+    const importedToken = await decryptString(secondKeyBytes, importedRecord!.github!.tokenCipher)
+    expect(importedToken).toBe(githubToken)
+    expect(useAuthStore.getState().profile?.github?.username).toBe('octocat')
     },
     LONG_RUNNING_TEST_TIMEOUT,
   )

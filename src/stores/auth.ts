@@ -11,7 +11,14 @@ import {
   normalizeDisplayName,
   validateAvatarMeta,
 } from '../lib/profile'
-import { db, type DocDocument, type PasswordRecord, type UserAvatarMeta, type UserRecord } from './database'
+import {
+  db,
+  type DocDocument,
+  type PasswordRecord,
+  type UserAvatarMeta,
+  type UserGithubConnection,
+  type UserRecord,
+} from './database'
 
 export const SESSION_STORAGE_KEY = 'Personal-session'
 
@@ -33,10 +40,18 @@ type MnemonicResult = AuthResult & { mnemonic?: string }
 type MnemonicAnswerPayload = { index: number; word: string }
 type RecoverPasswordPayload = { email: string; newPassword: string; mnemonicAnswers: MnemonicAnswerPayload[] }
 
+export type UserGithubProfile = {
+  username: string
+  connectedAt: number
+  updatedAt: number
+  lastValidationAt: number
+}
+
 export type UserProfile = {
   email: string
   displayName: string
   avatar: UserAvatarMeta | null
+  github: UserGithubProfile | null
 }
 
 type ProfileUpdatePayload = {
@@ -70,6 +85,8 @@ type AuthState = {
   deleteAccount: (password: string) => Promise<AuthResult>
   revealMnemonic: (password: string) => Promise<MnemonicResult>
   lockSession: () => void
+  connectGithub: (token: string) => Promise<AuthResult>
+  disconnectGithub: () => Promise<AuthResult>
 }
 
 function saveSession(payload: SessionPersistencePayload) {
@@ -149,11 +166,43 @@ function normalizeMnemonic(value: string) {
     .join(' ')
 }
 
+function ensureTimestamp(value: unknown, fallback: number) {
+  const num = typeof value === 'number' ? value : Number(value)
+  if (Number.isFinite(num) && num > 0) {
+    return num
+  }
+  return fallback
+}
+
+function mapGithubConnection(meta: UserGithubConnection | null | undefined): UserGithubProfile | null {
+  if (!meta) {
+    return null
+  }
+  const username = typeof meta.username === 'string' ? meta.username.trim() : ''
+  if (!username) {
+    return null
+  }
+  const fallbackTimestamp =
+    typeof meta.updatedAt === 'number' && Number.isFinite(meta.updatedAt)
+      ? meta.updatedAt
+      : Date.now()
+  const connectedAt = ensureTimestamp(meta.connectedAt, fallbackTimestamp)
+  const updatedAt = ensureTimestamp(meta.updatedAt, connectedAt)
+  const lastValidationAt = ensureTimestamp(meta.lastValidationAt, updatedAt)
+  return {
+    username,
+    connectedAt,
+    updatedAt,
+    lastValidationAt,
+  }
+}
+
 function mapRecordToProfile(record: UserRecord): UserProfile {
   return {
     email: record.email,
     displayName: fallbackDisplayName(record.email, record.displayName),
     avatar: record.avatar ?? null,
+    github: mapGithubConnection(record.github ?? null),
   }
 }
 
@@ -252,6 +301,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       mnemonic,
       createdAt: now,
       updatedAt: now,
+      github: null,
     }
     await db.users.put(record)
     saveSession({ email, key, locked: false })
@@ -299,6 +349,151 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!email) return
     saveSession({ email, locked: true })
     set({ encryptionKey: null, locked: true })
+  },
+  async connectGithub(rawToken) {
+    const token = typeof rawToken === 'string' ? rawToken.trim() : ''
+    if (!token) {
+      return { success: false, message: '请输入 GitHub 访问令牌' }
+    }
+
+    const { email, encryptionKey } = get()
+    if (!email) {
+      return { success: false, message: '请先登录后再连接 GitHub' }
+    }
+    if (!(encryptionKey instanceof Uint8Array) || encryptionKey.length === 0) {
+      return { success: false, message: '请先解锁账号后再连接 GitHub' }
+    }
+    if (typeof fetch !== 'function') {
+      return { success: false, message: '当前环境不支持网络请求，请稍后重试' }
+    }
+
+    let record: UserRecord | undefined
+    try {
+      record = await db.users.get(email)
+    } catch (error) {
+      console.error('Failed to load user record before connecting GitHub', error)
+      return { success: false, message: '无法读取账户信息，请稍后再试' }
+    }
+    if (!record) {
+      return { success: false, message: '账号不存在或已被删除' }
+    }
+
+    const requestGithubUser = (authHeader: string) =>
+      fetch('https://api.github.com/user', {
+        method: 'GET',
+        headers: {
+          Authorization: authHeader,
+          Accept: 'application/vnd.github+json',
+        },
+      })
+
+    let response: Response
+    try {
+      response = await requestGithubUser(`Bearer ${token}`)
+      if (response.status === 401 || response.status === 403) {
+        response = await requestGithubUser(`token ${token}`)
+      }
+    } catch (error) {
+      console.error('Failed to validate GitHub access token', error)
+      return { success: false, message: '无法连接 GitHub，请检查网络后重试' }
+    }
+
+    if (!response.ok) {
+      const message =
+        response.status === 401 || response.status === 403
+          ? 'GitHub 访问令牌无效或权限不足，请重新生成后再试'
+          : '验证 GitHub 令牌失败，请稍后重试'
+      return { success: false, message }
+    }
+
+    let payload: unknown
+    try {
+      payload = await response.json()
+    } catch (error) {
+      console.error('Failed to parse GitHub user payload', error)
+      return { success: false, message: '解析 GitHub 用户信息失败，请稍后重试' }
+    }
+
+    const loginField =
+      payload && typeof payload === 'object'
+        ? (payload as { login?: unknown }).login
+        : undefined
+    const username = typeof loginField === 'string' ? loginField.trim() : ''
+    if (!username) {
+      return { success: false, message: '未能获取 GitHub 用户名，请确认令牌具备 read:user 权限' }
+    }
+
+    let encryptedToken: string
+    try {
+      encryptedToken = await encryptString(encryptionKey, token)
+    } catch (error) {
+      console.error('Failed to encrypt GitHub token', error)
+      return { success: false, message: '加密 GitHub 访问令牌失败，请稍后再试' }
+    }
+
+    const now = Date.now()
+    const connectedAt = record.github ? ensureTimestamp(record.github.connectedAt, now) : now
+    const nextGithub: UserGithubConnection = {
+      username,
+      tokenCipher: encryptedToken,
+      connectedAt,
+      updatedAt: now,
+      lastValidationAt: now,
+    }
+
+    const nextRecord: UserRecord = {
+      ...record,
+      github: nextGithub,
+      updatedAt: now,
+    }
+
+    try {
+      await db.users.put(nextRecord)
+    } catch (error) {
+      console.error('Failed to persist GitHub connection metadata', error)
+      return { success: false, message: '保存 GitHub 连接信息失败，请稍后再试' }
+    }
+
+    set({ profile: mapRecordToProfile(nextRecord) })
+    return { success: true }
+  },
+  async disconnectGithub() {
+    const { email } = get()
+    if (!email) {
+      return { success: false, message: '请先登录后再断开 GitHub 连接' }
+    }
+
+    let record: UserRecord | undefined
+    try {
+      record = await db.users.get(email)
+    } catch (error) {
+      console.error('Failed to load user record before disconnecting GitHub', error)
+      return { success: false, message: '无法读取账户信息，请稍后再试' }
+    }
+
+    if (!record) {
+      return { success: false, message: '账号不存在或已被删除' }
+    }
+
+    if (!record.github) {
+      return { success: true }
+    }
+
+    const nextRecord: UserRecord = {
+      ...record,
+      github: null,
+      updatedAt: Date.now(),
+    }
+
+    try {
+      await db.users.put(nextRecord)
+    } catch (error) {
+      console.error('Failed to remove GitHub connection metadata', error)
+      return { success: false, message: '断开 GitHub 连接失败，请稍后重试' }
+    }
+
+    set({ profile: mapRecordToProfile(nextRecord) })
+    return { success: true }
   },
   async loadProfile() {
     const { email } = get()
