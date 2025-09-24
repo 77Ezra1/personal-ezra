@@ -2,7 +2,7 @@ import { mkdir, readDir, readTextFile, remove, writeTextFile } from '@tauri-apps
 import { appDataDir, join } from '@tauri-apps/api/path'
 
 import { isTauriRuntime } from '../env'
-import { DEFAULT_DATA_DIR_SEGMENTS, loadStoredDataPath } from './storage-path'
+import { DEFAULT_DATA_DIR_SEGMENTS, loadStoredDataPath, loadStoredRepositoryPath } from './storage-path'
 
 export const NOTES_DIR_NAME = 'notes'
 export const NOTE_FILE_EXTENSION = '.md'
@@ -411,6 +411,20 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
   const filePath = await join(dir, fileName)
   await writeTextFile(filePath, serialized)
 
+  const repositoryRoot = loadStoredRepositoryPath()
+  if (repositoryRoot) {
+    try {
+      const repositoryNotesDir = await join(repositoryRoot, NOTES_DIR_NAME)
+      const repositoryFilePath = await join(repositoryNotesDir, fileName)
+      if (repositoryFilePath !== filePath) {
+        await mkdir(repositoryNotesDir, { recursive: true })
+        await writeTextFile(repositoryFilePath, serialized)
+      }
+    } catch (error) {
+      console.warn('Failed to synchronize inspiration note to repository path', error)
+    }
+  }
+
   const normalizedContent = normalizeContent(rawContent)
   const searchText = createSearchText(title, normalizedContent, tags)
 
@@ -432,4 +446,17 @@ export async function deleteNote(id: string): Promise<void> {
   const fileName = normalizeNoteId(id)
   const filePath = await join(dir, fileName)
   await remove(filePath)
+
+  const repositoryRoot = loadStoredRepositoryPath()
+  if (repositoryRoot) {
+    try {
+      const repositoryNotesDir = await join(repositoryRoot, NOTES_DIR_NAME)
+      const repositoryFilePath = await join(repositoryNotesDir, fileName)
+      if (repositoryFilePath !== filePath) {
+        await remove(repositoryFilePath)
+      }
+    } catch (error) {
+      console.warn('Failed to remove repository note copy', error)
+    }
+  }
 }
