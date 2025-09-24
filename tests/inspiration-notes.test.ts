@@ -9,6 +9,7 @@ vi.mock('../src/lib/storage-path', async () => {
   return {
     ...actual,
     loadStoredDataPath: vi.fn(() => null),
+    loadStoredRepositoryPath: vi.fn(() => null),
   }
 })
 
@@ -20,12 +21,13 @@ import {
   saveNote,
 } from '../src/lib/inspiration-notes'
 import { isTauriRuntime } from '../src/env'
-import { loadStoredDataPath } from '../src/lib/storage-path'
+import { loadStoredDataPath, loadStoredRepositoryPath } from '../src/lib/storage-path'
 import { readDir, readTextFile, writeTextFile, mkdir, remove } from '@tauri-apps/plugin-fs'
 import { appDataDir, join } from '@tauri-apps/api/path'
 
 const isTauriRuntimeMock = vi.mocked(isTauriRuntime)
 const loadStoredDataPathMock = vi.mocked(loadStoredDataPath)
+const loadStoredRepositoryPathMock = vi.mocked(loadStoredRepositoryPath)
 const readDirMock = vi.mocked(readDir)
 const readTextFileMock = vi.mocked(readTextFile)
 const writeTextFileMock = vi.mocked(writeTextFile)
@@ -62,6 +64,7 @@ describe('inspiration notes storage', () => {
     directories.clear()
     isTauriRuntimeMock.mockReturnValue(true)
     loadStoredDataPathMock.mockReturnValue(null)
+    loadStoredRepositoryPathMock.mockReturnValue(null)
     appDataDirMock.mockResolvedValue('C:/mock/AppData/Personal')
     joinMock.mockImplementation(async (...parts: string[]) => normalizePath(parts.join('/')))
     mkdirMock.mockImplementation(async (path: string) => {
@@ -277,6 +280,29 @@ describe('inspiration notes storage', () => {
     const listB = await listNotes()
     expect(listB).toHaveLength(1)
     expect(listB[0]?.id).toBe(second.id)
+  })
+
+  it('saves and removes repository copies when repository path is configured', async () => {
+    loadStoredDataPathMock.mockReturnValue('D:/Workspace/MyNotes')
+    loadStoredRepositoryPathMock.mockReturnValue('C:/Projects/Repo')
+
+    const saved = await saveNote({ title: '双向同步', content: '仓库副本' })
+
+    const localFilePath = normalizePath(`D:/Workspace/MyNotes/notes/${saved.id}`)
+    const repositoryFilePath = normalizePath(`C:/Projects/Repo/notes/${saved.id}`)
+
+    expect(files.get(localFilePath)).toBeDefined()
+    expect(files.get(repositoryFilePath)).toBeDefined()
+    expect(files.get(repositoryFilePath)).toBe(files.get(localFilePath))
+
+    await deleteNote(saved.id)
+
+    expect(files.has(localFilePath)).toBe(false)
+    expect(files.has(repositoryFilePath)).toBe(false)
+
+    const removedPaths = removeMock.mock.calls.map(([path]) => normalizePath(path as string))
+    expect(removedPaths).toContain(localFilePath)
+    expect(removedPaths).toContain(repositoryFilePath)
   })
 
   it('removes note files when deleting', async () => {
