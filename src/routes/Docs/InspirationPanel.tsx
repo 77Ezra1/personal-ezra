@@ -14,6 +14,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useId,
   useMemo,
   useRef,
@@ -461,7 +462,7 @@ function InspirationEditor({
           value={draft.content}
           onChange={onContentChange}
           placeholder="使用 Markdown 语法编写内容，支持标题、列表、引用等格式。"
-          className="min-h-[200px] w-full resize-y rounded-2xl border border-border bg-surface px-4 py-3 text-sm leading-relaxed text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+          className="min-h-[200px] w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm leading-relaxed text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
           disabled={saving || deleting || loadingNote}
         />
       </div>
@@ -547,6 +548,13 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const [error, setError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const tagInputRef = useRef<HTMLInputElement | null>(null)
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    textarea.style.height = 'auto'
+    textarea.style.height = `${textarea.scrollHeight}px`
+  }, [draft.content, draft.id, loadingNote])
 
   const activeMeta = useMemo(() => {
     if (!selectedId) return null
