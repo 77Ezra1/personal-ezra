@@ -18,6 +18,12 @@ import {
 } from '../stores/database'
 import { useAuthStore } from '../stores/auth'
 import { normalizeTotpSecret } from './totp'
+import {
+  NOTE_FILE_EXTENSION,
+  exportNotesForBackup,
+  restoreNotesFromBackup,
+  type InspirationNoteBackupEntry,
+} from './inspiration-notes'
 
 export const BACKUP_IMPORTED_EVENT = 'pms-backup-imported'
 
@@ -190,13 +196,17 @@ type BackupPayloadV1 = {
   profile?: BackupProfile
 }
 
-type BackupPayload = BackupPayloadV1 & { github?: BackupGithubConnection | null }
+type BackupPayload = BackupPayloadV1 & {
+  github?: BackupGithubConnection | null
+  notes?: InspirationNoteBackupEntry[]
+}
 
 type ImportResult = {
   email: string
   passwords: number
   sites: number
   docs: number
+  notes: number
 }
 
 function normalizeTimestamp(value: unknown, fallback: number) {
@@ -296,6 +306,96 @@ function sanitizeDocument(value: unknown): DocRecord['document'] | undefined {
   }
 
   return undefined
+}
+
+function deriveNoteTitleFromPath(path: string) {
+  const segments = path.split('/').filter(Boolean)
+  const fileName = segments[segments.length - 1] ?? ''
+  const withoutExt = fileName.replace(new RegExp(`${NOTE_FILE_EXTENSION}$`, 'i'), '')
+  const cleaned = withoutExt.replace(/^\d{8}(?:-\d{6})?-?/, '').replace(/[-_]+/g, ' ').trim()
+  return cleaned || '未命名笔记'
+}
+
+function sanitizeNoteTags(value: unknown): string[] {
+  const rawArray = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[,\s]+/)
+      : []
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const item of rawArray) {
+    if (typeof item !== 'string') continue
+    const trimmed = item.trim()
+    if (!trimmed) continue
+    const normalized = trimmed.replace(/\s+/g, ' ')
+    const key = normalized.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(normalized)
+  }
+  return result
+}
+
+function sanitizeNoteMeta(
+  value: unknown,
+  fallbackTitle: string,
+  fallbackTimestamp: number,
+): InspirationNoteBackupEntry['meta'] {
+  const titleInput =
+    sanitizeOptionalString((value as { title?: unknown })?.title) ?? sanitizeRequiredString(fallbackTitle)
+  const createdAt = normalizeTimestamp((value as { createdAt?: unknown })?.createdAt, fallbackTimestamp)
+  const updatedAt = normalizeTimestamp(
+    (value as { updatedAt?: unknown })?.updatedAt ?? createdAt,
+    createdAt,
+  )
+  const tags = sanitizeNoteTags((value as { tags?: unknown })?.tags)
+  return { title: titleInput, createdAt, updatedAt, tags }
+}
+
+function sanitizeNoteEntry(value: unknown, fallbackTimestamp: number): InspirationNoteBackupEntry | null {
+  if (!isObject(value)) {
+    return null
+  }
+
+  const candidates = [
+    sanitizeOptionalString((value as { path?: unknown }).path),
+    sanitizeOptionalString((value as { id?: unknown }).id),
+    sanitizeOptionalString((value as { fileName?: unknown }).fileName),
+  ]
+  const rawPath = candidates.find((candidate): candidate is string => Boolean(candidate))
+  if (!rawPath) {
+    return null
+  }
+
+  const normalizedSegments = rawPath
+    .replace(/\\/g, '/')
+    .split('/')
+    .map(segment => segment.trim())
+    .filter(Boolean)
+
+  if (normalizedSegments.length === 0) {
+    return null
+  }
+
+  for (const segment of normalizedSegments) {
+    if (segment === '.' || segment === '..') {
+      return null
+    }
+  }
+
+  let fileName = normalizedSegments[normalizedSegments.length - 1]!
+  const extension = NOTE_FILE_EXTENSION.toLowerCase()
+  if (!fileName.toLowerCase().endsWith(extension)) {
+    fileName = `${fileName}${NOTE_FILE_EXTENSION}`
+  }
+  normalizedSegments[normalizedSegments.length - 1] = fileName
+
+  const sanitizedPath = normalizedSegments.join('/')
+  const fallbackTitle = deriveNoteTitleFromPath(sanitizedPath)
+  const meta = sanitizeNoteMeta((value as { meta?: unknown }).meta, fallbackTitle, fallbackTimestamp)
+  const content = sanitizeRequiredString((value as { content?: unknown }).content ?? '')
+  return { path: sanitizedPath, meta, content }
 }
 
 function sanitizeGithubConnection(
@@ -443,10 +543,11 @@ export async function exportUserData(
     throw new Error('主密码错误，请确认后再试。')
   }
 
-  const [passwordRows, siteRows, docRows] = await Promise.all([
+  const [passwordRows, siteRows, docRows, noteEntries] = await Promise.all([
     db.passwords.where('ownerEmail').equals(normalizedEmail).toArray(),
     db.sites.where('ownerEmail').equals(normalizedEmail).toArray(),
     db.docs.where('ownerEmail').equals(normalizedEmail).toArray(),
+    exportNotesForBackup(),
   ])
 
   const fallbackName = fallbackDisplayName(normalizedEmail)
@@ -509,6 +610,7 @@ export async function exportUserData(
     sites: mapSites(siteRows),
     docs: mapDocs(docRows),
     profile,
+    notes: noteEntries,
   }
 
   if (githubConnection) {
@@ -633,6 +735,20 @@ function parseBackupPayload(data: unknown): BackupPayload {
     }
   })
 
+  let notes: InspirationNoteBackupEntry[] | undefined
+  if (Object.prototype.hasOwnProperty.call(data, 'notes')) {
+    notes = []
+    const notesRaw = (data as { notes?: unknown }).notes
+    if (Array.isArray(notesRaw)) {
+      for (const item of notesRaw) {
+        const sanitized = sanitizeNoteEntry(item, exportedAt)
+        if (sanitized) {
+          notes.push(sanitized)
+        }
+      }
+    }
+  }
+
   const profileRaw = (data as { profile?: unknown }).profile
   let profile: BackupProfile | undefined
   if (isObject(profileRaw)) {
@@ -678,6 +794,9 @@ function parseBackupPayload(data: unknown): BackupPayload {
   }
   if (github !== undefined) {
     result.github = github
+  }
+  if (notes !== undefined) {
+    result.notes = notes
   }
   return result
 }
@@ -783,11 +902,11 @@ async function persistRecords(
   passwords: PasswordRecord[],
   sites: SiteRecord[],
   docs: DocRecord[],
-): Promise<ImportResult> {
+): Promise<{ passwords: number; sites: number; docs: number }> {
   await Promise.all(passwords.map(record => db.passwords.add(record)))
   await Promise.all(sites.map(record => db.sites.add(record)))
   await Promise.all(docs.map(record => db.docs.add(record)))
-  return { email: ownerEmail, passwords: passwords.length, sites: sites.length, docs: docs.length }
+  return { passwords: passwords.length, sites: sites.length, docs: docs.length }
 }
 
 export async function importUserData(
@@ -958,5 +1077,21 @@ export async function importUserData(
   }
 
   await removeExistingRecords(ownerEmail)
-  return persistRecords(ownerEmail, passwordRecords, siteRecords, docRecords)
+  const { passwords: passwordCount, sites: siteCount, docs: docCount } = await persistRecords(
+    ownerEmail,
+    passwordRecords,
+    siteRecords,
+    docRecords,
+  )
+  let notesImported = 0
+  if (parsed.notes !== undefined) {
+    notesImported = await restoreNotesFromBackup(parsed.notes)
+  }
+  return {
+    email: ownerEmail,
+    passwords: passwordCount,
+    sites: siteCount,
+    docs: docCount,
+    notes: notesImported,
+  }
 }

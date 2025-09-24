@@ -128,6 +128,7 @@ describe('user data backup', () => {
     expect(result.passwords).toBe(1)
     expect(result.sites).toBe(0)
     expect(result.docs).toBe(0)
+    expect(result.notes).toBe(0)
 
     const stored = await databaseClient.passwords.where('ownerEmail').equals(email).toArray()
     expect(stored).toHaveLength(1)

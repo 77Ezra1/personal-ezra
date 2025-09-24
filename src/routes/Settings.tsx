@@ -2024,7 +2024,7 @@ function DataBackupSection() {
       const result = await importUserData(payload, encryptionKey, masterPassword)
       showToast({
         title: '导入成功',
-        description: `密码 ${result.passwords} 条｜网站 ${result.sites} 个｜文档 ${result.docs} 条`,
+        description: `密码 ${result.passwords} 条｜网站 ${result.sites} 个｜文档 ${result.docs} 条｜笔记 ${result.notes} 条`,
         variant: 'success',
       })
       setPasswordError(null)
@@ -2273,7 +2273,7 @@ function DataBackupSection() {
       <div className="space-y-1">
         <h3 className="text-sm font-semibold text-text">GitHub 仓库备份</h3>
         <p className="text-xs leading-relaxed text-muted">
-          指定仓库后，自动备份会同步最新的加密文件至 GitHub，提交消息会包含当前时间戳。
+          指定仓库后，自动备份会同步包含密码库、文档与灵感妙记笔记的最新加密文件至 GitHub，提交消息会包含当前时间戳。
         </p>
       </div>
       <label className="inline-flex items-center gap-2">
