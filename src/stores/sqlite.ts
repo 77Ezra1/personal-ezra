@@ -8,6 +8,7 @@ import {
   loadStoredDataPath,
   saveStoredDataPath,
 } from '../lib/storage-path'
+import { normalizeGithubConnection } from './database'
 import type {
   DatabaseClient,
   DocRecord,
@@ -167,32 +168,28 @@ function parseGithubConnection(value: unknown): UserGithubConnection | null {
     const parsed = JSON.parse(value) as Partial<UserGithubConnection>
     if (!parsed || typeof parsed !== 'object') return null
 
-    const username = typeof parsed.username === 'string' ? parsed.username.trim() : ''
-    const tokenCipher = typeof parsed.tokenCipher === 'string' ? parsed.tokenCipher : ''
-    if (!username || !tokenCipher) {
-      return null
+    const base: UserGithubConnection = {
+      username: typeof parsed.username === 'string' ? parsed.username : '',
+      tokenCipher: typeof parsed.tokenCipher === 'string' ? parsed.tokenCipher : '',
+      connectedAt:
+        typeof parsed.connectedAt === 'number' && Number.isFinite(parsed.connectedAt)
+          ? parsed.connectedAt
+          : Date.now(),
+      updatedAt:
+        typeof parsed.updatedAt === 'number' && Number.isFinite(parsed.updatedAt)
+          ? parsed.updatedAt
+          : Date.now(),
+      lastValidationAt:
+        typeof parsed.lastValidationAt === 'number' && Number.isFinite(parsed.lastValidationAt)
+          ? parsed.lastValidationAt
+          : Date.now(),
+      repositoryOwner: typeof parsed.repositoryOwner === 'string' ? parsed.repositoryOwner : null,
+      repositoryName: typeof parsed.repositoryName === 'string' ? parsed.repositoryName : null,
+      repositoryBranch: typeof parsed.repositoryBranch === 'string' ? parsed.repositoryBranch : null,
+      targetDirectory: typeof parsed.targetDirectory === 'string' ? parsed.targetDirectory : null,
     }
 
-    const connectedAt =
-      typeof parsed.connectedAt === 'number' && Number.isFinite(parsed.connectedAt)
-        ? parsed.connectedAt
-        : Date.now()
-    const updatedAt =
-      typeof parsed.updatedAt === 'number' && Number.isFinite(parsed.updatedAt)
-        ? parsed.updatedAt
-        : connectedAt
-    const lastValidationAt =
-      typeof parsed.lastValidationAt === 'number' && Number.isFinite(parsed.lastValidationAt)
-        ? parsed.lastValidationAt
-        : updatedAt
-
-    return {
-      username,
-      tokenCipher,
-      connectedAt,
-      updatedAt,
-      lastValidationAt,
-    }
+    return normalizeGithubConnection(base)
   } catch (error) {
     console.warn('Failed to parse GitHub connection payload from SQLite', error)
     return null

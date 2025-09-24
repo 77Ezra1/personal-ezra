@@ -36,6 +36,7 @@ describe('sqlite database helpers', () => {
       mnemonic: 'alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu',
       createdAt: now,
       updatedAt: now,
+      github: null,
     }
     await db.users.put(user)
     await expect(db.users.get('user@example.com')).resolves.toEqual(user)
