@@ -47,10 +47,12 @@ import {
   saveStoredDataPath,
 } from '../lib/storage-path'
 import { BACKUP_IMPORTED_EVENT, exportUserData, importUserData } from '../lib/backup'
+import { decryptString } from '../lib/crypto'
 import { estimatePasswordStrength, PASSWORD_STRENGTH_REQUIREMENT } from '../lib/password-utils'
+import { uploadGithubBackup } from '../lib/github-backup'
 import { DEFAULT_TIMEOUT, IDLE_TIMEOUT_OPTIONS, useIdleTimeoutStore } from '../features/lock/IdleLock'
 import { selectAuthProfile, useAuthStore } from '../stores/auth'
-import type { UserAvatarMeta } from '../stores/database'
+import { db, type UserAvatarMeta } from '../stores/database'
 import { resolveEffectiveTheme, type ThemeMode, useTheme } from '../stores/theme'
 
 type ThemeOption = {
@@ -130,6 +132,10 @@ type StoredAutoBackupState = {
   failureCount?: number
   nextRunAt?: number | null
   lastError?: string | null
+  githubEnabled?: boolean
+  githubLastSuccessAt?: number | null
+  githubLastAttemptAt?: number | null
+  githubLastError?: string | null
 }
 
 function formatBackupFileTimestamp(date: Date) {
@@ -151,12 +157,21 @@ type RunScheduledBackupOptions = {
   isTauri: boolean
   jsonFilters: { name: string; extensions: string[] }[]
   allowDialogFallback?: boolean
+  githubBackup?: { enabled: boolean }
 }
 
 type RunScheduledBackupResult = {
   exportedAt: number
   fileName: string
   destinationPath?: string
+  github?: GithubBackupExecutionResult | null
+}
+
+type GithubBackupExecutionResult = {
+  uploadedAt: number
+  path: string
+  commitSha: string | null
+  htmlUrl?: string | null
 }
 
 async function runScheduledBackup({
@@ -167,9 +182,13 @@ async function runScheduledBackup({
   isTauri,
   jsonFilters,
   allowDialogFallback = false,
+  githubBackup,
 }: RunScheduledBackupOptions): Promise<RunScheduledBackupResult | null> {
   if (!email || !encryptionKey) {
     throw new Error('请先登录并解锁账号后再试。')
+  }
+  if (!(encryptionKey instanceof Uint8Array)) {
+    throw new Error('请先解锁账号后再试。')
   }
 
   const passwordInput = typeof masterPassword === 'string' ? masterPassword : ''
@@ -177,18 +196,22 @@ async function runScheduledBackup({
     throw new Error('自动备份需要主密码，请先在上方输入后再试。')
   }
 
-  const blob = await exportUserData(email, encryptionKey, passwordInput)
+  const key = encryptionKey
+  const blob = await exportUserData(email, key, passwordInput)
+  const fileContent = await blob.text()
   const timestamp = formatBackupFileTimestamp(new Date())
   const fileName = `pms-backup-${timestamp}.json`
   const exportedAt = Date.now()
 
+  let destinationPath: string | undefined
+
   if (isTauri) {
-    let destinationPath: string | null = null
+    let targetPath: string | null = null
 
     if (backupPath) {
       try {
         await mkdir(backupPath, { recursive: true })
-        destinationPath = await join(backupPath, fileName)
+        targetPath = await join(backupPath, fileName)
       } catch (error) {
         console.error('Failed to prepare scheduled backup directory', error)
         throw error instanceof Error
@@ -196,18 +219,17 @@ async function runScheduledBackup({
           : error
       }
     } else if (allowDialogFallback) {
-      destinationPath = await saveDialog({ defaultPath: fileName, filters: jsonFilters })
+      targetPath = await saveDialog({ defaultPath: fileName, filters: jsonFilters })
     } else {
       throw new Error('未配置自动备份目录，请先设置备份路径。')
     }
 
-    if (!destinationPath) {
+    if (!targetPath) {
       return null
     }
 
     try {
-      const fileContent = await blob.text()
-      await writeTextFile(destinationPath, fileContent)
+      await writeTextFile(targetPath, fileContent)
     } catch (error) {
       console.error('Failed to write scheduled backup file', error)
       throw error instanceof Error
@@ -215,24 +237,90 @@ async function runScheduledBackup({
         : error
     }
 
-    return { exportedAt, fileName, destinationPath }
+    destinationPath = targetPath
+  } else {
+    try {
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Failed to trigger scheduled backup download', error)
+      throw error instanceof Error ? error : new Error('下载备份文件失败，请稍后再试。')
+    }
   }
 
-  try {
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = fileName
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-  } catch (error) {
-    console.error('Failed to trigger scheduled backup download', error)
-    throw error instanceof Error ? error : new Error('下载备份文件失败，请稍后再试。')
+  let githubResult: GithubBackupExecutionResult | null = null
+
+  if (githubBackup?.enabled) {
+    try {
+      const record = await db.users.get(email)
+      if (!record || !record.github) {
+        throw new Error('请先连接 GitHub 账号并保存仓库设置。')
+      }
+
+      const owner = (record.github.repositoryOwner ?? '').trim()
+      const repo = (record.github.repositoryName ?? '').trim()
+      const branch = (record.github.repositoryBranch ?? 'main').trim()
+      const targetDirectory = (record.github.targetDirectory ?? '').trim()
+
+      if (!owner || !repo || !targetDirectory) {
+        throw new Error('GitHub 仓库配置不完整，请先在仓库设置中填写并保存。')
+      }
+
+      let token: string
+      try {
+        token = await decryptString(key, record.github.tokenCipher)
+      } catch (error) {
+        console.error('Failed to decrypt GitHub token before backup', error)
+        throw new Error('解密 GitHub 访问令牌失败，请尝试重新连接 GitHub。')
+      }
+
+      const normalizedPath = targetDirectory
+        .replace(/^[\\/]+/, '')
+        .replace(/\\+/g, '/')
+        .trim()
+      if (!normalizedPath) {
+        throw new Error('GitHub 备份路径无效，请重新保存仓库设置。')
+      }
+
+      const commitMessage = `Personal backup at ${new Date(exportedAt).toISOString()}`
+      const uploadResult = await uploadGithubBackup(
+        {
+          token,
+          owner,
+          repo,
+          branch,
+          path: normalizedPath,
+          content: fileContent,
+        },
+        { commitMessage, maxRetries: 1 },
+      )
+
+      githubResult = {
+        uploadedAt: Date.now(),
+        path: uploadResult.contentPath || normalizedPath,
+        commitSha: uploadResult.commitSha ?? null,
+        htmlUrl: uploadResult.htmlUrl ?? undefined,
+      }
+    } catch (error) {
+      console.error('Failed to upload GitHub backup', error)
+      if (error instanceof Error) {
+        const message = error.message || 'GitHub 备份失败，请稍后再试。'
+        if (message.startsWith('GitHub')) {
+          throw new Error(message)
+        }
+        throw new Error(`GitHub 备份失败：${message}`)
+      }
+      throw new Error('GitHub 备份失败，请稍后再试。')
+    }
   }
 
-  return { exportedAt, fileName }
+  return { exportedAt, fileName, destinationPath, github: githubResult }
 }
 
 function useAutoDismissFormMessage(
@@ -946,6 +1034,8 @@ function ThemeModeSection() {
 function DataBackupSection() {
   const email = useAuthStore(state => state.email)
   const encryptionKey = useAuthStore(state => state.encryptionKey)
+  const profile = useAuthStore(selectAuthProfile)
+  const updateGithubRepository = useAuthStore(state => state.updateGithubRepository)
   const { showToast } = useToast()
   const passwordInputId = useId()
   const [exporting, setExporting] = useState(false)
@@ -970,17 +1060,39 @@ function DataBackupSection() {
   const [autoBackupStatusMessage, setAutoBackupStatusMessage] = useState<string | null>(null)
   const [autoBackupTesting, setAutoBackupTesting] = useState(false)
   const [autoBackupRunning, setAutoBackupRunning] = useState(false)
+  const [githubOwner, setGithubOwner] = useState('')
+  const [githubRepo, setGithubRepo] = useState('')
+  const [githubBranch, setGithubBranch] = useState('main')
+  const [githubPath, setGithubPath] = useState('')
+  const [githubSettingsMessage, setGithubSettingsMessage] = useState<FormMessage>(null)
+  const [savingGithubSettings, setSavingGithubSettings] = useState(false)
+  const [githubBackupEnabled, setGithubBackupEnabled] = useState(false)
+  const [githubBackupLastSuccess, setGithubBackupLastSuccess] = useState<number | null>(null)
+  const [githubBackupLastAttempt, setGithubBackupLastAttempt] = useState<number | null>(null)
+  const [githubBackupLastError, setGithubBackupLastError] = useState<string | null>(null)
+  const [githubBackupStatusMessage, setGithubBackupStatusMessage] = useState<string | null>(null)
   const [tauriBackgroundAvailable, setTauriBackgroundAvailable] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const autoBackupTimerRef = useRef<number | null>(null)
   const autoBackupEnabledRef = useRef(false)
   const autoBackupRunningRef = useRef(false)
+  const githubBackupEnabledRef = useRef(false)
   const runAutoBackupRef = useRef<((trigger: 'interval' | 'manual') => Promise<void>) | null>(null)
   const isTauri = isTauriRuntime()
   const jsonFilters = [{ name: 'JSON 文件', extensions: ['json'] }]
+  const githubProfile = profile?.github ?? null
+  const githubConfigured = Boolean(
+    githubProfile &&
+      githubProfile.repositoryOwner &&
+      githubProfile.repositoryName &&
+      githubProfile.repositoryBranch &&
+      githubProfile.targetDirectory,
+  )
 
   const backupDisabled = !email || !encryptionKey
   const passwordDisabled = backupDisabled || exporting || importing
+
+  useAutoDismissFormMessage(githubSettingsMessage, setGithubSettingsMessage)
 
   const persistBackupPath = useCallback((value: string) => {
     if (typeof window === 'undefined') return
@@ -1027,6 +1139,22 @@ function DataBackupSection() {
       }
       if (typeof state.lastError === 'string' && state.lastError) {
         setAutoBackupLastError(state.lastError)
+      }
+      if (typeof state.githubEnabled === 'boolean') {
+        setGithubBackupEnabled(state.githubEnabled)
+      }
+      if (typeof state.githubLastSuccessAt === 'number' && Number.isFinite(state.githubLastSuccessAt)) {
+        setGithubBackupLastSuccess(state.githubLastSuccessAt)
+      }
+      if (typeof state.githubLastAttemptAt === 'number' && Number.isFinite(state.githubLastAttemptAt)) {
+        setGithubBackupLastAttempt(state.githubLastAttemptAt)
+      }
+      if (typeof state.githubLastError === 'string') {
+        setGithubBackupLastError(state.githubLastError)
+        setGithubBackupStatusMessage(state.githubLastError)
+      } else if (state.githubLastError === null) {
+        setGithubBackupLastError(null)
+        setGithubBackupStatusMessage(null)
       }
     } catch (error) {
       console.warn('Failed to restore auto backup state', error)
@@ -1082,6 +1210,10 @@ function DataBackupSection() {
       nextRunAt: autoBackupNextRun ?? null,
       failureCount: autoBackupFailureCount,
       lastError: autoBackupLastError ?? null,
+      githubEnabled: githubBackupEnabled,
+      githubLastSuccessAt: githubBackupLastSuccess ?? null,
+      githubLastAttemptAt: githubBackupLastAttempt ?? null,
+      githubLastError: githubBackupLastError ?? null,
     }
     try {
       window.localStorage.setItem(AUTO_BACKUP_STORAGE_KEY, JSON.stringify(payload))
@@ -1096,6 +1228,10 @@ function DataBackupSection() {
     autoBackupLastSuccess,
     autoBackupNextRun,
     autoBackupFailureCount,
+    githubBackupEnabled,
+    githubBackupLastAttempt,
+    githubBackupLastError,
+    githubBackupLastSuccess,
   ])
 
   useEffect(() => {
@@ -1110,6 +1246,31 @@ function DataBackupSection() {
   useEffect(() => {
     autoBackupEnabledRef.current = autoBackupEnabled
   }, [autoBackupEnabled])
+
+  useEffect(() => {
+    githubBackupEnabledRef.current = githubBackupEnabled
+  }, [githubBackupEnabled])
+
+  useEffect(() => {
+    const github = profile?.github ?? null
+    if (!github) {
+      setGithubOwner('')
+      setGithubRepo('')
+      setGithubBranch('main')
+      setGithubPath('')
+      return
+    }
+    setGithubOwner(github.repositoryOwner ?? '')
+    setGithubRepo(github.repositoryName ?? '')
+    setGithubBranch(github.repositoryBranch ?? 'main')
+    setGithubPath(github.targetDirectory ?? '')
+  }, [
+    profile?.github?.username,
+    profile?.github?.repositoryOwner,
+    profile?.github?.repositoryName,
+    profile?.github?.repositoryBranch,
+    profile?.github?.targetDirectory,
+  ])
 
   const scheduleNextAutoBackup = useCallback(
     (delayMs?: number) => {
@@ -1213,6 +1374,9 @@ function DataBackupSection() {
       const intervalMs = Math.max(intervalMinutes, 1) * 60 * 1000
 
       try {
+        if (githubBackupEnabledRef.current) {
+          setGithubBackupLastAttempt(Date.now())
+        }
         const result = await runScheduledBackup({
           email,
           encryptionKey,
@@ -1221,6 +1385,7 @@ function DataBackupSection() {
           isTauri,
           jsonFilters,
           allowDialogFallback: false,
+          githubBackup: { enabled: githubBackupEnabledRef.current },
         })
 
         if (!result) {
@@ -1232,14 +1397,29 @@ function DataBackupSection() {
         setAutoBackupFailureCount(0)
         setAutoBackupLastError(null)
 
+        if (githubBackupEnabledRef.current) {
+          setGithubBackupLastError(null)
+          if (result.github) {
+            setGithubBackupLastSuccess(result.github.uploadedAt)
+            setGithubBackupStatusMessage(`GitHub 备份成功：${result.github.path}`)
+          } else if (githubConfigured) {
+            setGithubBackupStatusMessage('GitHub 备份设置已启用，将在下次自动备份时同步。')
+          }
+        } else {
+          setGithubBackupStatusMessage(null)
+        }
+
+        const remoteSummary = result.github ? ` ｜ GitHub：${result.github.path}` : ''
         const successMessage =
-          trigger === 'manual' ? `备份成功：${result.fileName}` : `自动备份完成：${result.fileName}`
+          (trigger === 'manual' ? `备份成功：${result.fileName}` : `自动备份完成：${result.fileName}`) +
+          remoteSummary
         setAutoBackupStatusMessage(successMessage)
 
         if (trigger === 'manual') {
+          const description = result.github?.htmlUrl ?? result.destinationPath ?? result.fileName
           showToast({
             title: '测试备份成功',
-            description: result.destinationPath ?? result.fileName,
+            description,
             variant: 'success',
           })
         }
@@ -1252,6 +1432,10 @@ function DataBackupSection() {
         const message = error instanceof Error ? error.message : '自动备份失败，请稍后再试。'
         setAutoBackupLastError(message)
         setAutoBackupStatusMessage(message)
+        if (githubBackupEnabledRef.current) {
+          setGithubBackupLastError(message)
+          setGithubBackupStatusMessage(message)
+        }
 
         let shouldDisable = false
         setAutoBackupFailureCount(prev => {
@@ -1299,6 +1483,7 @@ function DataBackupSection() {
       jsonFilters,
       masterPassword,
       scheduleNextAutoBackup,
+      githubConfigured,
       showToast,
     ],
   )
@@ -1583,6 +1768,85 @@ function DataBackupSection() {
     : autoBackupEnabled
       ? 'text-primary'
       : 'text-muted'
+  const formattedGithubLastSuccess = githubBackupLastSuccess
+    ? dateFormatter.format(githubBackupLastSuccess)
+    : '尚未执行'
+  const formattedGithubLastAttempt = githubBackupLastAttempt
+    ? dateFormatter.format(githubBackupLastAttempt)
+    : '尚未执行'
+  const githubBackupStatusClass = githubBackupLastError
+    ? 'text-red-500'
+    : githubBackupEnabled
+      ? 'text-primary'
+      : 'text-muted'
+  const githubSettingsDisabled = !githubProfile || savingGithubSettings
+  const canSubmitGithubSettings = Boolean(
+    githubOwner.trim() && githubRepo.trim() && githubPath.trim(),
+  )
+
+  const handleSaveGithubSettings = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!githubProfile) {
+      setGithubSettingsMessage({ type: 'error', text: '请先连接 GitHub 账号后再保存。' })
+      return
+    }
+    try {
+      setSavingGithubSettings(true)
+      const result = await updateGithubRepository({
+        owner: githubOwner,
+        repo: githubRepo,
+        branch: githubBranch,
+        targetDirectory: githubPath,
+      })
+      if (result.success) {
+        setGithubSettingsMessage({ type: 'success', text: '仓库设置已保存。' })
+      } else {
+        setGithubSettingsMessage({
+          type: 'error',
+          text: result.message ?? '保存 GitHub 仓库设置失败，请稍后再试',
+        })
+      }
+    } catch (error) {
+      console.error('Failed to save GitHub repository settings', error)
+      setGithubSettingsMessage({ type: 'error', text: '保存 GitHub 仓库设置失败，请稍后再试' })
+    } finally {
+      setSavingGithubSettings(false)
+    }
+  }
+
+  const handleToggleGithubBackup = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextEnabled = event.currentTarget.checked
+    if (nextEnabled) {
+      if (backupDisabled) {
+        event.preventDefault()
+        const message = '请先登录并解锁账号后再启用 GitHub 备份。'
+        setGithubBackupStatusMessage(message)
+        showToast({ title: '无法启用', description: message, variant: 'error' })
+        return
+      }
+      if (!githubProfile) {
+        event.preventDefault()
+        const message = '请先连接 GitHub 账号后再启用 GitHub 备份。'
+        setGithubBackupStatusMessage(message)
+        showToast({ title: '无法启用', description: message, variant: 'error' })
+        return
+      }
+      if (!githubConfigured) {
+        event.preventDefault()
+        const message = 'GitHub 仓库配置不完整，请先保存仓库拥有者、仓库名、分支和文件路径。'
+        setGithubBackupStatusMessage(message)
+        showToast({ title: '配置缺失', description: message, variant: 'error' })
+        return
+      }
+      setGithubBackupLastError(null)
+      setGithubBackupEnabled(true)
+      setGithubBackupStatusMessage('GitHub 备份已开启，将在自动备份时同步至仓库。')
+    } else {
+      setGithubBackupEnabled(false)
+      setGithubBackupStatusMessage('GitHub 备份已关闭。')
+      setGithubBackupLastError(null)
+    }
+  }
 
   const handleToggleAutoBackup = (event: ChangeEvent<HTMLInputElement>) => {
     const nextEnabled = event.currentTarget.checked
@@ -1895,6 +2159,185 @@ function DataBackupSection() {
         仅桌面端支持自定义文件路径，Web 端会使用浏览器的默认存储位置。
       </p>
     )}
+  </div>
+
+  <div className="space-y-3 rounded-2xl border border-border/50 bg-surface/60 p-4">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold text-text">GitHub 仓库备份</h3>
+        <p className="text-xs leading-relaxed text-muted">
+          指定仓库后，自动备份会同步最新的加密文件至 GitHub，提交消息会包含当前时间戳。
+        </p>
+      </div>
+      <label className="inline-flex items-center gap-2">
+        <span className="text-xs font-medium text-muted">{githubBackupEnabled ? '已启用' : '未启用'}</span>
+        <span className="relative inline-flex h-6 w-11 items-center">
+          <input
+            type="checkbox"
+            className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            checked={githubBackupEnabled}
+            onChange={handleToggleGithubBackup}
+            disabled={autoBackupRunning || autoBackupTesting}
+          />
+          <span
+            className={clsx(
+              'h-6 w-11 rounded-full bg-border/80 transition-colors',
+              'peer-checked:bg-primary/70 peer-disabled:cursor-not-allowed peer-disabled:opacity-60',
+            )}
+          />
+          <span
+            className={clsx(
+              'absolute left-1 top-1 h-4 w-4 rounded-full bg-surface shadow transition-transform',
+              githubBackupEnabled ? 'translate-x-5' : 'translate-x-0',
+              'peer-disabled:cursor-not-allowed',
+            )}
+          />
+        </span>
+      </label>
+    </div>
+
+    {githubProfile ? (
+      <form className="space-y-4" onSubmit={handleSaveGithubSettings}>
+        {githubSettingsMessage ? (
+          <div
+            role="alert"
+            className={clsx(
+              'rounded-xl border px-3 py-2 text-xs shadow-sm',
+              githubSettingsMessage.type === 'success'
+                ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-500'
+                : 'border-red-400/70 bg-red-500/10 text-red-400',
+            )}
+          >
+            {githubSettingsMessage.text}
+          </div>
+        ) : null}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label htmlFor="github-repo-owner" className="text-xs font-medium text-muted">
+              仓库拥有者
+            </label>
+            <input
+              id="github-repo-owner"
+              type="text"
+              value={githubOwner}
+              onChange={event => {
+                setGithubOwner(event.currentTarget.value)
+                setGithubSettingsMessage(null)
+              }}
+              autoComplete="off"
+              disabled={githubSettingsDisabled}
+              placeholder="例如：octocat"
+              className={clsx(
+                'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition',
+                'focus:border-primary/60 focus:bg-surface-hover',
+                githubSettingsDisabled && 'disabled:cursor-not-allowed disabled:opacity-60',
+              )}
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="github-repo-name" className="text-xs font-medium text-muted">
+              仓库名称
+            </label>
+            <input
+              id="github-repo-name"
+              type="text"
+              value={githubRepo}
+              onChange={event => {
+                setGithubRepo(event.currentTarget.value)
+                setGithubSettingsMessage(null)
+              }}
+              autoComplete="off"
+              disabled={githubSettingsDisabled}
+              placeholder="例如：personal-backup"
+              className={clsx(
+                'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition',
+                'focus:border-primary/60 focus:bg-surface-hover',
+                githubSettingsDisabled && 'disabled:cursor-not-allowed disabled:opacity-60',
+              )}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label htmlFor="github-repo-branch" className="text-xs font-medium text-muted">
+              分支
+            </label>
+            <input
+              id="github-repo-branch"
+              type="text"
+              value={githubBranch}
+              onChange={event => {
+                setGithubBranch(event.currentTarget.value)
+                setGithubSettingsMessage(null)
+              }}
+              autoComplete="off"
+              disabled={githubSettingsDisabled}
+              placeholder="例如：main"
+              className={clsx(
+                'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition',
+                'focus:border-primary/60 focus:bg-surface-hover',
+                githubSettingsDisabled && 'disabled:cursor-not-allowed disabled:opacity-60',
+              )}
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="github-repo-path" className="text-xs font-medium text-muted">
+              文件路径
+            </label>
+            <input
+              id="github-repo-path"
+              type="text"
+              value={githubPath}
+              onChange={event => {
+                setGithubPath(event.currentTarget.value)
+                setGithubSettingsMessage(null)
+              }}
+              autoComplete="off"
+              disabled={githubSettingsDisabled}
+              placeholder="例如：backups/pms-backup.json"
+              className={clsx(
+                'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition',
+                'focus:border-primary/60 focus:bg-surface-hover',
+                githubSettingsDisabled && 'disabled:cursor-not-allowed disabled:opacity-60',
+              )}
+            />
+            <p className="text-xs text-muted">请输入仓库中的相对路径，可包含多级目录。</p>
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={!canSubmitGithubSettings || githubSettingsDisabled}
+            className={clsx(
+              'inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-background shadow-sm transition',
+              'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50',
+            )}
+          >
+            {savingGithubSettings ? '保存中…' : '保存设置'}
+          </button>
+        </div>
+      </form>
+    ) : (
+      <div className="rounded-xl border border-dashed border-border/60 bg-surface/60 px-4 py-3 text-xs text-muted">
+        请先在上方连接 GitHub 账号后再配置仓库信息。
+      </div>
+    )}
+
+    <div className="grid gap-2 text-xs leading-relaxed text-muted sm:grid-cols-2">
+      <p>
+        最近同步：<span className="font-medium text-text">{formattedGithubLastSuccess}</span>
+      </p>
+      <p>
+        最近尝试：<span className="font-medium text-text">{formattedGithubLastAttempt}</span>
+      </p>
+    </div>
+
+    {githubBackupStatusMessage ? (
+      <p className={clsx('text-xs', githubBackupStatusClass)}>{githubBackupStatusMessage}</p>
+    ) : null}
   </div>
 
   <div className="space-y-3 rounded-2xl border border-border/50 bg-surface/60 p-4">

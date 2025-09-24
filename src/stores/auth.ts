@@ -45,6 +45,10 @@ export type UserGithubProfile = {
   connectedAt: number
   updatedAt: number
   lastValidationAt: number
+  repositoryOwner: string | null
+  repositoryName: string | null
+  repositoryBranch: string | null
+  targetDirectory: string | null
 }
 
 export type UserProfile = {
@@ -67,6 +71,13 @@ type SessionPersistencePayload = {
 
 type RestoredSession = { email: string; key: Uint8Array | null; locked: boolean }
 
+type GithubRepositorySettingsPayload = {
+  owner: string
+  repo: string
+  branch: string
+  targetDirectory: string
+}
+
 type AuthState = {
   email: string | null
   encryptionKey: Uint8Array | null
@@ -85,7 +96,8 @@ type AuthState = {
   deleteAccount: (password: string) => Promise<AuthResult>
   revealMnemonic: (password: string) => Promise<MnemonicResult>
   lockSession: () => void
-  connectGithub: (token: string) => Promise<AuthResult>
+  connectGithub: (token: string, options?: Partial<GithubRepositorySettingsPayload>) => Promise<AuthResult>
+  updateGithubRepository: (payload: GithubRepositorySettingsPayload) => Promise<AuthResult>
   disconnectGithub: () => Promise<AuthResult>
 }
 
@@ -174,6 +186,14 @@ function ensureTimestamp(value: unknown, fallback: number) {
   return fallback
 }
 
+function normalizeGithubString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const trimmed = value.trim()
+  return trimmed ? trimmed : null
+}
+
 function mapGithubConnection(meta: UserGithubConnection | null | undefined): UserGithubProfile | null {
   if (!meta) {
     return null
@@ -194,6 +214,10 @@ function mapGithubConnection(meta: UserGithubConnection | null | undefined): Use
     connectedAt,
     updatedAt,
     lastValidationAt,
+    repositoryOwner: normalizeGithubString(meta.repositoryOwner),
+    repositoryName: normalizeGithubString(meta.repositoryName),
+    repositoryBranch: normalizeGithubString(meta.repositoryBranch),
+    targetDirectory: normalizeGithubString(meta.targetDirectory),
   }
 }
 
@@ -350,7 +374,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     saveSession({ email, locked: true })
     set({ encryptionKey: null, locked: true })
   },
-  async connectGithub(rawToken) {
+  async connectGithub(rawToken, options: Partial<GithubRepositorySettingsPayload> = {}) {
     const token = typeof rawToken === 'string' ? rawToken.trim() : ''
     if (!token) {
       return { success: false, message: '请输入 GitHub 访问令牌' }
@@ -433,12 +457,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     const now = Date.now()
     const connectedAt = record.github ? ensureTimestamp(record.github.connectedAt, now) : now
+    const existingGithub = record.github ?? null
+    const repositoryOwner = normalizeGithubString(options.owner ?? existingGithub?.repositoryOwner ?? null)
+    const repositoryName = normalizeGithubString(options.repo ?? existingGithub?.repositoryName ?? null)
+    const repositoryBranch = normalizeGithubString(
+      options.branch ?? existingGithub?.repositoryBranch ?? null,
+    )
+    const targetDirectory = normalizeGithubString(
+      options.targetDirectory ?? existingGithub?.targetDirectory ?? null,
+    )
+
     const nextGithub: UserGithubConnection = {
       username,
       tokenCipher: encryptedToken,
       connectedAt,
       updatedAt: now,
       lastValidationAt: now,
+      repositoryOwner,
+      repositoryName,
+      repositoryBranch,
+      targetDirectory,
     }
 
     const nextRecord: UserRecord = {
@@ -452,6 +490,65 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (error) {
       console.error('Failed to persist GitHub connection metadata', error)
       return { success: false, message: '保存 GitHub 连接信息失败，请稍后再试' }
+    }
+
+    set({ profile: mapRecordToProfile(nextRecord) })
+    return { success: true }
+  },
+  async updateGithubRepository(payload) {
+    const { email } = get()
+    if (!email) {
+      return { success: false, message: '请先登录后再配置仓库信息' }
+    }
+
+    const owner = normalizeGithubString(payload.owner)
+    if (!owner) {
+      return { success: false, message: '请输入仓库拥有者' }
+    }
+    const repo = normalizeGithubString(payload.repo)
+    if (!repo) {
+      return { success: false, message: '请输入仓库名称' }
+    }
+    const branchNormalized = normalizeGithubString(payload.branch)
+    const branch = branchNormalized ?? 'main'
+    const targetDirectory = normalizeGithubString(payload.targetDirectory)
+    if (!targetDirectory) {
+      return { success: false, message: '请输入备份文件路径' }
+    }
+
+    let record: UserRecord | undefined
+    try {
+      record = await db.users.get(email)
+    } catch (error) {
+      console.error('Failed to load user before saving GitHub repository settings', error)
+      return { success: false, message: '无法读取账户信息，请稍后再试' }
+    }
+
+    if (!record || !record.github) {
+      return { success: false, message: '请先连接 GitHub 账号后再配置仓库。' }
+    }
+
+    const now = Date.now()
+    const nextGithub: UserGithubConnection = {
+      ...record.github,
+      repositoryOwner: owner,
+      repositoryName: repo,
+      repositoryBranch: branch,
+      targetDirectory,
+      updatedAt: now,
+    }
+
+    const nextRecord: UserRecord = {
+      ...record,
+      github: nextGithub,
+      updatedAt: now,
+    }
+
+    try {
+      await db.users.put(nextRecord)
+    } catch (error) {
+      console.error('Failed to persist GitHub repository settings', error)
+      return { success: false, message: '保存 GitHub 仓库设置失败，请稍后再试' }
     }
 
     set({ profile: mapRecordToProfile(nextRecord) })

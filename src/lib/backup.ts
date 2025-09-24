@@ -174,6 +174,10 @@ type BackupGithubConnection = {
   connectedAt: number
   updatedAt: number
   lastValidationAt?: number | null
+  repositoryOwner?: string | null
+  repositoryName?: string | null
+  repositoryBranch?: string | null
+  targetDirectory?: string | null
 }
 
 type BackupPayloadV1 = {
@@ -316,6 +320,11 @@ function sanitizeGithubConnection(
     lastValidationAt = normalizeTimestamp(lastValidationRaw, updatedAt)
   }
 
+  const repositoryOwner = sanitizeOptionalString((value as { repositoryOwner?: unknown }).repositoryOwner)
+  const repositoryName = sanitizeOptionalString((value as { repositoryName?: unknown }).repositoryName)
+  const repositoryBranch = sanitizeOptionalString((value as { repositoryBranch?: unknown }).repositoryBranch)
+  const targetDirectory = sanitizeOptionalString((value as { targetDirectory?: unknown }).targetDirectory)
+
   const result: BackupGithubConnection = {
     username,
     token,
@@ -324,6 +333,18 @@ function sanitizeGithubConnection(
   }
   if (lastValidationAt !== undefined) {
     result.lastValidationAt = lastValidationAt
+  }
+  if (repositoryOwner !== undefined) {
+    result.repositoryOwner = repositoryOwner ?? null
+  }
+  if (repositoryName !== undefined) {
+    result.repositoryName = repositoryName ?? null
+  }
+  if (repositoryBranch !== undefined) {
+    result.repositoryBranch = repositoryBranch ?? null
+  }
+  if (targetDirectory !== undefined) {
+    result.targetDirectory = targetDirectory ?? null
   }
   return result
 }
@@ -459,12 +480,20 @@ export async function exportUserData(
           userRecord.github.lastValidationAt ?? userRecord.github.updatedAt ?? updatedAt,
           updatedAt,
         )
+        const repositoryOwner = sanitizeOptionalString(userRecord.github.repositoryOwner)
+        const repositoryName = sanitizeOptionalString(userRecord.github.repositoryName)
+        const repositoryBranch = sanitizeOptionalString(userRecord.github.repositoryBranch)
+        const targetDirectory = sanitizeOptionalString(userRecord.github.targetDirectory)
         githubConnection = {
           username,
           token,
           connectedAt,
           updatedAt,
           lastValidationAt,
+          repositoryOwner: repositoryOwner ?? null,
+          repositoryName: repositoryName ?? null,
+          repositoryBranch: repositoryBranch ?? null,
+          targetDirectory: targetDirectory ?? null,
         }
       } catch (error) {
         console.error('Failed to decrypt GitHub token for backup export', error)
@@ -891,12 +920,20 @@ export async function importUserData(
                 parsed.github.lastValidationAt === null
                   ? updatedAt
                   : normalizeTimestamp(parsed.github.lastValidationAt, updatedAt)
+              const repositoryOwner = sanitizeOptionalString(parsed.github.repositoryOwner) ?? null
+              const repositoryName = sanitizeOptionalString(parsed.github.repositoryName) ?? null
+              const repositoryBranch = sanitizeOptionalString(parsed.github.repositoryBranch) ?? null
+              const targetDirectory = sanitizeOptionalString(parsed.github.targetDirectory) ?? null
               const githubRecord: UserGithubConnection = {
                 username: parsed.github.username,
                 tokenCipher: encryptedToken,
                 connectedAt,
                 updatedAt,
                 lastValidationAt: lastValidationSource,
+                repositoryOwner,
+                repositoryName,
+                repositoryBranch,
+                targetDirectory,
               }
               nextRecord.github = githubRecord
             } catch (error) {

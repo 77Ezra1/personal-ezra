@@ -19,6 +19,10 @@ export interface UserGithubConnection {
   connectedAt: number
   updatedAt: number
   lastValidationAt: number
+  repositoryOwner: string | null
+  repositoryName: string | null
+  repositoryBranch: string | null
+  targetDirectory: string | null
 }
 
 export interface UserRecord {
@@ -69,13 +73,56 @@ export interface DocRecord {
   updatedAt: number
 }
 
+function normalizeTimestamp(value: unknown, fallback: number): number {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed
+  }
+  return fallback
+}
+
+function sanitizeGithubField(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed ? trimmed : null
+}
+
+export function normalizeGithubConnection(
+  meta: UserGithubConnection | null | undefined,
+): UserGithubConnection | null {
+  if (!meta) {
+    return null
+  }
+
+  const username = typeof meta.username === 'string' ? meta.username.trim() : ''
+  const tokenCipher = typeof meta.tokenCipher === 'string' ? meta.tokenCipher : ''
+  if (!username || !tokenCipher) {
+    return null
+  }
+
+  const now = Date.now()
+  const connectedAt = normalizeTimestamp(meta.connectedAt, now)
+  const updatedAt = normalizeTimestamp(meta.updatedAt, connectedAt)
+  const lastValidationAt = normalizeTimestamp(meta.lastValidationAt, updatedAt)
+
+  return {
+    username,
+    tokenCipher,
+    connectedAt,
+    updatedAt,
+    lastValidationAt,
+    repositoryOwner: sanitizeGithubField(meta.repositoryOwner),
+    repositoryName: sanitizeGithubField(meta.repositoryName),
+    repositoryBranch: sanitizeGithubField(meta.repositoryBranch),
+    targetDirectory: sanitizeGithubField(meta.targetDirectory),
+  }
+}
+
 function ensureGithubValue<T extends { github?: UserGithubConnection | null }>(
   record: T,
 ): T & { github: UserGithubConnection | null } {
-  if (typeof record.github === 'undefined') {
-    return { ...record, github: null }
-  }
-  return record as T & { github: UserGithubConnection | null }
+  const normalized = normalizeGithubConnection(record.github)
+  return { ...record, github: normalized }
 }
 
 export type OwnerWhereClause<T> = {
@@ -363,6 +410,33 @@ class AppDatabase extends Dexie {
             }
             const next: UserRecord = ensureGithubValue({ ...legacy })
             await usersTable.put(next as LegacyUserRecord)
+          }),
+        )
+      })
+    this.version(9)
+      .stores({
+        users: '&email',
+        passwords: '++id, ownerEmail, updatedAt, *tags',
+        sites: '++id, ownerEmail, updatedAt, *tags',
+        docs: '++id, ownerEmail, updatedAt, *tags',
+      })
+      .upgrade(async tx => {
+        type LegacyUserRecord = Omit<UserRecord, 'github'> & { github?: UserGithubConnection | null }
+        const usersTable = tx.table('users') as Table<LegacyUserRecord, string>
+        const users = await usersTable.toArray()
+        if (users.length === 0) return
+
+        await Promise.all(
+          users.map(async legacy => {
+            const nextGithub = normalizeGithubConnection(legacy.github)
+            if (nextGithub === legacy.github) {
+              return
+            }
+            const next: LegacyUserRecord = {
+              ...legacy,
+              github: nextGithub,
+            }
+            await usersTable.put(next)
           }),
         )
       })
