@@ -558,6 +558,182 @@ function ProfileSection() {
   )
 }
 
+function GitHubConnectionSection() {
+  const profile = useAuthStore(selectAuthProfile)
+  const email = useAuthStore(state => state.email)
+  const locked = useAuthStore(state => state.locked)
+  const connectGithub = useAuthStore(state => state.connectGithub)
+  const disconnectGithub = useAuthStore(state => state.disconnectGithub)
+
+  const [token, setToken] = useState('')
+  const [formMessage, setFormMessage] = useState<FormMessage>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDisconnecting, setIsDisconnecting] = useState(false)
+
+  useAutoDismissFormMessage(formMessage, setFormMessage)
+
+  const githubConnection = profile?.github ?? null
+  const dateFormatter = useMemo(
+    () => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }),
+    [],
+  )
+
+  const connectedAtLabel = githubConnection
+    ? dateFormatter.format(new Date(githubConnection.connectedAt))
+    : null
+  const lastValidationLabel = githubConnection
+    ? dateFormatter.format(new Date(githubConnection.lastValidationAt))
+    : null
+
+  const canSubmit = Boolean(token.trim()) && Boolean(email) && !locked && !isSubmitting
+
+  const handleConnect = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!email) {
+      setFormMessage({ type: 'error', text: '请先登录后再连接 GitHub' })
+      return
+    }
+    if (locked) {
+      setFormMessage({ type: 'error', text: '当前会话已锁定，请先解锁账号后再试' })
+      return
+    }
+    const normalizedToken = token.trim()
+    if (!normalizedToken) {
+      setFormMessage({ type: 'error', text: '请输入访问令牌' })
+      return
+    }
+
+    try {
+      setIsSubmitting(true)
+      const result = await connectGithub(normalizedToken)
+      if (result.success) {
+        setToken('')
+        setFormMessage({ type: 'success', text: '已成功连接 GitHub 账号' })
+      } else {
+        setFormMessage({ type: 'error', text: result.message ?? '连接 GitHub 失败，请稍后重试' })
+      }
+    } catch (error) {
+      console.error('Failed to connect GitHub account', error)
+      setFormMessage({ type: 'error', text: '连接 GitHub 失败，请稍后重试' })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleDisconnect = async () => {
+    if (!githubConnection) {
+      return
+    }
+    try {
+      setIsDisconnecting(true)
+      const result = await disconnectGithub()
+      if (result.success) {
+        setFormMessage({ type: 'success', text: '已断开 GitHub 连接' })
+      } else {
+        setFormMessage({ type: 'error', text: result.message ?? '断开 GitHub 连接失败，请稍后重试' })
+      }
+    } catch (error) {
+      console.error('Failed to disconnect GitHub account', error)
+      setFormMessage({ type: 'error', text: '断开 GitHub 连接失败，请稍后重试' })
+    } finally {
+      setIsDisconnecting(false)
+    }
+  }
+
+  return (
+    <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
+      <div className="space-y-1">
+        <h2 className="text-lg font-medium text-text">GitHub 连接</h2>
+        <p className="text-sm text-muted">
+          将 GitHub 访问令牌安全保存于本地加密数据库，可用于未来的仓库同步或自动化集成。令牌仅在本机解密，可随时撤销。
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-border/60 bg-surface px-4 py-3 shadow-sm">
+        {githubConnection ? (
+          <div className="space-y-1 text-sm text-muted">
+            <p className="text-sm text-text">
+              已连接账号：<span className="font-semibold">{githubConnection.username}</span>
+            </p>
+            <p>首次连接时间：{connectedAtLabel}</p>
+            <p>最近验证时间：{lastValidationLabel}</p>
+          </div>
+        ) : (
+          <div className="space-y-1 text-sm text-muted">
+            <p className="text-sm text-text">尚未连接 GitHub</p>
+            <p>支持粘贴 Fine-grained PAT 或 OAuth 回调中的 access_token，提交前会向 GitHub 校验令牌有效性。</p>
+          </div>
+        )}
+      </div>
+
+      {formMessage ? (
+        <div
+          role="alert"
+          className={clsx(
+            'rounded-xl border px-3 py-2 text-sm shadow-sm',
+            formMessage.type === 'success'
+              ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-500'
+              : 'border-red-400/70 bg-red-500/10 text-red-400',
+          )}
+        >
+          {formMessage.text}
+        </div>
+      ) : null}
+
+      <form className="space-y-4" onSubmit={handleConnect}>
+        <div className="space-y-2">
+          <label htmlFor="github-token" className="text-sm font-medium text-text">
+            GitHub 访问令牌
+          </label>
+          <input
+            id="github-token"
+            type="password"
+            autoComplete="off"
+            value={token}
+            onChange={event => {
+              setToken(event.currentTarget.value)
+              setFormMessage(null)
+            }}
+            placeholder="例如：ghp_ 或 github_pat_ 开头的访问令牌"
+            disabled={isSubmitting || locked || !email}
+            className={clsx(
+              'w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover',
+              (isSubmitting || locked || !email) && 'disabled:cursor-not-allowed disabled:opacity-60',
+            )}
+          />
+          {locked ? (
+            <p className="text-xs text-amber-500">当前会话已锁定，请先输入主密码解锁后再连接。</p>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap justify-end gap-3">
+          <button
+            type="button"
+            onClick={handleDisconnect}
+            disabled={!githubConnection || isDisconnecting}
+            className={clsx(
+              'inline-flex items-center rounded-xl border border-border px-4 py-2 text-sm font-medium text-text transition',
+              'hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+            )}
+          >
+            {isDisconnecting ? '断开中…' : '断开连接'}
+          </button>
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className={clsx(
+              'inline-flex items-center rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-background shadow-sm transition',
+              'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50',
+            )}
+          >
+            {isSubmitting ? '验证中…' : githubConnection ? '更新令牌' : '连接 GitHub'}
+          </button>
+        </div>
+      </form>
+    </section>
+  )
+}
+
 export default function Settings() {
   const sectionCategories = useMemo<SettingsCategory[]>(
     () => [
@@ -570,6 +746,13 @@ export default function Settings() {
         key: 'profile',
         label: '个人资料',
         sections: [{ key: 'profile', label: '用户资料', render: () => <ProfileSection /> }],
+      },
+      {
+        key: 'integrations',
+        label: '服务集成',
+        sections: [
+          { key: 'github-connection', label: 'GitHub 连接', render: () => <GitHubConnectionSection /> },
+        ],
       },
       {
         key: 'general',

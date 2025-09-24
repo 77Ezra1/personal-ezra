@@ -13,6 +13,14 @@ export interface UserAvatarMeta {
   updatedAt: number
 }
 
+export interface UserGithubConnection {
+  username: string
+  tokenCipher: string
+  connectedAt: number
+  updatedAt: number
+  lastValidationAt: number
+}
+
 export interface UserRecord {
   email: string
   salt: string
@@ -23,6 +31,7 @@ export interface UserRecord {
   mnemonic: string
   createdAt: number
   updatedAt: number
+  github: UserGithubConnection | null
 }
 
 export interface PasswordRecord {
@@ -316,6 +325,32 @@ class AppDatabase extends Dexie {
               totpCipher: typeof row.totpCipher === 'string' ? row.totpCipher : undefined,
             }
             await passwordsTable.put(next)
+          }),
+        )
+      })
+    this.version(8)
+      .stores({
+        users: '&email',
+        passwords: '++id, ownerEmail, updatedAt, *tags',
+        sites: '++id, ownerEmail, updatedAt, *tags',
+        docs: '++id, ownerEmail, updatedAt, *tags',
+      })
+      .upgrade(async tx => {
+        type LegacyUserRecord = Omit<UserRecord, 'github'> & { github?: UserRecord['github'] }
+        const usersTable = tx.table('users') as Table<LegacyUserRecord, string>
+        const users = await usersTable.toArray()
+        if (users.length === 0) return
+
+        await Promise.all(
+          users.map(async legacy => {
+            if (typeof legacy.github !== 'undefined') {
+              return
+            }
+            const next: UserRecord = {
+              ...legacy,
+              github: null,
+            }
+            await usersTable.put(next as LegacyUserRecord)
           }),
         )
       })
