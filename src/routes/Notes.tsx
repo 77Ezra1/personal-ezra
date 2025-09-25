@@ -334,7 +334,17 @@ export default function Notes() {
 
   const persist = useMemo(() => {
     const { run, cancel } = debounce(
-      async ({ path, content: nextContent, frontMatter }: { path: string; content: string; frontMatter: NoteFrontMatter }) => {
+      async ({
+        path,
+        content: nextContent,
+        frontMatter,
+        refreshTree: shouldRefreshTree = false,
+      }: {
+        path: string
+        content: string
+        frontMatter: NoteFrontMatter
+        refreshTree?: boolean
+      }) => {
         if (!path) return
         setSaveState('saving')
         try {
@@ -343,7 +353,9 @@ export default function Notes() {
           setTimeout(() => {
             setSaveState('idle')
           }, 1500)
-          await refreshTree()
+          if (shouldRefreshTree) {
+            await refreshTree()
+          }
         } catch (error) {
           console.error('Failed to save note', error)
           setSaveState('error')
@@ -366,9 +378,12 @@ export default function Notes() {
   }, [persist])
 
   const queueSave = useCallback(
-    (payload: { path: string; content: string; frontMatter: NoteFrontMatter }) => {
+    (
+      payload: { path: string; content: string; frontMatter: NoteFrontMatter },
+      options?: { refreshTree?: boolean },
+    ) => {
       setSaveState('pending')
-      persist(payload)
+      persist({ ...payload, refreshTree: options?.refreshTree ?? false })
     },
     [persist],
   )
@@ -384,10 +399,10 @@ export default function Notes() {
   )
 
   const handleFrontMatterChange = useCallback(
-    (frontMatter: NoteFrontMatter) => {
+    (frontMatter: NoteFrontMatter, options?: { refreshTree?: boolean }) => {
       if (!currentNote) return
       setCurrentNote(prev => (prev ? { ...prev, frontMatter } : prev))
-      queueSave({ path: currentNote.path, content, frontMatter })
+      queueSave({ path: currentNote.path, content, frontMatter }, options)
     },
     [content, currentNote, queueSave],
   )
