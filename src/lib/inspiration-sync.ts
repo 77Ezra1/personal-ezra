@@ -18,7 +18,7 @@ type StoredAutoBackupState = {
 const AUTO_BACKUP_STORAGE_KEY = 'pms-auto-backup-settings'
 const INSPIRATION_SYNC_DEBOUNCE_MS = 10_000
 
-let syncTimer: ReturnType<typeof setTimeout> | null = null
+let syncTimer: number | null = null
 let syncRunning = false
 let pendingWhileRunning = false
 
