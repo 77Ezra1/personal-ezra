@@ -1,10 +1,21 @@
-import {
-  open,
-  save,
-  type DialogFilter,
-  type OpenDialogOptions,
-  type SaveDialogOptions,
-} from '@tauri-apps/plugin-dialog'
+import { invoke } from '@tauri-apps/api/core'
+
+export type DialogFilter = {
+  name?: string
+  extensions: string[]
+}
+
+export type OpenDialogOptions = {
+  defaultPath?: string
+  filters?: DialogFilter[]
+  multiple?: boolean
+  directory?: boolean
+}
+
+export type SaveDialogOptions = {
+  defaultPath?: string
+  filters?: DialogFilter[]
+}
 
 type MaybeTauriWindow = Window & {
   __TAURI__?: {
@@ -40,14 +51,12 @@ const ensureTauriDialogAvailable = (): void => {
   throw new Error('Tauri dialog API is not available in this environment')
 }
 
-export type { DialogFilter, OpenDialogOptions, SaveDialogOptions }
-
 export const openDialog = async (options?: OpenDialogOptions) => {
   ensureTauriDialogAvailable()
-  return open(options)
+  return invoke<string | string[] | null>('plugin:dialog|open', { options })
 }
 
 export const saveDialog = async (options?: SaveDialogOptions) => {
   ensureTauriDialogAvailable()
-  return save(options)
+  return invoke<string | null>('plugin:dialog|save', { options })
 }
