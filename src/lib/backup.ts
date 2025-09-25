@@ -504,10 +504,15 @@ function mapDocs(records: DocRecord[]): DocBackupEntry[] {
   })
 }
 
+type ExportUserDataOptions = {
+  masterPassword?: string | null
+  allowSessionKey?: boolean
+}
+
 export async function exportUserData(
   email: string | null | undefined,
   encryptionKey: Uint8Array | null | undefined,
-  masterPassword: string | null | undefined,
+  options: ExportUserDataOptions = {},
 ) {
   const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : ''
   if (!normalizedEmail) {
@@ -517,10 +522,8 @@ export async function exportUserData(
     throw new Error('缺少有效的加密密钥，无法导出数据。')
   }
 
+  const { masterPassword, allowSessionKey = false } = options
   const passwordInput = typeof masterPassword === 'string' ? masterPassword : ''
-  if (!passwordInput) {
-    throw new Error('导出备份前请输入主密码。')
-  }
 
   const userRecord = await db.users.get(normalizedEmail)
   if (!userRecord) {
@@ -530,17 +533,32 @@ export async function exportUserData(
     throw new Error('当前账号缺少密钥参数，无法导出备份。')
   }
 
-  let derivedKey: Uint8Array
-  try {
-    const saltBytes = fromBase64(userRecord.salt)
-    derivedKey = await deriveKey(passwordInput, saltBytes)
-  } catch (error) {
-    console.error('Failed to derive key for backup export', error)
-    throw new Error('计算备份密钥失败，请稍后重试。')
+  let derivedKey: Uint8Array | null = null
+
+  if (allowSessionKey) {
+    const sessionKeyHash = toBase64(encryptionKey)
+    if (sessionKeyHash !== userRecord.keyHash) {
+      throw new Error('当前会话密钥无效，请重新登录后再试。')
+    }
+    derivedKey = encryptionKey
   }
 
-  if (toBase64(derivedKey) !== userRecord.keyHash) {
-    throw new Error('主密码错误，请确认后再试。')
+  if (!derivedKey) {
+    if (!passwordInput) {
+      throw new Error('导出备份前请输入主密码。')
+    }
+
+    try {
+      const saltBytes = fromBase64(userRecord.salt)
+      derivedKey = await deriveKey(passwordInput, saltBytes)
+    } catch (error) {
+      console.error('Failed to derive key for backup export', error)
+      throw new Error('计算备份密钥失败，请稍后重试。')
+    }
+
+    if (toBase64(derivedKey) !== userRecord.keyHash) {
+      throw new Error('主密码错误，请确认后再试。')
+    }
   }
 
   const [passwordRows, siteRows, docRows, noteEntries] = await Promise.all([
