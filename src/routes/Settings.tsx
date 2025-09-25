@@ -158,6 +158,7 @@ type RunScheduledBackupOptions = {
   jsonFilters: { name: string; extensions: string[] }[]
   allowDialogFallback?: boolean
   githubBackup?: { enabled: boolean }
+  allowSessionKey?: boolean
 }
 
 type RunScheduledBackupResult = {
@@ -183,6 +184,7 @@ async function runScheduledBackup({
   jsonFilters,
   allowDialogFallback = false,
   githubBackup,
+  allowSessionKey = false,
 }: RunScheduledBackupOptions): Promise<RunScheduledBackupResult | null> {
   if (!email || !encryptionKey) {
     throw new Error('请先登录并解锁账号后再试。')
@@ -192,12 +194,15 @@ async function runScheduledBackup({
   }
 
   const passwordInput = typeof masterPassword === 'string' ? masterPassword : ''
-  if (!passwordInput) {
+  if (!passwordInput && !allowSessionKey) {
     throw new Error('自动备份需要主密码，请先在上方输入后再试。')
   }
 
   const key = encryptionKey
-  const blob = await exportUserData(email, key, passwordInput)
+  const blob = await exportUserData(email, key, {
+    masterPassword: passwordInput || null,
+    allowSessionKey,
+  })
   const fileContent = await blob.text()
   const timestamp = formatBackupFileTimestamp(new Date())
   const fileName = `pms-backup-${timestamp}.json`
@@ -1343,7 +1348,9 @@ function DataBackupSection() {
         return
       }
 
-      if (!masterPassword) {
+      const allowSessionKey = true
+
+      if (!masterPassword && !allowSessionKey) {
         const message = '自动备份需要主密码，请在上方输入。'
         setAutoBackupLastError(message)
         setAutoBackupStatusMessage(message)
@@ -1395,6 +1402,7 @@ function DataBackupSection() {
           jsonFilters,
           allowDialogFallback: false,
           githubBackup: { enabled: githubBackupEnabledRef.current },
+          allowSessionKey,
         })
 
         if (!result) {

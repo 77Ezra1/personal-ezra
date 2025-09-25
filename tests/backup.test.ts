@@ -72,75 +72,105 @@ describe('user data backup', () => {
   it(
     'imports password-protected backup after re-registering the same account',
     async () => {
-    await databaseClient.open()
+      await databaseClient.open()
 
-    const auth = useAuthStore.getState()
+      const auth = useAuthStore.getState()
 
-    const firstRegister = await auth.register(email, masterPassword)
-    expect(firstRegister.success).toBe(true)
+      const firstRegister = await auth.register(email, masterPassword)
+      expect(firstRegister.success).toBe(true)
 
-    const githubToken = 'github_pat_BACKUP_TEST'
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify({ login: 'octocat' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    )
-    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
-    const connectGithubResult = await useAuthStore.getState().connectGithub(githubToken)
-    expect(connectGithubResult.success).toBe(true)
-    expect(fetchMock).toHaveBeenCalled()
-    vi.unstubAllGlobals()
+      const githubToken = 'github_pat_BACKUP_TEST'
+      const fetchMock = vi.fn(async () =>
+        new Response(JSON.stringify({ login: 'octocat' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+      const connectGithubResult = await useAuthStore.getState().connectGithub(githubToken)
+      expect(connectGithubResult.success).toBe(true)
+      expect(fetchMock).toHaveBeenCalled()
+      vi.unstubAllGlobals()
 
-    const firstKey = useAuthStore.getState().encryptionKey
-    expect(firstKey).toBeInstanceOf(Uint8Array)
-    const firstKeyBytes = firstKey as Uint8Array
+      const firstKey = useAuthStore.getState().encryptionKey
+      expect(firstKey).toBeInstanceOf(Uint8Array)
+      const firstKeyBytes = firstKey as Uint8Array
 
-    const now = Date.now()
-    const cipher = await encryptString(firstKeyBytes, 'initial-secret')
-    await databaseClient.passwords.add({
-      ownerEmail: email,
-      title: 'Sample',
-      username: 'alice',
-      passwordCipher: cipher,
-      createdAt: now,
-      updatedAt: now,
-    })
+      const now = Date.now()
+      const cipher = await encryptString(firstKeyBytes, 'initial-secret')
+      await databaseClient.passwords.add({
+        ownerEmail: email,
+        title: 'Sample',
+        username: 'alice',
+        passwordCipher: cipher,
+        createdAt: now,
+        updatedAt: now,
+      })
 
-    const exported = await exportUserData(email, firstKeyBytes, masterPassword)
-    const backupText = await exported.text()
+      const exported = await exportUserData(email, firstKeyBytes, { masterPassword })
+      const backupText = await exported.text()
 
-    await auth.logout()
-    await clearUserData(email)
+      await auth.logout()
+      await clearUserData(email)
 
-    const secondRegister = await auth.register(email, masterPassword)
-    expect(secondRegister.success).toBe(true)
+      const secondRegister = await auth.register(email, masterPassword)
+      expect(secondRegister.success).toBe(true)
 
-    const secondKey = useAuthStore.getState().encryptionKey
-    expect(secondKey).toBeInstanceOf(Uint8Array)
-    const secondKeyBytes = secondKey as Uint8Array
-    expect(toHex(secondKeyBytes)).not.toEqual(toHex(firstKeyBytes))
+      const secondKey = useAuthStore.getState().encryptionKey
+      expect(secondKey).toBeInstanceOf(Uint8Array)
+      const secondKeyBytes = secondKey as Uint8Array
+      expect(toHex(secondKeyBytes)).not.toEqual(toHex(firstKeyBytes))
 
-    const file = new Blob([backupText], { type: 'application/json' })
-    const result = await importUserData(file, secondKeyBytes, masterPassword)
+      const file = new Blob([backupText], { type: 'application/json' })
+      const result = await importUserData(file, secondKeyBytes, masterPassword)
 
-    expect(result.email).toBe(email)
-    expect(result.passwords).toBe(1)
-    expect(result.sites).toBe(0)
-    expect(result.docs).toBe(0)
-    expect(result.notes).toBe(0)
+      expect(result.email).toBe(email)
+      expect(result.passwords).toBe(1)
+      expect(result.sites).toBe(0)
+      expect(result.docs).toBe(0)
+      expect(result.notes).toBe(0)
 
-    const stored = await databaseClient.passwords.where('ownerEmail').equals(email).toArray()
-    expect(stored).toHaveLength(1)
-    const decrypted = await decryptString(secondKeyBytes, stored[0]!.passwordCipher)
-    expect(decrypted).toBe('initial-secret')
+      const stored = await databaseClient.passwords.where('ownerEmail').equals(email).toArray()
+      expect(stored).toHaveLength(1)
+      const decrypted = await decryptString(secondKeyBytes, stored[0]!.passwordCipher)
+      expect(decrypted).toBe('initial-secret')
 
-    const importedRecord = await databaseClient.users.get(email)
-    expect(importedRecord?.github?.username).toBe('octocat')
-    const importedToken = await decryptString(secondKeyBytes, importedRecord!.github!.tokenCipher)
-    expect(importedToken).toBe(githubToken)
-    expect(useAuthStore.getState().profile?.github?.username).toBe('octocat')
+      const importedRecord = await databaseClient.users.get(email)
+      expect(importedRecord?.github?.username).toBe('octocat')
+      const importedToken = await decryptString(secondKeyBytes, importedRecord!.github!.tokenCipher)
+      expect(importedToken).toBe(githubToken)
+      expect(useAuthStore.getState().profile?.github?.username).toBe('octocat')
     },
     LONG_RUNNING_TEST_TIMEOUT,
   )
+
+  it('exports using the active session key when allowed', async () => {
+    await databaseClient.open()
+
+    const auth = useAuthStore.getState()
+    const register = await auth.register(email, masterPassword)
+    expect(register.success).toBe(true)
+
+    const sessionKey = useAuthStore.getState().encryptionKey
+    expect(sessionKey).toBeInstanceOf(Uint8Array)
+
+    await expect(
+      exportUserData(email, sessionKey as Uint8Array, { allowSessionKey: true }),
+    ).resolves.toBeInstanceOf(Blob)
+  })
+
+  it('requires the master password when session-key export is not enabled', async () => {
+    await databaseClient.open()
+
+    const auth = useAuthStore.getState()
+    const register = await auth.register(email, masterPassword)
+    expect(register.success).toBe(true)
+
+    const sessionKey = useAuthStore.getState().encryptionKey
+    expect(sessionKey).toBeInstanceOf(Uint8Array)
+
+    await expect(exportUserData(email, sessionKey as Uint8Array, {})).rejects.toThrow(
+      '导出备份前请输入主密码。',
+    )
+  })
 })
