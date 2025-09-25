@@ -147,6 +147,19 @@ export default function Notes() {
     return pending
   }, [rootPath])
 
+  const awaitRootOrNotify = useCallback(async () => {
+    try {
+      return await ensureRootReady()
+    } catch (error) {
+      console.error('Failed to ensure notes root', error)
+      toastError(showToast, error, 'notes/ensure-root', {
+        title: '初始化失败',
+        fallback: '无法准备笔记目录，请检查存储位置。',
+      })
+      return null
+    }
+  }, [ensureRootReady, showToast])
+
   const refreshTree = useCallback(
     async (targetRoot?: string) => {
       let root = targetRoot ?? rootPath
@@ -376,7 +389,8 @@ export default function Notes() {
   )
 
   const handleCreateNote = useCallback(async () => {
-    const root = await ensureRootReady()
+    const root = await awaitRootOrNotify()
+    if (!root) return
     const name = window.prompt('请输入新笔记的文件名', '新建笔记.md')
     if (!name) return
     try {
@@ -403,10 +417,11 @@ export default function Notes() {
         fallback: '无法创建笔记，请检查目录权限或浏览器存储空间。',
       })
     }
-  }, [ensureRootReady, refreshTree, resolveTargetDirectory, showToast])
+  }, [awaitRootOrNotify, refreshTree, resolveTargetDirectory, showToast])
 
   const handleCreateFolder = useCallback(async () => {
-    const root = await ensureRootReady()
+    const root = await awaitRootOrNotify()
+    if (!root) return
     const name = window.prompt('请输入新文件夹名称', '新建文件夹')
     if (!name) return
     try {
@@ -432,7 +447,7 @@ export default function Notes() {
         fallback: '无法创建文件夹，请检查目录权限或浏览器存储空间。',
       })
     }
-  }, [ensureRootReady, refreshTree, resolveTargetDirectory, showToast])
+  }, [awaitRootOrNotify, refreshTree, resolveTargetDirectory, showToast])
 
   const handleRename = useCallback(
     async (path: string) => {
@@ -501,7 +516,8 @@ export default function Notes() {
 
   const handleQuickCapture = useCallback(
     async (value: string) => {
-      const root = await ensureRootReady()
+      const root = await awaitRootOrNotify()
+      if (!root) return
       await appendToInbox(root, value)
       await refreshTree(root)
       showToast({
@@ -510,7 +526,7 @@ export default function Notes() {
         variant: 'success',
       })
     },
-    [ensureRootReady, refreshTree, showToast],
+    [awaitRootOrNotify, refreshTree, showToast],
   )
 
   const statusMeta = useMemo(() => {
