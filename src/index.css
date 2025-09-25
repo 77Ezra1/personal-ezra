@@ -19,6 +19,14 @@ select,
   -webkit-app-region: drag;
   user-select: none;
 }
+
+.overlay,
+.mask,
+.drag-layer,
+.dropzone,
+.glass {
+  pointer-events: none;
+}
 table { border-collapse: collapse; }
 th, td { border-color: #eee; }
 a { color: rgb(var(--color-primary)); }
