@@ -1207,13 +1207,13 @@ function DataBackupSection() {
             email,
             encryptionKey,
             masterPassword,
+            useSessionKey: allowSessionKey,
           },
           backupPath,
           isTauri,
           jsonFilters,
           allowDialogFallback: false,
           githubBackup: { enabled: githubBackupEnabledRef.current },
-          allowSessionKey,
         })
 
         if (!result) {
