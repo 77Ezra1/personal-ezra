@@ -79,7 +79,8 @@ export async function runScheduledBackup({
     }
   }
 
-  const blob = await exportUserData(email, encryptionKey, auth.masterPassword ?? null, {
+  const blob = await exportUserData(email, encryptionKey, {
+    masterPassword: auth.masterPassword ?? null,
     useSessionKey: auth.useSessionKey === true,
   })
   const fileContent = await blob.text()
