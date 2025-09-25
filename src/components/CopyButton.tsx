@@ -9,7 +9,7 @@ import {
 import clsx from 'clsx'
 import { AlertCircle, Check, Copy as CopyIcon, Loader2 } from 'lucide-react'
 
-import { copyTextAutoClear, DEFAULT_CLIPBOARD_CLEAR_DELAY } from '../lib/clipboard'
+import { copyWithAutoClear, DEFAULT_CLIPBOARD_CLEAR_DELAY } from '../lib/clipboard'
 
 type CopySource = string | (() => string | Promise<string>)
 
@@ -96,7 +96,7 @@ export default function CopyButton({
     setIsLoading(true)
     try {
       const value = await resolveCopySource(text)
-      await copyTextAutoClear(value, clearDelay)
+      await copyWithAutoClear(value, clearDelay)
       setStatus('success')
       setErrorMessage(null)
       onCopy?.(value)

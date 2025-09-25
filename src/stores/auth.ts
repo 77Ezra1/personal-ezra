@@ -35,7 +35,9 @@ function fromBase64(str: string) {
   return result
 }
 
-type AuthResult = { success: boolean; message?: string; mustChangePassword?: boolean }
+type AuthResult = { success: boolean; message?: string; mustChangePassword: boolean }
+
+const DEFAULT_AUTH_RESULT: Pick<AuthResult, 'mustChangePassword'> = { mustChangePassword: false }
 type MnemonicResult = AuthResult & { mnemonic?: string }
 type MnemonicAnswerPayload = { index: number; word: string }
 type RecoverPasswordPayload = { email: string; newPassword: string; mnemonicAnswers: MnemonicAnswerPayload[] }
@@ -297,19 +299,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   async register(rawEmail, password) {
     const email = rawEmail.trim().toLowerCase()
     if (!email) {
-      return { success: false, message: '请输入邮箱地址' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请输入邮箱地址' }
     }
     if (!password) {
-      return { success: false, message: '请输入密码' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请输入密码' }
     }
     const strength = estimatePasswordStrength(password)
     if (!strength.meetsRequirement) {
       const [firstSuggestion] = strength.suggestions
-      return { success: false, message: firstSuggestion ?? PASSWORD_STRENGTH_REQUIREMENT }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: firstSuggestion ?? PASSWORD_STRENGTH_REQUIREMENT }
     }
     const existing = await db.users.get(email)
     if (existing) {
-      return { success: false, message: '该邮箱已注册' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '该邮箱已注册' }
     }
     const saltBytes = crypto.getRandomValues(new Uint8Array(16))
     const key = await deriveKey(password, saltBytes)
@@ -336,22 +338,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       mustChangePassword: true,
       locked: false,
     })
-    return { success: true, mustChangePassword: true }
+    return { ...DEFAULT_AUTH_RESULT, success: true, mustChangePassword: true }
   },
   async login(rawEmail, password) {
     const email = rawEmail.trim().toLowerCase()
     if (!email || !password) {
-      return { success: false, message: '请输入邮箱和密码' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请输入邮箱和密码' }
     }
     const record = await db.users.get(email)
     if (!record) {
-      return { success: false, message: '账号不存在' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '账号不存在' }
     }
     const salt = fromBase64(record.salt)
     const key = await deriveKey(password, salt)
     const hash = toBase64(key)
     if (hash !== record.keyHash) {
-      return { success: false, message: '密码错误' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '密码错误' }
     }
     saveSession({ email, key, locked: false })
     const mustChangePassword = Boolean(record.mustChangePassword)
@@ -362,7 +364,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       mustChangePassword,
       locked: false,
     })
-    return { success: true, mustChangePassword }
+    return { ...DEFAULT_AUTH_RESULT, success: true, mustChangePassword }
   },
   async logout() {
     clearSession()
@@ -377,18 +379,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   async connectGithub(rawToken, options: Partial<GithubRepositorySettingsPayload> = {}) {
     const token = typeof rawToken === 'string' ? rawToken.trim() : ''
     if (!token) {
-      return { success: false, message: '请输入 GitHub 访问令牌' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请输入 GitHub 访问令牌' }
     }
 
     const { email, encryptionKey } = get()
     if (!email) {
-      return { success: false, message: '请先登录后再连接 GitHub' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请先登录后再连接 GitHub' }
     }
     if (!(encryptionKey instanceof Uint8Array) || encryptionKey.length === 0) {
-      return { success: false, message: '请先解锁账号后再连接 GitHub' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请先解锁账号后再连接 GitHub' }
     }
     if (typeof fetch !== 'function') {
-      return { success: false, message: '当前环境不支持网络请求，请稍后重试' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '当前环境不支持网络请求，请稍后重试' }
     }
 
     let record: UserRecord | undefined
@@ -396,10 +398,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       record = await db.users.get(email)
     } catch (error) {
       console.error('Failed to load user record before connecting GitHub', error)
-      return { success: false, message: '无法读取账户信息，请稍后再试' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '无法读取账户信息，请稍后再试' }
     }
     if (!record) {
-      return { success: false, message: '账号不存在或已被删除' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '账号不存在或已被删除' }
     }
 
     const requestGithubUser = (authHeader: string) =>
@@ -419,7 +421,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     } catch (error) {
       console.error('Failed to validate GitHub access token', error)
-      return { success: false, message: '无法连接 GitHub，请检查网络后重试' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '无法连接 GitHub，请检查网络后重试' }
     }
 
     if (!response.ok) {
@@ -427,7 +429,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         response.status === 401 || response.status === 403
           ? 'GitHub 访问令牌无效或权限不足，请重新生成后再试'
           : '验证 GitHub 令牌失败，请稍后重试'
-      return { success: false, message }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message }
     }
 
     let payload: unknown
@@ -435,7 +437,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       payload = await response.json()
     } catch (error) {
       console.error('Failed to parse GitHub user payload', error)
-      return { success: false, message: '解析 GitHub 用户信息失败，请稍后重试' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '解析 GitHub 用户信息失败，请稍后重试' }
     }
 
     const loginField =
@@ -444,7 +446,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         : undefined
     const username = typeof loginField === 'string' ? loginField.trim() : ''
     if (!username) {
-      return { success: false, message: '未能获取 GitHub 用户名，请确认令牌具备 read:user 权限' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '未能获取 GitHub 用户名，请确认令牌具备 read:user 权限' }
     }
 
     let encryptedToken: string
@@ -452,7 +454,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       encryptedToken = await encryptString(encryptionKey, token)
     } catch (error) {
       console.error('Failed to encrypt GitHub token', error)
-      return { success: false, message: '加密 GitHub 访问令牌失败，请稍后再试' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '加密 GitHub 访问令牌失败，请稍后再试' }
     }
 
     const now = Date.now()
@@ -489,31 +491,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await db.users.put(nextRecord)
     } catch (error) {
       console.error('Failed to persist GitHub connection metadata', error)
-      return { success: false, message: '保存 GitHub 连接信息失败，请稍后再试' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '保存 GitHub 连接信息失败，请稍后再试' }
     }
 
     set({ profile: mapRecordToProfile(nextRecord) })
-    return { success: true }
+    return { ...DEFAULT_AUTH_RESULT, success: true }
   },
   async updateGithubRepository(payload) {
     const { email } = get()
     if (!email) {
-      return { success: false, message: '请先登录后再配置仓库信息' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请先登录后再配置仓库信息' }
     }
 
     const owner = normalizeGithubString(payload.owner)
     if (!owner) {
-      return { success: false, message: '请输入仓库拥有者' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请输入仓库拥有者' }
     }
     const repo = normalizeGithubString(payload.repo)
     if (!repo) {
-      return { success: false, message: '请输入仓库名称' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请输入仓库名称' }
     }
     const branchNormalized = normalizeGithubString(payload.branch)
     const branch = branchNormalized ?? 'main'
     const targetDirectory = normalizeGithubString(payload.targetDirectory)
     if (!targetDirectory) {
-      return { success: false, message: '请输入备份文件路径' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请输入备份文件路径' }
     }
 
     let record: UserRecord | undefined
@@ -521,11 +523,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       record = await db.users.get(email)
     } catch (error) {
       console.error('Failed to load user before saving GitHub repository settings', error)
-      return { success: false, message: '无法读取账户信息，请稍后再试' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '无法读取账户信息，请稍后再试' }
     }
 
     if (!record || !record.github) {
-      return { success: false, message: '请先连接 GitHub 账号后再配置仓库。' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请先连接 GitHub 账号后再配置仓库。' }
     }
 
     const now = Date.now()
@@ -548,16 +550,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await db.users.put(nextRecord)
     } catch (error) {
       console.error('Failed to persist GitHub repository settings', error)
-      return { success: false, message: '保存 GitHub 仓库设置失败，请稍后再试' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '保存 GitHub 仓库设置失败，请稍后再试' }
     }
 
     set({ profile: mapRecordToProfile(nextRecord) })
-    return { success: true }
+    return { ...DEFAULT_AUTH_RESULT, success: true }
   },
   async disconnectGithub() {
     const { email } = get()
     if (!email) {
-      return { success: false, message: '请先登录后再断开 GitHub 连接' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请先登录后再断开 GitHub 连接' }
     }
 
     let record: UserRecord | undefined
@@ -565,15 +567,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       record = await db.users.get(email)
     } catch (error) {
       console.error('Failed to load user record before disconnecting GitHub', error)
-      return { success: false, message: '无法读取账户信息，请稍后再试' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '无法读取账户信息，请稍后再试' }
     }
 
     if (!record) {
-      return { success: false, message: '账号不存在或已被删除' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '账号不存在或已被删除' }
     }
 
     if (!record.github) {
-      return { success: true }
+      return { ...DEFAULT_AUTH_RESULT, success: true }
     }
 
     const nextRecord: UserRecord = {
@@ -586,11 +588,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await db.users.put(nextRecord)
     } catch (error) {
       console.error('Failed to remove GitHub connection metadata', error)
-      return { success: false, message: '断开 GitHub 连接失败，请稍后重试' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '断开 GitHub 连接失败，请稍后重试' }
     }
 
     set({ profile: mapRecordToProfile(nextRecord) })
-    return { success: true }
+    return { ...DEFAULT_AUTH_RESULT, success: true }
   },
   async loadProfile() {
     const { email } = get()
@@ -612,30 +614,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   async updateProfile(payload) {
     const { email } = get()
     if (!email) {
-      return { success: false, message: '请先登录后再更新资料' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请先登录后再更新资料' }
     }
     const normalizedName = normalizeDisplayName(payload.displayName)
     if (!normalizedName) {
-      return { success: false, message: '请输入用户名' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请输入用户名' }
     }
     if (normalizedName.length < MIN_DISPLAY_NAME_LENGTH) {
-      return { success: false, message: `用户名至少需要 ${MIN_DISPLAY_NAME_LENGTH} 个字符` }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: `用户名至少需要 ${MIN_DISPLAY_NAME_LENGTH} 个字符` }
     }
     if (normalizedName.length > MAX_DISPLAY_NAME_LENGTH) {
-      return { success: false, message: `用户名不能超过 ${MAX_DISPLAY_NAME_LENGTH} 个字符` }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: `用户名不能超过 ${MAX_DISPLAY_NAME_LENGTH} 个字符` }
     }
     const banned = detectSensitiveWords(normalizedName)
     if (banned.length > 0) {
-      return { success: false, message: `用户名包含敏感词：${banned.join('、')}` }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: `用户名包含敏感词：${banned.join('、')}` }
     }
     const avatarResult = validateAvatarMeta(payload.avatar)
     if (!avatarResult.ok) {
-      return { success: false, message: avatarResult.message }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: avatarResult.message }
     }
     try {
       const record = await db.users.get(email)
       if (!record) {
-        return { success: false, message: '账号不存在或已被删除' }
+        return { ...DEFAULT_AUTH_RESULT, success: false, message: '账号不存在或已被删除' }
       }
       const next: UserRecord = {
         ...record,
@@ -645,44 +647,44 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       await db.users.put(next)
       set({ profile: mapRecordToProfile(next) })
-      return { success: true }
+      return { ...DEFAULT_AUTH_RESULT, success: true }
     } catch (error) {
       console.error('Failed to update user profile', error)
-      return { success: false, message: '保存资料失败，请稍后重试' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '保存资料失败，请稍后重试' }
     }
   },
   async changePassword(payload) {
     const { email } = get()
     const { currentPassword, newPassword } = payload
     if (!email) {
-      return { success: false, message: '请先登录后再修改密码' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请先登录后再修改密码' }
     }
     if (!currentPassword) {
-      return { success: false, message: '请输入旧密码' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请输入旧密码' }
     }
     if (!newPassword) {
-      return { success: false, message: '请输入新密码' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请输入新密码' }
     }
     const strength = estimatePasswordStrength(newPassword)
     if (!strength.meetsRequirement) {
       const [firstSuggestion] = strength.suggestions
-      return { success: false, message: firstSuggestion ?? PASSWORD_STRENGTH_REQUIREMENT }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: firstSuggestion ?? PASSWORD_STRENGTH_REQUIREMENT }
     }
     if (newPassword === currentPassword) {
-      return { success: false, message: '新密码不能与旧密码相同' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '新密码不能与旧密码相同' }
     }
 
     try {
       const record = await db.users.get(email)
       if (!record) {
-        return { success: false, message: '账号不存在或已被删除' }
+        return { ...DEFAULT_AUTH_RESULT, success: false, message: '账号不存在或已被删除' }
       }
 
       const saltBytes = fromBase64(record.salt)
       const currentKey = await deriveKey(currentPassword, saltBytes)
       const currentHash = toBase64(currentKey)
       if (currentHash !== record.keyHash) {
-        return { success: false, message: '旧密码不正确' }
+        return { ...DEFAULT_AUTH_RESULT, success: false, message: '旧密码不正确' }
       }
 
       const passwordRecords = await db.passwords.where('ownerEmail').equals(email).toArray()
@@ -692,7 +694,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       for (const row of passwordRecords) {
         if (typeof row.id !== 'number') {
           console.error('Password record missing identifier during password change, aborting update')
-          return { success: false, message: '密码数据异常，请稍后重试' }
+          return { ...DEFAULT_AUTH_RESULT, success: false, message: '密码数据异常，请稍后重试' }
         }
         try {
           const plain = await decryptString(currentKey, row.passwordCipher)
@@ -702,13 +704,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               totpSecret = await decryptString(currentKey, row.totpCipher)
             } catch (error) {
               console.error('Failed to decrypt TOTP secret during password change', error)
-              return { success: false, message: '解密一次性验证码失败，请稍后再试' }
+              return { ...DEFAULT_AUTH_RESULT, success: false, message: '解密一次性验证码失败，请稍后再试' }
             }
           }
           decrypted.push({ record: row, plain, totpSecret })
         } catch (error) {
           console.error('Failed to decrypt password record during password change', error)
-          return { success: false, message: '解密密码数据失败，请稍后再试' }
+          return { ...DEFAULT_AUTH_RESULT, success: false, message: '解密密码数据失败，请稍后再试' }
         }
       }
 
@@ -729,7 +731,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           updatedRecords.push({ ...item.record, passwordCipher: cipher, totpCipher: nextTotpCipher, updatedAt: now })
         } catch (error) {
           console.error('Failed to encrypt password record with new key', error)
-          return { success: false, message: '重新加密密码数据失败，请稍后再试' }
+          return { ...DEFAULT_AUTH_RESULT, success: false, message: '重新加密密码数据失败，请稍后再试' }
         }
       }
 
@@ -750,10 +752,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         mustChangePassword: false,
         locked: false,
       })
-      return { success: true }
+      return { ...DEFAULT_AUTH_RESULT, success: true }
     } catch (error) {
       console.error('Failed to change password', error)
-      return { success: false, message: '修改密码失败，请稍后重试' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '修改密码失败，请稍后重试' }
     }
   },
   async recoverPassword(payload) {
@@ -774,49 +776,49 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     if (!email) {
-      return { success: false, message: '请输入注册邮箱' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请输入注册邮箱' }
     }
     if (!newPassword) {
-      return { success: false, message: '请输入新密码' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请输入新密码' }
     }
     const strength = estimatePasswordStrength(newPassword)
     if (!strength.meetsRequirement) {
       const [firstSuggestion] = strength.suggestions
-      return { success: false, message: firstSuggestion ?? PASSWORD_STRENGTH_REQUIREMENT }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: firstSuggestion ?? PASSWORD_STRENGTH_REQUIREMENT }
     }
     if (normalizedAnswers.size === 0) {
-      return { success: false, message: '请输入助记词单词' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请输入助记词单词' }
     }
 
     try {
       const record = await db.users.get(email)
       if (!record) {
-        return { success: false, message: '账号不存在或助记词不匹配' }
+        return { ...DEFAULT_AUTH_RESULT, success: false, message: '账号不存在或助记词不匹配' }
       }
 
       const storedMnemonic = normalizeMnemonic(typeof record.mnemonic === 'string' ? record.mnemonic : '')
       if (!storedMnemonic) {
-        return { success: false, message: '该账号尚未设置助记词，无法找回密码' }
+        return { ...DEFAULT_AUTH_RESULT, success: false, message: '该账号尚未设置助记词，无法找回密码' }
       }
       const storedWords = storedMnemonic.split(' ')
 
       for (const [index, word] of normalizedAnswers.entries()) {
         const storedWord = storedWords[index]
         if (!storedWord || storedWord !== word) {
-          return { success: false, message: '助记词不正确' }
+          return { ...DEFAULT_AUTH_RESULT, success: false, message: '助记词不正确' }
         }
       }
 
       const saltBytes = fromBase64(record.salt)
       const existingKey = fromBase64(record.keyHash)
       if (!existingKey || existingKey.length === 0) {
-        return { success: false, message: '账号密钥数据异常，请稍后重试' }
+        return { ...DEFAULT_AUTH_RESULT, success: false, message: '账号密钥数据异常，请稍后重试' }
       }
 
       const candidateKey = await deriveKey(newPassword, saltBytes)
       const candidateHash = toBase64(candidateKey)
       if (candidateHash === record.keyHash) {
-        return { success: false, message: '新密码不能与旧密码相同' }
+        return { ...DEFAULT_AUTH_RESULT, success: false, message: '新密码不能与旧密码相同' }
       }
 
       const passwordRecords = await db.passwords.where('ownerEmail').equals(email).toArray()
@@ -826,7 +828,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       for (const row of passwordRecords) {
         if (typeof row.id !== 'number') {
           console.error('Password record missing identifier during password recovery, aborting update')
-          return { success: false, message: '密码数据异常，请稍后重试' }
+          return { ...DEFAULT_AUTH_RESULT, success: false, message: '密码数据异常，请稍后重试' }
         }
         try {
           const plain = await decryptString(existingKey, row.passwordCipher)
@@ -836,13 +838,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               totpSecret = await decryptString(existingKey, row.totpCipher)
             } catch (error) {
               console.error('Failed to decrypt TOTP secret during password recovery', error)
-              return { success: false, message: '解密一次性验证码失败，请稍后再试' }
+              return { ...DEFAULT_AUTH_RESULT, success: false, message: '解密一次性验证码失败，请稍后再试' }
             }
           }
           decrypted.push({ record: row, plain, totpSecret })
         } catch (error) {
           console.error('Failed to decrypt password record during password recovery', error)
-          return { success: false, message: '解密密码数据失败，请稍后再试' }
+          return { ...DEFAULT_AUTH_RESULT, success: false, message: '解密密码数据失败，请稍后再试' }
         }
       }
 
@@ -863,7 +865,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           updatedRecords.push({ ...item.record, passwordCipher: cipher, totpCipher: nextTotpCipher, updatedAt: now })
         } catch (error) {
           console.error('Failed to encrypt password record with recovered key', error)
-          return { success: false, message: '重新加密密码数据失败，请稍后再试' }
+          return { ...DEFAULT_AUTH_RESULT, success: false, message: '重新加密密码数据失败，请稍后再试' }
         }
       }
 
@@ -889,19 +891,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         saveSession({ email, key: newKey, locked: false })
       }
 
-      return { success: true }
+      return { ...DEFAULT_AUTH_RESULT, success: true }
     } catch (error) {
       console.error('Failed to recover password', error)
-      return { success: false, message: '重置密码失败，请稍后再试' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '重置密码失败，请稍后再试' }
     }
   },
   async deleteAccount(password) {
     const { email } = get()
     if (!email) {
-      return { success: false, message: '请先登录后再操作' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请先登录后再操作' }
     }
     if (!password) {
-      return { success: false, message: '请输入密码' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请输入密码' }
     }
 
     try {
@@ -911,7 +913,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const key = await deriveKey(password, saltBytes)
         const hash = toBase64(key)
         if (hash !== record.keyHash) {
-          return { success: false, message: '密码错误' }
+          return { ...DEFAULT_AUTH_RESULT, success: false, message: '密码错误' }
         }
       }
 
@@ -977,44 +979,44 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       clearSession()
       set({ email: null, encryptionKey: null, profile: null, mustChangePassword: false, locked: false })
-      return { success: true }
+      return { ...DEFAULT_AUTH_RESULT, success: true }
     } catch (error) {
       console.error('Failed to delete account', error)
-      return { success: false, message: '注销账号失败，请稍后重试' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '注销账号失败，请稍后重试' }
     }
   },
   async revealMnemonic(password) {
     const { email } = get()
     if (!email) {
-      return { success: false, message: '请先登录后再操作' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请先登录后再操作' }
     }
     const normalizedPassword = password.trim()
     if (!normalizedPassword) {
-      return { success: false, message: '请输入当前登录密码' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '请输入当前登录密码' }
     }
 
     try {
       const record = await db.users.get(email)
       if (!record) {
-        return { success: false, message: '账号不存在或已被删除' }
+        return { ...DEFAULT_AUTH_RESULT, success: false, message: '账号不存在或已被删除' }
       }
 
       const salt = fromBase64(record.salt)
       const key = await deriveKey(normalizedPassword, salt)
       const hash = toBase64(key)
       if (hash !== record.keyHash) {
-        return { success: false, message: '密码错误' }
+        return { ...DEFAULT_AUTH_RESULT, success: false, message: '密码错误' }
       }
 
       const mnemonic = typeof record.mnemonic === 'string' ? record.mnemonic.trim() : ''
       if (!mnemonic) {
-        return { success: false, message: '尚未为该账号生成助记词' }
+        return { ...DEFAULT_AUTH_RESULT, success: false, message: '尚未为该账号生成助记词' }
       }
 
-      return { success: true, mnemonic }
+      return { ...DEFAULT_AUTH_RESULT, success: true, mnemonic }
     } catch (error) {
       console.error('Failed to reveal mnemonic', error)
-      return { success: false, message: '获取助记词失败，请稍后重试' }
+      return { ...DEFAULT_AUTH_RESULT, success: false, message: '获取助记词失败，请稍后重试' }
     }
   },
 }))

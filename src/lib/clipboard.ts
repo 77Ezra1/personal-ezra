@@ -1,8 +1,10 @@
+import { writeText as tauriWriteText } from '@tauri-apps/plugin-clipboard-manager'
+
+import { isTauriRuntime } from '../env'
+
 export const DEFAULT_CLIPBOARD_CLEAR_DELAY = 15_000
 
 let clearTimer: ReturnType<typeof setTimeout> | null = null
-let hasAttemptedTauri = false
-let tauriWriteText: ((text: string) => Promise<void>) | null = null
 
 async function writeClipboard(text: string) {
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
@@ -10,41 +12,30 @@ async function writeClipboard(text: string) {
     return
   }
 
-  if (!hasAttemptedTauri) {
-    hasAttemptedTauri = true
-    try {
-      const mod = (await import('@tauri-apps/api')) as { clipboard?: { writeText?: (value: string) => Promise<void> } }
-      tauriWriteText = typeof mod.clipboard?.writeText === 'function' ? mod.clipboard.writeText : null
-    } catch {
-      tauriWriteText = null
-    }
-  }
-
-  if (tauriWriteText) {
+  if (isTauriRuntime()) {
     await tauriWriteText(text)
     return
   }
 
-  throw new Error('Clipboard API is not available')
+  throw new Error('No clipboard API available')
 }
 
-export async function copyTextAutoClear(text: string, ms = DEFAULT_CLIPBOARD_CLEAR_DELAY) {
+export async function copyWithAutoClear(text: string, ms = DEFAULT_CLIPBOARD_CLEAR_DELAY) {
+  await writeClipboard(text)
+
   if (clearTimer) {
     clearTimeout(clearTimer)
     clearTimer = null
   }
 
-  await writeClipboard(text)
-
-  const delay = Number(ms)
-  if (!Number.isFinite(delay) || delay <= 0) {
+  if (!ms || ms <= 0) {
     return
   }
 
   clearTimer = setTimeout(() => {
     clearTimer = null
-    void writeClipboard('').catch(error => {
-      console.warn('Failed to clear clipboard', error)
+    void writeClipboard('').catch(() => {
+      /* ignore */
     })
-  }, delay)
+  }, ms)
 }
