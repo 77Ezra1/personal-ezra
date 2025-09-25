@@ -1,5 +1,9 @@
-import { defineConfig } from 'vitest/config';
+import { createRequire } from 'module';
 import path from 'path';
+import { defineConfig } from 'vitest/config';
+
+const require = createRequire(import.meta.url);
+const jsYamlEntry = require.resolve('js-yaml');
 
 export default defineConfig({
   resolve: {
@@ -9,6 +13,7 @@ export default defineConfig({
         'src/tauri-stronghold-stub.ts'
       ),
       '@tauri-apps/plugin-fs': path.resolve(__dirname, 'src/tauri-fs-stub.ts'),
+      'js-yaml': jsYamlEntry,
     },
   },
   test: {
