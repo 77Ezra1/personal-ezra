@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { dirname } from '@tauri-apps/api/path'
 import { listen } from '@tauri-apps/api/event'
 import { FilePlus2, FolderPlus, RefreshCw } from 'lucide-react'
 
@@ -95,6 +94,21 @@ function findNodeByPath(nodes: NotesTreeNode[], target: string): NotesTreeNode |
   return null
 }
 
+function findParentPath(nodes: NotesTreeNode[], target: string, parent: string | null): string | null {
+  for (const node of nodes) {
+    if (node.path === target) {
+      return parent
+    }
+    if (node.children) {
+      const result = findParentPath(node.children, target, node.path)
+      if (result) {
+        return result
+      }
+    }
+  }
+  return null
+}
+
 export default function Notes() {
   const [rootPath, setRootPath] = useState('')
   const [tree, setTree] = useState<NotesTreeNode[]>([])
@@ -141,7 +155,6 @@ export default function Notes() {
   )
 
   useEffect(() => {
-    if (!isTauri) return
     let mounted = true
     const initialize = async () => {
       try {
@@ -154,7 +167,7 @@ export default function Notes() {
         console.error('Failed to initialize notes root', error)
         toastError(showToast, error, 'notes/init', {
           title: '初始化失败',
-          fallback: '无法准备笔记目录，请检查文件权限。',
+          fallback: '无法准备笔记目录，请检查存储位置。',
         })
       }
     }
@@ -162,7 +175,7 @@ export default function Notes() {
     return () => {
       mounted = false
     }
-  }, [isTauri, refreshTree, showToast])
+  }, [refreshTree, showToast])
 
   useEffect(() => {
     if (!isTauri || !rootPath) return
@@ -279,7 +292,7 @@ export default function Notes() {
           setSaveState('error')
           toastError(showToast, error, 'notes/save', {
             title: '保存失败',
-            fallback: '写入文件失败，请检查目录权限。',
+            fallback: '写入笔记失败，请检查目录权限或浏览器存储空间。',
           })
         }
       }),
@@ -320,14 +333,8 @@ export default function Notes() {
       if (node?.kind === 'directory') {
         return node.path
       }
-      if (activePath) {
-        try {
-          return await dirname(activePath)
-        } catch (error) {
-          console.warn('Failed to resolve parent directory', error)
-        }
-      }
-      return rootPath
+      const parent = findParentPath(tree, activePath, rootPath)
+      return parent ?? rootPath
     },
     [rootPath, activePath, tree],
   )
@@ -357,7 +364,7 @@ export default function Notes() {
       console.error('Failed to create note', error)
       toastError(showToast, error, 'notes/create-note', {
         title: '创建失败',
-        fallback: '无法创建笔记，请检查目录权限。',
+        fallback: '无法创建笔记，请检查目录权限或浏览器存储空间。',
       })
     }
   }, [refreshTree, resolveTargetDirectory, rootPath, showToast])
@@ -386,7 +393,7 @@ export default function Notes() {
       console.error('Failed to create folder', error)
       toastError(showToast, error, 'notes/create-folder', {
         title: '创建失败',
-        fallback: '无法创建文件夹，请检查目录权限。',
+        fallback: '无法创建文件夹，请检查目录权限或浏览器存储空间。',
       })
     }
   }, [refreshTree, resolveTargetDirectory, rootPath, showToast])
@@ -416,7 +423,7 @@ export default function Notes() {
         console.error('Failed to rename entry', error)
         toastError(showToast, error, 'notes/rename', {
           title: '重命名失败',
-          fallback: '无法重命名该条目。',
+          fallback: '无法重命名该条目，请检查目录权限或浏览器存储空间。',
         })
       }
     },
@@ -447,7 +454,7 @@ export default function Notes() {
         console.error('Failed to delete entry', error)
         toastError(showToast, error, 'notes/delete', {
           title: '删除失败',
-          fallback: '无法删除该条目。',
+          fallback: '无法删除该条目，请检查目录权限或浏览器存储空间。',
         })
       }
     },
@@ -488,16 +495,17 @@ export default function Notes() {
     }
   }, [currentNote, saveState])
 
-  if (!isTauri) {
-    return (
-      <div className="rounded-2xl border border-dashed border-border/80 bg-surface/60 p-10 text-center text-sm text-muted">
-        笔记功能仅在 Tauri 桌面端可用，请在桌面环境中访问。
-      </div>
-    )
-  }
-
   return (
     <div className="no-drag flex min-h-[620px] flex-col gap-4">
+      {!isTauri && (
+        <div className="rounded-2xl border border-amber-400/60 bg-amber-100/70 p-4 text-left text-sm text-amber-900">
+          <p className="font-medium">当前运行在浏览器本地模式。</p>
+          <p className="mt-1 leading-relaxed">
+            笔记内容会暂存于浏览器本地存储中，换设备或清除数据会导致记录丢失。如需持久保存，请在桌面端使用
+            Tauri 版本。
+          </p>
+        </div>
+      )}
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-text">笔记</h1>

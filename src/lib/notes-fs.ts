@@ -5,6 +5,7 @@ import { dump as stringifyYaml, load as parseYaml } from 'js-yaml'
 
 import { isTauriRuntime } from '../env'
 import { decodeText, encodeText } from './binary'
+import { webNotesAdapter } from './notes-storage/web'
 
 export const NOTES_ROOT_STORAGE_KEY = 'pms-notes-root'
 export const DEFAULT_NOTES_ROOT_SEGMENTS = ['use_data', 'notes'] as const
@@ -56,19 +57,18 @@ export function saveStoredNotesRoot(path: string | null): void {
   }
 }
 
-export async function resolveDefaultNotesRoot(): Promise<string> {
-  const baseDir = await homeDir()
-  return join(baseDir, ...DEFAULT_NOTES_ROOT_SEGMENTS)
-}
-
-export async function ensureNotesRoot(): Promise<string> {
-  let root = await loadStoredNotesRoot()
-  if (!root) {
-    root = await resolveDefaultNotesRoot()
-  }
-  await mkdir(root, { recursive: true })
-  saveStoredNotesRoot(root)
-  return root
+export interface NotesStorageAdapter {
+  resolveDefaultRoot(): Promise<string>
+  ensureRoot(): Promise<string>
+  loadTree(root: string): Promise<NotesTreeNode[]>
+  readDocument(path: string): Promise<NoteDocument>
+  writeDocument(path: string, content: string, frontMatter: NoteFrontMatter): Promise<void>
+  createNote(root: string, name: string, directory?: string): Promise<string>
+  createFolder(root: string, name: string, parent?: string): Promise<string>
+  deleteEntry(path: string): Promise<void>
+  renameEntry(path: string, nextName: string): Promise<string>
+  appendToInbox(root: string, body: string): Promise<void>
+  registerWatcher(path: string): Promise<void>
 }
 
 function sanitizeFileName(input: string) {
@@ -143,11 +143,6 @@ async function readDirectoryRecursive(directory: string): Promise<NotesTreeNode[
   }
 }
 
-export async function loadNotesTree(root: string): Promise<NotesTreeNode[]> {
-  await mkdir(root, { recursive: true })
-  return readDirectoryRecursive(root)
-}
-
 const FRONT_MATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/
 
 function ensureFrontMatter(data: unknown, fallbackTitle: string): NoteFrontMatter {
@@ -210,7 +205,7 @@ function buildNoteFile(content: string, frontMatter: NoteFrontMatter): string {
   return `---\n${fmSection}---\n\n${body}`
 }
 
-export async function readNoteDocument(path: string): Promise<NoteDocument> {
+async function readNoteDocument(path: string): Promise<NoteDocument> {
   try {
     const bytes = await readFile(path)
     const raw = decodeText(bytes)
@@ -231,7 +226,7 @@ export async function readNoteDocument(path: string): Promise<NoteDocument> {
   }
 }
 
-export async function writeNoteDocument(path: string, content: string, frontMatter: NoteFrontMatter): Promise<void> {
+async function writeNoteDocument(path: string, content: string, frontMatter: NoteFrontMatter): Promise<void> {
   const normalizedFront: NoteFrontMatter = {
     ...frontMatter,
     updatedAt: new Date().toISOString(),
@@ -240,7 +235,7 @@ export async function writeNoteDocument(path: string, content: string, frontMatt
   await writeFile(path, encodeText(output))
 }
 
-export async function createNote(root: string, name: string, directory?: string): Promise<string> {
+async function createNote(root: string, name: string, directory?: string): Promise<string> {
   const sanitized = sanitizeFileName(name)
   const baseDir = directory && directory.trim() ? directory : root
   await mkdir(baseDir, { recursive: true })
@@ -256,7 +251,7 @@ export async function createNote(root: string, name: string, directory?: string)
   return target
 }
 
-export async function createFolder(root: string, name: string, parent?: string): Promise<string> {
+async function createFolder(root: string, name: string, parent?: string): Promise<string> {
   const sanitized = sanitizeFolderName(name)
   const baseDir = parent && parent.trim() ? parent : root
   const target = await join(baseDir, sanitized)
@@ -264,11 +259,11 @@ export async function createFolder(root: string, name: string, parent?: string):
   return target
 }
 
-export async function deleteEntry(path: string): Promise<void> {
+async function deleteEntry(path: string): Promise<void> {
   await remove(path, { recursive: true })
 }
 
-export async function renameEntry(path: string, nextName: string): Promise<string> {
+async function renameEntry(path: string, nextName: string): Promise<string> {
   const parent = await dirname(path)
   const sanitized = path.toLowerCase().endsWith('.md') ? sanitizeFileName(nextName) : sanitizeFolderName(nextName)
   const target = await join(parent, sanitized)
@@ -279,7 +274,7 @@ export async function renameEntry(path: string, nextName: string): Promise<strin
   return target
 }
 
-export async function appendToInbox(root: string, body: string): Promise<void> {
+async function appendToInbox(root: string, body: string): Promise<void> {
   const inboxPath = await join(root, 'Inbox.md')
   await mkdir(root, { recursive: true })
   const existsInbox = await exists(inboxPath)
@@ -306,13 +301,108 @@ export async function appendToInbox(root: string, body: string): Promise<void> {
   })
 }
 
-export async function registerNotesWatcher(path: string): Promise<void> {
+async function registerNotesWatcher(path: string): Promise<void> {
   if (!isTauriRuntime()) return
   try {
     await invoke('set_notes_root', { path })
   } catch (error) {
     console.warn('Failed to register notes watcher', error)
   }
+}
+
+function createTauriNotesAdapter(): NotesStorageAdapter {
+  return {
+    async resolveDefaultRoot() {
+      const baseDir = await homeDir()
+      return join(baseDir, ...DEFAULT_NOTES_ROOT_SEGMENTS)
+    },
+    async ensureRoot() {
+      let root = await loadStoredNotesRoot()
+      if (!root) {
+        root = await this.resolveDefaultRoot()
+      }
+      await mkdir(root, { recursive: true })
+      saveStoredNotesRoot(root)
+      return root
+    },
+    async loadTree(root: string) {
+      await mkdir(root, { recursive: true })
+      return readDirectoryRecursive(root)
+    },
+    readDocument: readNoteDocument,
+    writeDocument: writeNoteDocument,
+    createNote,
+    createFolder,
+    deleteEntry,
+    renameEntry,
+    appendToInbox,
+    registerWatcher: registerNotesWatcher,
+  }
+}
+
+let activeNotesAdapter: NotesStorageAdapter | null = null
+
+export function setNotesStorageAdapter(adapter: NotesStorageAdapter | null) {
+  activeNotesAdapter = adapter
+}
+
+export function getNotesStorageAdapter(): NotesStorageAdapter {
+  if (activeNotesAdapter) {
+    return activeNotesAdapter
+  }
+  const adapter = isTauriRuntime() ? createTauriNotesAdapter() : webNotesAdapter
+  activeNotesAdapter = adapter
+  return adapter
+}
+
+export async function resolveDefaultNotesRoot(): Promise<string> {
+  return getNotesStorageAdapter().resolveDefaultRoot()
+}
+
+export async function ensureNotesRoot(): Promise<string> {
+  const root = await getNotesStorageAdapter().ensureRoot()
+  saveStoredNotesRoot(root)
+  return root
+}
+
+export async function loadNotesTree(root: string): Promise<NotesTreeNode[]> {
+  return getNotesStorageAdapter().loadTree(root)
+}
+
+export async function readNoteDocument(path: string): Promise<NoteDocument> {
+  return getNotesStorageAdapter().readDocument(path)
+}
+
+export async function writeNoteDocument(
+  path: string,
+  content: string,
+  frontMatter: NoteFrontMatter,
+): Promise<void> {
+  return getNotesStorageAdapter().writeDocument(path, content, frontMatter)
+}
+
+export async function createNote(root: string, name: string, directory?: string): Promise<string> {
+  return getNotesStorageAdapter().createNote(root, name, directory)
+}
+
+export async function createFolder(root: string, name: string, parent?: string): Promise<string> {
+  return getNotesStorageAdapter().createFolder(root, name, parent)
+}
+
+export async function deleteEntry(path: string): Promise<void> {
+  return getNotesStorageAdapter().deleteEntry(path)
+}
+
+export async function renameEntry(path: string, nextName: string): Promise<string> {
+  return getNotesStorageAdapter().renameEntry(path, nextName)
+}
+
+export async function appendToInbox(root: string, body: string): Promise<void> {
+  return getNotesStorageAdapter().appendToInbox(root, body)
+}
+
+export async function registerNotesWatcher(path: string): Promise<void> {
+  return getNotesStorageAdapter().registerWatcher(path)
 }
 
 export function describeRelativePath(root: string, target: string): string {
