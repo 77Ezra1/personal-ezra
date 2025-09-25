@@ -555,7 +555,7 @@ interface LegacyDocRecord {
   url?: string
   fileName?: string
   fileType?: string
-  fileData?: ArrayBuffer
+  fileData?: BlobPart
   createdAt: number
   updatedAt?: number
   tags?: string[]

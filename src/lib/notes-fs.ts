@@ -142,8 +142,11 @@ async function readDirectoryRecursive(directory: string): Promise<NotesTreeNode[
     })
     return nodes
   } catch (error) {
-    console.warn('Failed to read notes directory', directory, error)
-    return []
+    console.error('Failed to read notes directory', { directory, error })
+    if (error instanceof Error) {
+      throw error
+    }
+    throw new Error(typeof error === 'string' ? error : '读取笔记目录失败')
   }
 }
 
@@ -181,15 +184,23 @@ function ensureFrontMatter(data: unknown, fallbackTitle: string): NoteFrontMatte
 }
 
 export async function readNoteDocument(path: string): Promise<NoteDocument> {
-  const raw = await readTextFile(path)
-  const parsed = matter(raw)
-  const fileName = await basename(path)
-  const titleBase = fileName.endsWith('.md') ? fileName.slice(0, -3) : fileName
-  const frontMatter = ensureFrontMatter(parsed.data, titleBase)
-  return {
-    path,
-    frontMatter,
-    content: parsed.content.replace(/\s+$/g, ''),
+  try {
+    const raw = await readTextFile(path)
+    const parsed = matter(raw)
+    const fileName = await basename(path)
+    const titleBase = fileName.endsWith('.md') ? fileName.slice(0, -3) : fileName
+    const frontMatter = ensureFrontMatter(parsed.data, titleBase)
+    return {
+      path,
+      frontMatter,
+      content: parsed.content.replace(/\s+$/g, ''),
+    }
+  } catch (error) {
+    console.error('Failed to read note document', { path, error })
+    if (error instanceof Error) {
+      throw error
+    }
+    throw new Error(typeof error === 'string' ? error : '读取笔记失败')
   }
 }
 

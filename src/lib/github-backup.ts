@@ -70,34 +70,33 @@ function normalizePath(value: string): string {
   return normalized
 }
 
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
 function encodeBase64(content: string): string {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(content, 'utf-8').toString('base64')
+  const bytes = new TextEncoder().encode(content)
+  if (bytes.length === 0) return ''
+
+  let result = ''
+  for (let i = 0; i < bytes.length; i += 3) {
+    const byte1 = bytes[i]
+    const hasSecond = i + 1 < bytes.length
+    const byte2 = hasSecond ? bytes[i + 1] : 0
+    const hasThird = i + 2 < bytes.length
+    const byte3 = hasThird ? bytes[i + 2] : 0
+
+    const triplet = (byte1 << 16) | (byte2 << 8) | byte3
+    const enc1 = (triplet >> 18) & 0x3f
+    const enc2 = (triplet >> 12) & 0x3f
+    const enc3 = (triplet >> 6) & 0x3f
+    const enc4 = triplet & 0x3f
+
+    result += BASE64_ALPHABET[enc1]
+    result += BASE64_ALPHABET[enc2]
+    result += hasSecond ? BASE64_ALPHABET[enc3] : '='
+    result += hasThird ? BASE64_ALPHABET[enc4] : '='
   }
-  if (typeof window !== 'undefined' && typeof window.btoa === 'function') {
-    const encoder = new TextEncoder()
-    const bytes = encoder.encode(content)
-    let binary = ''
-    const chunkSize = 0x8000
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      const slice = bytes.subarray(i, i + chunkSize)
-      binary += String.fromCharCode(...slice)
-    }
-    return window.btoa(binary)
-  }
-  // Fallback for environments without Buffer or btoa
-  const encoder = new TextEncoder()
-  const bytes = encoder.encode(content)
-  let binary = ''
-  const chunkSize = 0x8000
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const slice = bytes.subarray(i, i + chunkSize)
-    binary += String.fromCharCode(...slice)
-  }
-  if (typeof btoa === 'function') {
-    return btoa(binary)
-  }
-  throw new GithubBackupError('当前环境不支持 Base64 编码。')
+
+  return result
 }
 
 async function readErrorMessage(response: Response): Promise<string | null> {
