@@ -60,6 +60,11 @@ function persistState(state: StoredState): void {
     window.localStorage.setItem(WEB_NOTES_STORAGE_KEY, JSON.stringify(state))
   } catch (error) {
     console.warn('Failed to persist web notes state', error)
+    const message =
+      error instanceof Error && error.message
+        ? `保存笔记数据失败：${error.message}`
+        : '保存笔记数据失败，请检查浏览器的存储空间或权限设置。'
+    throw new Error(message)
   }
 }
 
