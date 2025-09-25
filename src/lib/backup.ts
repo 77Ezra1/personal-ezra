@@ -504,6 +504,11 @@ function mapDocs(records: DocRecord[]): DocBackupEntry[] {
   })
 }
 
+type ExportUserDataOptions = {
+  masterPassword?: string | null
+  allowSessionKey?: boolean
+}
+
 export async function exportUserData(
   email: string | null | undefined,
   encryptionKey: Uint8Array | null | undefined,

@@ -1157,7 +1157,9 @@ function DataBackupSection() {
         return
       }
 
-      if (!masterPassword) {
+      const allowSessionKey = true
+
+      if (!masterPassword && !allowSessionKey) {
         const message = '自动备份需要主密码，请在上方输入。'
         setAutoBackupLastError(message)
         setAutoBackupStatusMessage(message)
@@ -1211,6 +1213,7 @@ function DataBackupSection() {
           jsonFilters,
           allowDialogFallback: false,
           githubBackup: { enabled: githubBackupEnabledRef.current },
+          allowSessionKey,
         })
 
         if (!result) {
