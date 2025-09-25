@@ -26,6 +26,7 @@ import {
 } from '../lib/notes-fs'
 import { isTauriRuntime } from '../env'
 import { useToast } from '../components/ToastProvider'
+import { toastError } from '../lib/error-toast'
 
 const AUTO_SAVE_DELAY = 600
 
@@ -113,10 +114,9 @@ export default function Notes() {
         }
       } catch (error) {
         console.error('Failed to load notes tree', error)
-        showToast({
+        toastError(showToast, error, 'notes/load-tree', {
           title: '加载失败',
-          description: error instanceof Error ? error.message : '读取笔记目录失败。',
-          variant: 'error',
+          fallback: '读取笔记目录失败。',
         })
       }
     },
@@ -135,10 +135,9 @@ export default function Notes() {
         await refreshTree(root)
       } catch (error) {
         console.error('Failed to initialize notes root', error)
-        showToast({
+        toastError(showToast, error, 'notes/init', {
           title: '初始化失败',
-          description: error instanceof Error ? error.message : '无法准备笔记目录，请检查文件权限。',
-          variant: 'error',
+          fallback: '无法准备笔记目录，请检查文件权限。',
         })
       }
     }
@@ -151,10 +150,17 @@ export default function Notes() {
   useEffect(() => {
     if (!isTauri || !rootPath) return
     let unlisten: (() => void) | null = null
+    let debounceTimer: number | null = null
     const setup = async () => {
       try {
         unlisten = await listen('notes://fs', () => {
-          void refreshTree()
+          if (debounceTimer) {
+            window.clearTimeout(debounceTimer)
+          }
+          debounceTimer = window.setTimeout(() => {
+            debounceTimer = null
+            void refreshTree()
+          }, 300)
         })
       } catch (error) {
         console.warn('Failed to listen notes events', error)
@@ -162,6 +168,10 @@ export default function Notes() {
     }
     void setup()
     return () => {
+      if (debounceTimer) {
+        window.clearTimeout(debounceTimer)
+        debounceTimer = null
+      }
       if (unlisten) {
         unlisten()
       }
@@ -231,10 +241,9 @@ export default function Notes() {
         setWordCount(wordEstimate)
       } catch (error) {
         console.error('Failed to load note', error)
-        showToast({
+        toastError(showToast, error, 'notes/read', {
           title: '读取笔记失败',
-          description: error instanceof Error ? error.message : '无法打开笔记文件。',
-          variant: 'error',
+          fallback: '无法打开笔记文件。',
         })
       }
     },
@@ -269,10 +278,9 @@ export default function Notes() {
         } catch (error) {
           console.error('Failed to save note', error)
           setSaveState('error')
-          showToast({
+          toastError(showToast, error, 'notes/save', {
             title: '保存失败',
-            description: error instanceof Error ? error.message : '写入文件失败，请检查目录权限。',
-            variant: 'error',
+            fallback: '写入文件失败，请检查目录权限。',
           })
         }
       }, AUTO_SAVE_DELAY)
@@ -337,10 +345,9 @@ export default function Notes() {
       })
     } catch (error) {
       console.error('Failed to create note', error)
-      showToast({
+      toastError(showToast, error, 'notes/create-note', {
         title: '创建失败',
-        description: error instanceof Error ? error.message : '无法创建笔记，请检查目录权限。',
-        variant: 'error',
+        fallback: '无法创建笔记，请检查目录权限。',
       })
     }
   }, [refreshTree, resolveTargetDirectory, rootPath, showToast])
@@ -363,10 +370,9 @@ export default function Notes() {
       })
     } catch (error) {
       console.error('Failed to create folder', error)
-      showToast({
+      toastError(showToast, error, 'notes/create-folder', {
         title: '创建失败',
-        description: error instanceof Error ? error.message : '无法创建文件夹，请检查目录权限。',
-        variant: 'error',
+        fallback: '无法创建文件夹，请检查目录权限。',
       })
     }
   }, [refreshTree, resolveTargetDirectory, rootPath, showToast])
@@ -393,10 +399,9 @@ export default function Notes() {
         })
       } catch (error) {
         console.error('Failed to rename entry', error)
-        showToast({
+        toastError(showToast, error, 'notes/rename', {
           title: '重命名失败',
-          description: error instanceof Error ? error.message : '无法重命名该条目。',
-          variant: 'error',
+          fallback: '无法重命名该条目。',
         })
       }
     },
@@ -422,10 +427,9 @@ export default function Notes() {
         })
       } catch (error) {
         console.error('Failed to delete entry', error)
-        showToast({
+        toastError(showToast, error, 'notes/delete', {
           title: '删除失败',
-          description: error instanceof Error ? error.message : '无法删除该条目。',
-          variant: 'error',
+          fallback: '无法删除该条目。',
         })
       }
     },
