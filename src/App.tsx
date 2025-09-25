@@ -9,7 +9,7 @@ import Dashboard from './routes/Dashboard'
 import Passwords from './routes/Passwords'
 import Sites from './routes/Sites'
 import Docs from './routes/Docs'
-import Inspiration from './routes/Inspiration'
+import Notes from './routes/Notes'
 import Settings from './routes/Settings'
 import { useLock } from './features/lock/LockProvider'
 import ConfirmDialog from './components/ConfirmDialog'
@@ -154,7 +154,7 @@ function AuthenticatedLayout() {
               文档管理
             </NavLink>
             <NavLink
-              to="/dashboard/inspiration"
+              to="/dashboard/notes"
               className={({ isActive }) =>
                 `rounded-full px-4 py-2 transition ${
                   isActive
@@ -163,7 +163,7 @@ function AuthenticatedLayout() {
                 }`
               }
             >
-              灵感妙记
+              笔记
             </NavLink>
             <NavLink
               to="/dashboard/settings"
@@ -261,7 +261,7 @@ export default function App() {
           <Route path="passwords" element={<Passwords />} />
           <Route path="sites" element={<Sites />} />
           <Route path="docs" element={<Docs />} />
-          <Route path="inspiration" element={<Inspiration />} />
+          <Route path="notes" element={<Notes />} />
           <Route path="settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

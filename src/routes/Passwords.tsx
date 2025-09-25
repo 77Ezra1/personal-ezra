@@ -9,7 +9,7 @@ import { TagFilter } from '../components/TagFilter'
 import { PasswordHealthBanner } from '../components/PasswordHealthBanner'
 import { VaultItemCard, type VaultItemAction, type VaultItemBadge } from '../components/VaultItemCard'
 import { VaultItemList } from '../components/VaultItemList'
-import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyTextAutoClear } from '../lib/clipboard'
+import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyWithAutoClear } from '../lib/clipboard'
 import { BACKUP_IMPORTED_EVENT } from '../lib/backup'
 import { decryptString, encryptString } from '../lib/crypto'
 import { generateTotp, normalizeTotpSecret } from '../lib/totp'
@@ -562,7 +562,7 @@ export default function Passwords() {
     }
     try {
       const plain = await decryptString(encryptionKey, item.passwordCipher)
-      await copyTextAutoClear(plain, DEFAULT_CLIPBOARD_CLEAR_DELAY)
+      await copyWithAutoClear(plain, DEFAULT_CLIPBOARD_CLEAR_DELAY)
       showToast({
         title: '已复制密码',
         description: `将在 ${CLIPBOARD_CLEAR_DELAY_SECONDS} 秒后自动清空剪贴板。`,
@@ -625,7 +625,7 @@ export default function Passwords() {
 
       const now = Date.now()
       const remainingMs = Math.max(1_000, entry.expiresAt - now)
-      await copyTextAutoClear(entry.code, Math.min(remainingMs, DEFAULT_CLIPBOARD_CLEAR_DELAY))
+      await copyWithAutoClear(entry.code, Math.min(remainingMs, DEFAULT_CLIPBOARD_CLEAR_DELAY))
       const secondsLeft = Math.max(1, Math.round((entry.expiresAt - Date.now()) / 1_000))
       showToast({ title: '已复制一次性验证码', description: `将在 ${secondsLeft} 秒后过期。`, variant: 'success' })
     } catch (error) {
