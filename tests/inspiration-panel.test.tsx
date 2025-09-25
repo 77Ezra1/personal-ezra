@@ -47,6 +47,8 @@ const saveNoteMock = vi.fn<
   }>
 >()
 
+const queueInspirationBackupSyncMock = vi.fn()
+
 vi.mock('../src/lib/inspiration-notes', () => ({
   NOTE_FEATURE_DISABLED_MESSAGE: '仅在桌面端可用',
   createNoteFile: (...args: Parameters<typeof createNoteFileMock>) =>
@@ -57,6 +59,11 @@ vi.mock('../src/lib/inspiration-notes', () => ({
   listNotes: () => listNotesMock(),
   loadNote: (...args: Parameters<typeof loadNoteMock>) => loadNoteMock(...args),
   saveNote: (...args: Parameters<typeof saveNoteMock>) => saveNoteMock(...args),
+}))
+
+vi.mock('../src/lib/inspiration-sync', () => ({
+  queueInspirationBackupSync: (...args: Parameters<typeof queueInspirationBackupSyncMock>) =>
+    queueInspirationBackupSyncMock(...args),
 }))
 
 function renderPanel() {
@@ -85,6 +92,7 @@ beforeEach(() => {
     excerpt: '',
     searchText: '',
   }))
+  queueInspirationBackupSyncMock.mockReset()
 })
 
 afterEach(() => {
@@ -214,5 +222,89 @@ describe('InspirationPanel handleCreateFile', () => {
     expect(loadNoteMock).not.toHaveBeenCalled()
 
     promptSpy.mockRestore()
+  })
+})
+
+describe('InspirationPanel synchronization queue', () => {
+  const noteSummary = {
+    id: 'Projects/Foo.md',
+    title: '项目规划',
+    tags: [],
+    createdAt: 1,
+    updatedAt: 1,
+    excerpt: '',
+    searchText: '',
+  }
+
+  const noteDetail = {
+    id: 'Projects/Foo.md',
+    title: '项目规划',
+    content: 'Initial content',
+    tags: [],
+    createdAt: 1,
+    updatedAt: 1,
+    excerpt: '',
+    searchText: '',
+  }
+
+  it('queues GitHub sync after a successful save', async () => {
+    listNotesMock.mockResolvedValue([noteSummary])
+    loadNoteMock.mockResolvedValue(noteDetail)
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: '项目规划' }))
+    await waitFor(() => {
+      expect(loadNoteMock).toHaveBeenCalledWith('Projects/Foo.md')
+    })
+
+    await user.click(screen.getByRole('button', { name: '保存笔记' }))
+
+    await waitFor(() => {
+      expect(saveNoteMock).toHaveBeenCalled()
+    })
+    await waitFor(() => {
+      expect(queueInspirationBackupSyncMock).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('does not queue sync when saving fails', async () => {
+    listNotesMock.mockResolvedValue([noteSummary])
+    loadNoteMock.mockResolvedValue(noteDetail)
+    saveNoteMock.mockRejectedValueOnce(new Error('网络异常'))
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: '项目规划' }))
+
+    await user.click(screen.getByRole('button', { name: '保存笔记' }))
+
+    expect(await screen.findByText('保存失败')).toBeInTheDocument()
+    expect(await screen.findByText('网络异常')).toBeInTheDocument()
+    expect(queueInspirationBackupSyncMock).not.toHaveBeenCalled()
+  })
+
+  it('queues sync after deleting a note', async () => {
+    listNotesMock.mockResolvedValue([noteSummary])
+    loadNoteMock.mockResolvedValue(noteDetail)
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: '项目规划' }))
+
+    await user.click(await screen.findByRole('button', { name: '删除' }))
+
+    await waitFor(() => {
+      expect(deleteNoteMock).toHaveBeenCalledWith('Projects/Foo.md')
+    })
+    await waitFor(() => {
+      expect(queueInspirationBackupSyncMock).toHaveBeenCalledTimes(1)
+    })
+
+    confirmSpy.mockRestore()
   })
 })

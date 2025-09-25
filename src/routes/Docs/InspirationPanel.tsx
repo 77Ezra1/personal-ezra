@@ -45,6 +45,7 @@ import {
   type NoteDetail,
   type NoteSummary,
 } from '../../lib/inspiration-notes'
+import { queueInspirationBackupSync } from '../../lib/inspiration-sync'
 
 function createEmptyDraft(): NoteDraft {
   return { title: '', content: '', tags: [] }
@@ -1064,6 +1065,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         if (showSuccessToast) {
           showToast({ title: '保存成功', description: '笔记内容已更新。', variant: 'success' })
         }
+        queueInspirationBackupSync(showToast)
         return saved
       } catch (err) {
         console.error('Failed to save inspiration note', err)
@@ -1420,6 +1422,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       setDeleting(true)
       await deleteNote(draft.id)
       showToast({ title: '已删除', description: '笔记已从本地移除。', variant: 'success' })
+      queueInspirationBackupSync(showToast)
       const empty = createEmptyDraft()
       setDraft(empty)
       setLastSavedAt(undefined)

@@ -16,7 +16,7 @@ import {
   rename,
   writeTextFile,
 } from '@tauri-apps/plugin-fs'
-import { openDialog, saveDialog } from '../lib/tauri-dialog'
+import { openDialog } from '../lib/tauri-dialog'
 import { isTauriRuntime } from '../env'
 import {
   useCallback,
@@ -46,10 +46,9 @@ import {
   loadStoredDataPath,
   saveStoredDataPath,
 } from '../lib/storage-path'
-import { BACKUP_IMPORTED_EVENT, exportUserData, importUserData } from '../lib/backup'
-import { decryptString } from '../lib/crypto'
+import { BACKUP_IMPORTED_EVENT, importUserData } from '../lib/backup'
 import { estimatePasswordStrength, PASSWORD_STRENGTH_REQUIREMENT } from '../lib/password-utils'
-import { uploadGithubBackup } from '../lib/github-backup'
+import { runScheduledBackup } from '../lib/auto-backup'
 import { DEFAULT_TIMEOUT, IDLE_TIMEOUT_OPTIONS, useIdleTimeoutStore } from '../features/lock/IdleLock'
 import { selectAuthProfile, useAuthStore } from '../stores/auth'
 import { db, type UserAvatarMeta } from '../stores/database'
@@ -136,196 +135,6 @@ type StoredAutoBackupState = {
   githubLastSuccessAt?: number | null
   githubLastAttemptAt?: number | null
   githubLastError?: string | null
-}
-
-function formatBackupFileTimestamp(date: Date) {
-  const pad = (value: number) => value.toString().padStart(2, '0')
-  const year = date.getFullYear()
-  const month = pad(date.getMonth() + 1)
-  const day = pad(date.getDate())
-  const hour = pad(date.getHours())
-  const minute = pad(date.getMinutes())
-  const second = pad(date.getSeconds())
-  return `${year}${month}${day}-${hour}${minute}${second}`
-}
-
-type RunScheduledBackupOptions = {
-  email: string | null | undefined
-  encryptionKey: Uint8Array | null | undefined
-  masterPassword: string | null | undefined
-  backupPath?: string | null
-  isTauri: boolean
-  jsonFilters: { name: string; extensions: string[] }[]
-  allowDialogFallback?: boolean
-  githubBackup?: { enabled: boolean }
-  allowSessionKey?: boolean
-}
-
-type RunScheduledBackupResult = {
-  exportedAt: number
-  fileName: string
-  destinationPath?: string
-  github?: GithubBackupExecutionResult | null
-}
-
-type GithubBackupExecutionResult = {
-  uploadedAt: number
-  path: string
-  commitSha: string | null
-  htmlUrl?: string | null
-}
-
-async function runScheduledBackup({
-  email,
-  encryptionKey,
-  masterPassword,
-  backupPath,
-  isTauri,
-  jsonFilters,
-  allowDialogFallback = false,
-  githubBackup,
-  allowSessionKey = false,
-}: RunScheduledBackupOptions): Promise<RunScheduledBackupResult | null> {
-  if (!email || !encryptionKey) {
-    throw new Error('请先登录并解锁账号后再试。')
-  }
-  if (!(encryptionKey instanceof Uint8Array)) {
-    throw new Error('请先解锁账号后再试。')
-  }
-
-  const passwordInput = typeof masterPassword === 'string' ? masterPassword : ''
-  if (!passwordInput && !allowSessionKey) {
-    throw new Error('自动备份需要主密码，请先在上方输入后再试。')
-  }
-
-  const key = encryptionKey
-  const blob = await exportUserData(email, key, {
-    masterPassword: passwordInput || null,
-    allowSessionKey,
-  })
-  const fileContent = await blob.text()
-  const timestamp = formatBackupFileTimestamp(new Date())
-  const fileName = `pms-backup-${timestamp}.json`
-  const exportedAt = Date.now()
-
-  let destinationPath: string | undefined
-
-  if (isTauri) {
-    let targetPath: string | null = null
-
-    if (backupPath) {
-      try {
-        await mkdir(backupPath, { recursive: true })
-        targetPath = await join(backupPath, fileName)
-      } catch (error) {
-        console.error('Failed to prepare scheduled backup directory', error)
-        throw error instanceof Error
-          ? new Error(`写入备份文件失败：${error.message}`)
-          : error
-      }
-    } else if (allowDialogFallback) {
-      targetPath = await saveDialog({ defaultPath: fileName, filters: jsonFilters })
-    } else {
-      throw new Error('未配置自动备份目录，请先设置备份路径。')
-    }
-
-    if (!targetPath) {
-      return null
-    }
-
-    try {
-      await writeTextFile(targetPath, fileContent)
-    } catch (error) {
-      console.error('Failed to write scheduled backup file', error)
-      throw error instanceof Error
-        ? new Error(`写入备份文件失败：${error.message}`)
-        : error
-    }
-
-    destinationPath = targetPath
-  } else {
-    try {
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = fileName
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      console.error('Failed to trigger scheduled backup download', error)
-      throw error instanceof Error ? error : new Error('下载备份文件失败，请稍后再试。')
-    }
-  }
-
-  let githubResult: GithubBackupExecutionResult | null = null
-
-  if (githubBackup?.enabled) {
-    try {
-      const record = await db.users.get(email)
-      if (!record || !record.github) {
-        throw new Error('请先连接 GitHub 账号并保存仓库设置。')
-      }
-
-      const owner = (record.github.repositoryOwner ?? '').trim()
-      const repo = (record.github.repositoryName ?? '').trim()
-      const branch = (record.github.repositoryBranch ?? 'main').trim()
-      const targetDirectory = (record.github.targetDirectory ?? '').trim()
-
-      if (!owner || !repo || !targetDirectory) {
-        throw new Error('GitHub 仓库配置不完整，请先在仓库设置中填写并保存。')
-      }
-
-      let token: string
-      try {
-        token = await decryptString(key, record.github.tokenCipher)
-      } catch (error) {
-        console.error('Failed to decrypt GitHub token before backup', error)
-        throw new Error('解密 GitHub 访问令牌失败，请尝试重新连接 GitHub。')
-      }
-
-      const normalizedPath = targetDirectory
-        .replace(/^[\\/]+/, '')
-        .replace(/\\+/g, '/')
-        .trim()
-      if (!normalizedPath) {
-        throw new Error('GitHub 备份路径无效，请重新保存仓库设置。')
-      }
-
-      const commitMessage = `Personal backup at ${new Date(exportedAt).toISOString()}`
-      const uploadResult = await uploadGithubBackup(
-        {
-          token,
-          owner,
-          repo,
-          branch,
-          path: normalizedPath,
-          content: fileContent,
-        },
-        { commitMessage, maxRetries: 1 },
-      )
-
-      githubResult = {
-        uploadedAt: Date.now(),
-        path: uploadResult.contentPath || normalizedPath,
-        commitSha: uploadResult.commitSha ?? null,
-        htmlUrl: uploadResult.htmlUrl ?? undefined,
-      }
-    } catch (error) {
-      console.error('Failed to upload GitHub backup', error)
-      if (error instanceof Error) {
-        const message = error.message || 'GitHub 备份失败，请稍后再试。'
-        if (message.startsWith('GitHub')) {
-          throw new Error(message)
-        }
-        throw new Error(`GitHub 备份失败：${message}`)
-      }
-      throw new Error('GitHub 备份失败，请稍后再试。')
-    }
-  }
-
-  return { exportedAt, fileName, destinationPath, github: githubResult }
 }
 
 function useAutoDismissFormMessage(
@@ -1394,9 +1203,11 @@ function DataBackupSection() {
           setGithubBackupLastAttempt(Date.now())
         }
         const result = await runScheduledBackup({
-          email,
-          encryptionKey,
-          masterPassword,
+          auth: {
+            email,
+            encryptionKey,
+            masterPassword,
+          },
           backupPath,
           isTauri,
           jsonFilters,
@@ -1930,9 +1741,11 @@ function DataBackupSection() {
     try {
       setExporting(true)
       const result = await runScheduledBackup({
-        email,
-        encryptionKey,
-        masterPassword,
+        auth: {
+          email,
+          encryptionKey,
+          masterPassword,
+        },
         backupPath,
         isTauri,
         jsonFilters,
