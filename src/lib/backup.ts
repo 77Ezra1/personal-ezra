@@ -508,17 +508,19 @@ export async function exportUserData(
   email: string | null | undefined,
   encryptionKey: Uint8Array | null | undefined,
   masterPassword: string | null | undefined,
+  options: { useSessionKey?: boolean } = {},
 ) {
   const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : ''
   if (!normalizedEmail) {
     throw new Error('请先登录后再导出备份。')
   }
-  if (!encryptionKey || encryptionKey.length === 0) {
+  if (!(encryptionKey instanceof Uint8Array) || encryptionKey.length === 0) {
     throw new Error('缺少有效的加密密钥，无法导出数据。')
   }
 
+  const useSessionKey = options.useSessionKey === true
   const passwordInput = typeof masterPassword === 'string' ? masterPassword : ''
-  if (!passwordInput) {
+  if (!useSessionKey && !passwordInput) {
     throw new Error('导出备份前请输入主密码。')
   }
 
@@ -531,16 +533,20 @@ export async function exportUserData(
   }
 
   let derivedKey: Uint8Array
-  try {
-    const saltBytes = fromBase64(userRecord.salt)
-    derivedKey = await deriveKey(passwordInput, saltBytes)
-  } catch (error) {
-    console.error('Failed to derive key for backup export', error)
-    throw new Error('计算备份密钥失败，请稍后重试。')
-  }
+  if (useSessionKey) {
+    derivedKey = encryptionKey
+  } else {
+    try {
+      const saltBytes = fromBase64(userRecord.salt)
+      derivedKey = await deriveKey(passwordInput, saltBytes)
+    } catch (error) {
+      console.error('Failed to derive key for backup export', error)
+      throw new Error('计算备份密钥失败，请稍后重试。')
+    }
 
-  if (toBase64(derivedKey) !== userRecord.keyHash) {
-    throw new Error('主密码错误，请确认后再试。')
+    if (toBase64(derivedKey) !== userRecord.keyHash) {
+      throw new Error('主密码错误，请确认后再试。')
+    }
   }
 
   const [passwordRows, siteRows, docRows, noteEntries] = await Promise.all([
