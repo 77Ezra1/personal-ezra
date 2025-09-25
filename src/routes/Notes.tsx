@@ -134,6 +134,7 @@ export default function Notes() {
   const { showToast } = useToast()
   const rootPromiseRef = useRef<Promise<string> | null>(null)
   const persistCancelRef = useRef<(() => void) | null>(null)
+  const idleResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const ensureRootReady = useCallback(async () => {
     if (rootPath) {
@@ -340,8 +341,12 @@ export default function Notes() {
         try {
           await writeNoteDocument(path, nextContent, frontMatter)
           setSaveState('saved')
-          setTimeout(() => {
+          if (idleResetTimeoutRef.current) {
+            clearTimeout(idleResetTimeoutRef.current)
+          }
+          idleResetTimeoutRef.current = setTimeout(() => {
             setSaveState('idle')
+            idleResetTimeoutRef.current = null
           }, 1500)
           await refreshTree()
         } catch (error) {
@@ -362,6 +367,10 @@ export default function Notes() {
     const cancel = persistCancelRef.current
     return () => {
       cancel?.()
+      if (idleResetTimeoutRef.current) {
+        clearTimeout(idleResetTimeoutRef.current)
+        idleResetTimeoutRef.current = null
+      }
     }
   }, [persist])
 
