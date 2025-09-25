@@ -3,7 +3,6 @@ declare module '@tauri-apps/plugin-dialog' {
     DialogFilter,
     OpenDialogOptions,
     SaveDialogOptions,
-  } from '@tauri-apps/api/dialog'
-
-  export { open, save } from '@tauri-apps/api/dialog'
+  } from '@tauri-apps/api/dialog';
+  export { open, save } from '@tauri-apps/api/dialog';
 }
