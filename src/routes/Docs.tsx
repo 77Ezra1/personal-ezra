@@ -9,6 +9,7 @@ import {
 import { db as docsDb, type DocRecord } from '../stores/database'
 import { useAuthStore } from '../stores/auth'
 import { BACKUP_IMPORTED_EVENT } from '../lib/backup'
+import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyWithAutoClear } from '../lib/clipboard'
 
 import { useToast } from '../components/ToastProvider'
 
@@ -24,25 +25,6 @@ import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 import { Copy, ExternalLink, FileText, Pencil } from 'lucide-react'
 import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
 import { MAX_LINK_DISPLAY_LENGTH, truncateLink } from '../lib/strings'
-
-/* ---------------------- 本文件内的小工具，减少外部依赖 --------------------- */
-
-const DEFAULT_CLIPBOARD_CLEAR_DELAY = 15_000 // 15s
-
-async function copyTextAutoClear(text: string, delay = DEFAULT_CLIPBOARD_CLEAR_DELAY) {
-  await navigator.clipboard.writeText(text)
-  // 尽力在一段时间后清空（不保证一定能清）
-  window.setTimeout(async () => {
-    try {
-      const current = await navigator.clipboard.readText()
-      if (current === text) {
-        await navigator.clipboard.writeText('')
-      }
-    } catch {
-      /* ignore */
-    }
-  }, delay)
-}
 
 /* --------------------------------- 类型 --------------------------------- */
 
@@ -290,7 +272,7 @@ export default function Docs() {
 
   async function handleCopyLink(url: string) {
     try {
-      await copyTextAutoClear(url, DEFAULT_CLIPBOARD_CLEAR_DELAY)
+      await copyWithAutoClear(url, DEFAULT_CLIPBOARD_CLEAR_DELAY)
       showToast({ title: '链接已复制', variant: 'success' })
     } catch (error) {
       console.error('Failed to copy document link', error)
