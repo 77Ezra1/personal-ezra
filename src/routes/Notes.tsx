@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { dirname } from '@tauri-apps/api/path'
 import { listen } from '@tauri-apps/api/event'
 import { FilePlus2, FolderPlus, RefreshCw } from 'lucide-react'
 
 import NotesTree from '../components/notes/Tree'
-import NotesEditor from '../components/notes/Editor'
 import NotesSearch from '../components/notes/Search'
 import QuickCapture from '../components/notes/QuickCapture'
 import {
@@ -27,10 +26,24 @@ import {
 import { isTauriRuntime } from '../env'
 import { useToast } from '../components/ToastProvider'
 import { toastError } from '../lib/error-toast'
+import { MdEditor } from '../components/MdEditor'
 
-const AUTO_SAVE_DELAY = 600
+const AUTO_SAVE_DELAY = 800
 
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
+
+function debounce<T extends (...args: any[]) => void | Promise<void>>(fn: T, wait = AUTO_SAVE_DELAY) {
+  let handle: ReturnType<typeof setTimeout> | null = null
+  return (...args: Parameters<T>) => {
+    if (handle) {
+      clearTimeout(handle)
+    }
+    handle = setTimeout(() => {
+      handle = null
+      void fn(...args)
+    }, wait)
+  }
+}
 
 function filterTree(nodes: NotesTreeNode[], keyword: string): NotesTreeNode[] {
   const term = keyword.trim().toLowerCase()
@@ -86,13 +99,14 @@ export default function Notes() {
   const [rootPath, setRootPath] = useState('')
   const [tree, setTree] = useState<NotesTreeNode[]>([])
   const [search, setSearch] = useState('')
-  const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const [activePath, setActivePath] = useState('')
   const [currentNote, setCurrentNote] = useState<NoteDocument | null>(null)
   const [saveState, setSaveState] = useState<SaveState>('idle')
-  const [wordCount, setWordCount] = useState(0)
+  const [content, setContent] = useState('')
+  const [chars, setChars] = useState(0)
+  const [words, setWords] = useState(0)
+  const [titleInput, setTitleInput] = useState('')
   const [quickCaptureOpen, setQuickCaptureOpen] = useState(false)
-  const pendingSaveRef = useRef<{ content: string; frontMatter: NoteFrontMatter } | null>(null)
-  const saveTimerRef = useRef<number | null>(null)
   const isTauri = isTauriRuntime()
   const { showToast } = useToast()
 
@@ -103,12 +117,15 @@ export default function Notes() {
       try {
         const nodes = await loadNotesTree(root)
         setTree(nodes)
-        if (selectedPath) {
+        if (activePath) {
           const available = new Set<string>()
           flattenPaths(nodes, available)
-          if (!available.has(selectedPath)) {
-            setSelectedPath(null)
+          if (!available.has(activePath)) {
+            setActivePath('')
             setCurrentNote(null)
+            setContent('')
+            setChars(0)
+            setWords(0)
             setSaveState('idle')
           }
         }
@@ -120,7 +137,7 @@ export default function Notes() {
         })
       }
     },
-    [rootPath, selectedPath, showToast],
+    [rootPath, activePath, showToast],
   )
 
   useEffect(() => {
@@ -205,40 +222,35 @@ export default function Notes() {
     return () => window.removeEventListener('storage', listener)
   }, [refreshTree, rootPath])
 
-  useEffect(() => {
-    return () => {
-      if (saveTimerRef.current) {
-        window.clearTimeout(saveTimerRef.current)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    if (saveTimerRef.current) {
-      window.clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = null
-    }
-    pendingSaveRef.current = null
-    setSaveState('idle')
-  }, [currentNote?.path])
-
   const filteredTree = useMemo(() => filterTree(tree, search), [tree, search])
+
+  useEffect(() => {
+    if (currentNote) {
+      setTitleInput(currentNote.frontMatter.title)
+    } else {
+      setTitleInput('')
+    }
+  }, [currentNote?.path])
 
   const handleSelect = useCallback(
     async (path: string) => {
-      setSelectedPath(path)
+      setActivePath(path)
       const node = findNodeByPath(tree, path)
       if (!node || node.kind === 'directory') {
         setCurrentNote(null)
-        setWordCount(0)
+        setContent('')
+        setChars(0)
+        setWords(0)
+        setSaveState('idle')
         return
       }
       try {
         const doc = await readNoteDocument(path)
         setCurrentNote(doc)
+        setContent(doc.content)
+        setChars(0)
+        setWords(0)
         setSaveState('idle')
-        const wordEstimate = doc.content.trim() ? doc.content.trim().split(/\s+/).length : 0
-        setWordCount(wordEstimate)
       } catch (error) {
         console.error('Failed to load note', error)
         toastError(showToast, error, 'notes/read', {
@@ -250,28 +262,15 @@ export default function Notes() {
     [showToast, tree],
   )
 
-  const scheduleSave = useCallback(
-    (next: { content?: string; frontMatter?: NoteFrontMatter }) => {
-      if (!currentNote) return
-      const payload: { content: string; frontMatter: NoteFrontMatter } = {
-        content: next.content ?? currentNote.content,
-        frontMatter: next.frontMatter ?? currentNote.frontMatter,
-      }
-      pendingSaveRef.current = payload
-      setSaveState('pending')
-      if (saveTimerRef.current) {
-        window.clearTimeout(saveTimerRef.current)
-      }
-      saveTimerRef.current = window.setTimeout(async () => {
-        if (!pendingSaveRef.current) return
-        const toSave = pendingSaveRef.current
-        pendingSaveRef.current = null
+  const persist = useMemo(
+    () =>
+      debounce(async ({ path, content: nextContent, frontMatter }: { path: string; content: string; frontMatter: NoteFrontMatter }) => {
+        if (!path) return
         setSaveState('saving')
         try {
-          await writeNoteDocument(currentNote.path, toSave.content, toSave.frontMatter)
-          setCurrentNote(prev => (prev ? { ...prev, ...toSave } : prev))
+          await writeNoteDocument(path, nextContent, frontMatter)
           setSaveState('saved')
-          window.setTimeout(() => {
+          setTimeout(() => {
             setSaveState('idle')
           }, 1500)
           await refreshTree()
@@ -283,46 +282,54 @@ export default function Notes() {
             fallback: '写入文件失败，请检查目录权限。',
           })
         }
-      }, AUTO_SAVE_DELAY)
+      }),
+    [refreshTree, showToast],
+  )
+
+  const queueSave = useCallback(
+    (payload: { path: string; content: string; frontMatter: NoteFrontMatter }) => {
+      setSaveState('pending')
+      persist(payload)
     },
-    [currentNote, refreshTree, showToast],
+    [persist],
   )
 
   const handleContentChange = useCallback(
     (markdown: string) => {
       if (!currentNote) return
+      setContent(markdown)
       setCurrentNote(prev => (prev ? { ...prev, content: markdown } : prev))
-      scheduleSave({ content: markdown })
+      queueSave({ path: currentNote.path, content: markdown, frontMatter: currentNote.frontMatter })
     },
-    [currentNote, scheduleSave],
+    [currentNote, queueSave],
   )
 
   const handleFrontMatterChange = useCallback(
     (frontMatter: NoteFrontMatter) => {
       if (!currentNote) return
       setCurrentNote(prev => (prev ? { ...prev, frontMatter } : prev))
-      scheduleSave({ frontMatter })
+      queueSave({ path: currentNote.path, content, frontMatter })
     },
-    [currentNote, scheduleSave],
+    [content, currentNote, queueSave],
   )
 
   const resolveTargetDirectory = useCallback(
     async () => {
-      if (!selectedPath) return rootPath
-      const node = findNodeByPath(tree, selectedPath)
+      if (!activePath) return rootPath
+      const node = findNodeByPath(tree, activePath)
       if (node?.kind === 'directory') {
         return node.path
       }
-      if (selectedPath) {
+      if (activePath) {
         try {
-          return await dirname(selectedPath)
+          return await dirname(activePath)
         } catch (error) {
           console.warn('Failed to resolve parent directory', error)
         }
       }
       return rootPath
     },
-    [rootPath, selectedPath, tree],
+    [rootPath, activePath, tree],
   )
 
   const handleCreateNote = useCallback(async () => {
@@ -335,8 +342,11 @@ export default function Notes() {
       await refreshTree(rootPath)
       await registerNotesWatcher(rootPath)
       const doc = await readNoteDocument(path)
-      setSelectedPath(path)
+      setActivePath(path)
       setCurrentNote(doc)
+      setContent(doc.content)
+      setChars(0)
+      setWords(0)
       setSaveState('idle')
       showToast({
         title: '笔记已创建',
@@ -361,8 +371,12 @@ export default function Notes() {
       const path = await createFolder(rootPath, name, directory)
       await refreshTree(rootPath)
       await registerNotesWatcher(rootPath)
-      setSelectedPath(path)
+      setActivePath(path)
       setCurrentNote(null)
+      setContent('')
+      setChars(0)
+      setWords(0)
+      setSaveState('idle')
       showToast({
         title: '文件夹已创建',
         description: describeRelativePath(rootPath, path),
@@ -385,11 +399,12 @@ export default function Notes() {
       try {
         const nextPath = await renameEntry(path, nextName)
         await refreshTree(rootPath)
-        if (selectedPath === path) {
-          setSelectedPath(nextPath)
+        if (activePath === path) {
+          setActivePath(nextPath)
           if (currentNote) {
             const doc = await readNoteDocument(nextPath)
             setCurrentNote(doc)
+            setContent(doc.content)
           }
         }
         showToast({
@@ -405,7 +420,7 @@ export default function Notes() {
         })
       }
     },
-    [currentNote, refreshTree, rootPath, selectedPath, showToast],
+    [activePath, currentNote, refreshTree, rootPath, showToast],
   )
 
   const handleDelete = useCallback(
@@ -415,10 +430,13 @@ export default function Notes() {
       try {
         await deleteEntry(path)
         await refreshTree(rootPath)
-        if (selectedPath === path) {
-          setSelectedPath(null)
+        if (activePath === path) {
+          setActivePath('')
           setCurrentNote(null)
-          setWordCount(0)
+          setContent('')
+          setChars(0)
+          setWords(0)
+          setSaveState('idle')
         }
         showToast({
           title: '删除成功',
@@ -433,7 +451,7 @@ export default function Notes() {
         })
       }
     },
-    [refreshTree, rootPath, selectedPath, showToast],
+    [activePath, refreshTree, rootPath, showToast],
   )
 
   const handleQuickCapture = useCallback(
@@ -479,7 +497,7 @@ export default function Notes() {
   }
 
   return (
-    <div className="flex min-h-[620px] flex-col gap-4">
+    <div className="no-drag flex min-h-[620px] flex-col gap-4">
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-text">笔记</h1>
@@ -520,7 +538,7 @@ export default function Notes() {
           <div className="flex-1 overflow-y-auto p-4">
             <NotesTree
               nodes={filteredTree}
-              selectedPath={selectedPath}
+              selectedPath={activePath || null}
               onSelect={handleSelect}
               onRename={handleRename}
               onDelete={handleDelete}
@@ -528,12 +546,39 @@ export default function Notes() {
           </div>
         </aside>
         <section className="flex min-h-[400px] flex-1 flex-col rounded-2xl border border-border/60 bg-surface/70 p-4">
-          <NotesEditor
-            note={currentNote}
-            onContentChange={handleContentChange}
-            onFrontMatterChange={handleFrontMatterChange}
-            onWordCountChange={setWordCount}
-          />
+          {currentNote ? (
+            <>
+              <input
+                type="text"
+                value={titleInput}
+                onChange={event => {
+                  const value = event.target.value
+                  setTitleInput(value)
+                  handleFrontMatterChange({
+                    ...currentNote.frontMatter,
+                    title: value.trim() || currentNote.frontMatter.title,
+                  })
+                }}
+                placeholder="请输入标题"
+                className="mb-4 w-full rounded-xl border border-transparent bg-transparent text-2xl font-semibold text-text outline-none transition focus:border-primary/40 focus:bg-surface/60"
+              />
+              <div className="flex-1 overflow-hidden rounded-xl border border-border/60 bg-surface/70">
+                <MdEditor
+                  value={content}
+                  onChange={handleContentChange}
+                  onPlainTextStats={stats => {
+                    setChars(stats.chars)
+                    setWords(stats.words)
+                  }}
+                  className="h-full overflow-y-auto px-6 py-4"
+                />
+              </div>
+            </>
+          ) : (
+            <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border/70 bg-surface/60 text-sm text-muted">
+              请选择左侧的笔记以开始编辑。
+            </div>
+          )}
         </section>
       </div>
       <footer className="flex flex-col gap-2 rounded-2xl border border-border/60 bg-surface/70 px-4 py-3 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
@@ -541,7 +586,7 @@ export default function Notes() {
           <span className={`h-2.5 w-2.5 rounded-full ${statusMeta.tone}`} aria-hidden />
           状态：{statusMeta.label}
         </span>
-        <span>字数：{wordCount}</span>
+        <span>统计：{words} 词 / {chars} 字符</span>
         <span>当前路径：{currentNote ? describeRelativePath(rootPath, currentNote.path) || currentNote.path : '未选择'}</span>
       </footer>
       <QuickCapture

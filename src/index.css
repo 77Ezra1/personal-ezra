@@ -4,6 +4,21 @@
 
 html, body, #root { height: 100%; }
 body { @apply font-sans bg-background text-text; }
+
+.no-drag,
+button,
+a,
+input,
+textarea,
+select,
+[role="button"] {
+  -webkit-app-region: no-drag;
+}
+
+.header-drag {
+  -webkit-app-region: drag;
+  user-select: none;
+}
 table { border-collapse: collapse; }
 th, td { border-color: #eee; }
 a { color: rgb(var(--color-primary)); }
