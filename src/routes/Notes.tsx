@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { FilePlus2, FolderPlus, RefreshCw } from 'lucide-react'
 
@@ -121,12 +121,42 @@ export default function Notes() {
   const [words, setWords] = useState(0)
   const [titleInput, setTitleInput] = useState('')
   const [quickCaptureOpen, setQuickCaptureOpen] = useState(false)
+  const [initializing, setInitializing] = useState(true)
   const isTauri = isTauriRuntime()
   const { showToast } = useToast()
+  const rootPromiseRef = useRef<Promise<string> | null>(null)
+
+  const ensureRootReady = useCallback(async () => {
+    if (rootPath) {
+      return rootPath
+    }
+    if (rootPromiseRef.current) {
+      return rootPromiseRef.current
+    }
+    const pending = ensureNotesRoot()
+      .then(result => {
+        rootPromiseRef.current = Promise.resolve(result)
+        setRootPath(prev => (prev === result ? prev : result))
+        return result
+      })
+      .catch(error => {
+        rootPromiseRef.current = null
+        throw error
+      })
+    rootPromiseRef.current = pending
+    return pending
+  }, [rootPath])
 
   const refreshTree = useCallback(
     async (targetRoot?: string) => {
-      const root = targetRoot ?? rootPath
+      let root = targetRoot ?? rootPath
+      if (!root) {
+        try {
+          root = await ensureRootReady()
+        } catch {
+          return
+        }
+      }
       if (!root) return
       try {
         const nodes = await loadNotesTree(root)
@@ -151,14 +181,14 @@ export default function Notes() {
         })
       }
     },
-    [rootPath, activePath, showToast],
+    [rootPath, activePath, ensureRootReady, showToast],
   )
 
   useEffect(() => {
     let mounted = true
     const initialize = async () => {
       try {
-        const root = await ensureNotesRoot()
+        const root = await ensureRootReady()
         if (!mounted) return
         setRootPath(root)
         await registerNotesWatcher(root)
@@ -169,13 +199,17 @@ export default function Notes() {
           title: '初始化失败',
           fallback: '无法准备笔记目录，请检查存储位置。',
         })
+      } finally {
+        if (mounted) {
+          setInitializing(false)
+        }
       }
     }
     void initialize()
     return () => {
       mounted = false
     }
-  }, [refreshTree, showToast])
+  }, [ensureRootReady, refreshTree, showToast])
 
   useEffect(() => {
     if (!isTauri || !rootPath) return
@@ -225,6 +259,7 @@ export default function Notes() {
       if (event.key === NOTES_ROOT_STORAGE_KEY) {
         const next = event.newValue?.trim()
         if (next && next !== rootPath) {
+          rootPromiseRef.current = Promise.resolve(next)
           setRootPath(next)
           void registerNotesWatcher(next)
           void refreshTree(next)
@@ -328,26 +363,27 @@ export default function Notes() {
 
   const resolveTargetDirectory = useCallback(
     async () => {
-      if (!activePath) return rootPath
+      const root = await ensureRootReady()
+      if (!activePath) return root
       const node = findNodeByPath(tree, activePath)
       if (node?.kind === 'directory') {
         return node.path
       }
-      const parent = findParentPath(tree, activePath, rootPath)
-      return parent ?? rootPath
+      const parent = findParentPath(tree, activePath, root)
+      return parent ?? root
     },
-    [rootPath, activePath, tree],
+    [activePath, ensureRootReady, tree],
   )
 
   const handleCreateNote = useCallback(async () => {
-    if (!rootPath) return
+    const root = await ensureRootReady()
     const name = window.prompt('请输入新笔记的文件名', '新建笔记.md')
     if (!name) return
     try {
       const directory = await resolveTargetDirectory()
-      const path = await createNote(rootPath, name, directory)
-      await refreshTree(rootPath)
-      await registerNotesWatcher(rootPath)
+      const path = await createNote(root, name, directory)
+      await refreshTree(root)
+      await registerNotesWatcher(root)
       const doc = await readNoteDocument(path)
       setActivePath(path)
       setCurrentNote(doc)
@@ -357,7 +393,7 @@ export default function Notes() {
       setSaveState('idle')
       showToast({
         title: '笔记已创建',
-        description: describeRelativePath(rootPath, path),
+        description: describeRelativePath(root, path),
         variant: 'success',
       })
     } catch (error) {
@@ -367,17 +403,17 @@ export default function Notes() {
         fallback: '无法创建笔记，请检查目录权限或浏览器存储空间。',
       })
     }
-  }, [refreshTree, resolveTargetDirectory, rootPath, showToast])
+  }, [ensureRootReady, refreshTree, resolveTargetDirectory, showToast])
 
   const handleCreateFolder = useCallback(async () => {
-    if (!rootPath) return
+    const root = await ensureRootReady()
     const name = window.prompt('请输入新文件夹名称', '新建文件夹')
     if (!name) return
     try {
       const directory = await resolveTargetDirectory()
-      const path = await createFolder(rootPath, name, directory)
-      await refreshTree(rootPath)
-      await registerNotesWatcher(rootPath)
+      const path = await createFolder(root, name, directory)
+      await refreshTree(root)
+      await registerNotesWatcher(root)
       setActivePath(path)
       setCurrentNote(null)
       setContent('')
@@ -386,7 +422,7 @@ export default function Notes() {
       setSaveState('idle')
       showToast({
         title: '文件夹已创建',
-        description: describeRelativePath(rootPath, path),
+        description: describeRelativePath(root, path),
         variant: 'success',
       })
     } catch (error) {
@@ -396,7 +432,7 @@ export default function Notes() {
         fallback: '无法创建文件夹，请检查目录权限或浏览器存储空间。',
       })
     }
-  }, [refreshTree, resolveTargetDirectory, rootPath, showToast])
+  }, [ensureRootReady, refreshTree, resolveTargetDirectory, showToast])
 
   const handleRename = useCallback(
     async (path: string) => {
@@ -405,7 +441,8 @@ export default function Notes() {
       if (!nextName) return
       try {
         const nextPath = await renameEntry(path, nextName)
-        await refreshTree(rootPath)
+        const root = await ensureRootReady()
+        await refreshTree(root)
         if (activePath === path) {
           setActivePath(nextPath)
           if (currentNote) {
@@ -416,7 +453,7 @@ export default function Notes() {
         }
         showToast({
           title: '重命名成功',
-          description: describeRelativePath(rootPath, nextPath),
+          description: describeRelativePath(root, nextPath),
           variant: 'success',
         })
       } catch (error) {
@@ -427,7 +464,7 @@ export default function Notes() {
         })
       }
     },
-    [activePath, currentNote, refreshTree, rootPath, showToast],
+    [activePath, currentNote, ensureRootReady, refreshTree, showToast],
   )
 
   const handleDelete = useCallback(
@@ -436,7 +473,8 @@ export default function Notes() {
       if (!confirmed) return
       try {
         await deleteEntry(path)
-        await refreshTree(rootPath)
+        const root = await ensureRootReady()
+        await refreshTree(root)
         if (activePath === path) {
           setActivePath('')
           setCurrentNote(null)
@@ -447,7 +485,7 @@ export default function Notes() {
         }
         showToast({
           title: '删除成功',
-          description: describeRelativePath(rootPath, path),
+          description: describeRelativePath(root, path),
           variant: 'success',
         })
       } catch (error) {
@@ -458,23 +496,21 @@ export default function Notes() {
         })
       }
     },
-    [activePath, refreshTree, rootPath, showToast],
+    [activePath, ensureRootReady, refreshTree, showToast],
   )
 
   const handleQuickCapture = useCallback(
     async (value: string) => {
-      if (!rootPath) {
-        throw new Error('尚未配置笔记根目录')
-      }
-      await appendToInbox(rootPath, value)
-      await refreshTree(rootPath)
+      const root = await ensureRootReady()
+      await appendToInbox(root, value)
+      await refreshTree(root)
       showToast({
         title: '已写入 Inbox',
         description: '内容已追加至 Inbox.md',
         variant: 'success',
       })
     },
-    [refreshTree, rootPath, showToast],
+    [ensureRootReady, refreshTree, showToast],
   )
 
   const statusMeta = useMemo(() => {
@@ -515,7 +551,8 @@ export default function Notes() {
           <button
             type="button"
             onClick={() => void refreshTree(rootPath)}
-            className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium text-text transition hover:border-border hover:bg-surface-hover"
+            className={`inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium text-text transition hover:border-border hover:bg-surface-hover${initializing ? ' cursor-not-allowed opacity-60 hover:bg-transparent' : ''}`}
+            disabled={initializing}
           >
             <RefreshCw className="h-4 w-4" />
             刷新
@@ -523,7 +560,8 @@ export default function Notes() {
           <button
             type="button"
             onClick={handleCreateFolder}
-            className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium text-text transition hover:border-border hover:bg-surface-hover"
+            className={`inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium text-text transition hover:border-border hover:bg-surface-hover${initializing ? ' cursor-not-allowed opacity-60 hover:bg-transparent' : ''}`}
+            disabled={initializing}
           >
             <FolderPlus className="h-4 w-4" />
             新建文件夹
@@ -531,7 +569,8 @@ export default function Notes() {
           <button
             type="button"
             onClick={handleCreateNote}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-background transition hover:bg-primary/90"
+            className={`inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-background transition hover:bg-primary/90${initializing ? ' cursor-not-allowed opacity-60 hover:bg-primary' : ''}`}
+            disabled={initializing}
           >
             <FilePlus2 className="h-4 w-4" />
             新建笔记
