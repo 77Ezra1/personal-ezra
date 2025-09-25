@@ -23,6 +23,8 @@ if (!rootElement) {
   throw new Error('Failed to find the root element')
 }
 
+rootElement.classList.add('no-drag')
+
 // 应用首次主题
 initializeTheme()
 // 跟随系统（仅当当前模式为 system）
