@@ -57,6 +57,28 @@ export function saveStoredNotesRoot(path: string | null): void {
   }
 }
 
+const WINDOWS_DRIVE_PATH_RE = /^[A-Za-z]:[\\/]/
+
+export function sanitizeStoredRootForTauri(path: string | null): string | null {
+  if (!isTauriRuntime()) {
+    return path
+  }
+  if (!path) {
+    return null
+  }
+  const normalized = path.trim()
+  if (!normalized || normalized === 'web-local') {
+    return null
+  }
+  if (normalized.startsWith('/')) {
+    return normalized
+  }
+  if (WINDOWS_DRIVE_PATH_RE.test(normalized)) {
+    return normalized
+  }
+  return null
+}
+
 export interface NotesStorageAdapter {
   resolveDefaultRoot(): Promise<string>
   ensureRoot(): Promise<string>
@@ -321,7 +343,7 @@ function createTauriNotesAdapter(): NotesStorageAdapter {
       return join(baseDir, ...DEFAULT_NOTES_ROOT_SEGMENTS)
     },
     async ensureRoot() {
-      let root = await loadStoredNotesRoot()
+      let root = sanitizeStoredRootForTauri(await loadStoredNotesRoot())
       if (!root) {
         root = await this.resolveDefaultRoot()
       }
