@@ -8,7 +8,7 @@ import { Skeleton } from '../components/Skeleton'
 import { TagFilter } from '../components/TagFilter'
 import { VaultItemCard } from '../components/VaultItemCard'
 import { VaultItemList } from '../components/VaultItemList'
-import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyTextAutoClear } from '../lib/clipboard'
+import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyWithAutoClear } from '../lib/clipboard'
 import { BACKUP_IMPORTED_EVENT } from '../lib/backup'
 import { useToast } from '../components/ToastProvider'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
@@ -231,7 +231,7 @@ export default function Sites() {
   async function handleCopyUrl(item: SiteRecord) {
     if (!item.url) return
     try {
-      await copyTextAutoClear(item.url, DEFAULT_CLIPBOARD_CLEAR_DELAY)
+      await copyWithAutoClear(item.url, DEFAULT_CLIPBOARD_CLEAR_DELAY)
       showToast({ title: '链接已复制', description: '已复制到剪贴板。', variant: 'success' })
     } catch (error) {
       console.error('Failed to copy site url', error)
