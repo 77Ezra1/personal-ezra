@@ -50,11 +50,11 @@ pub fn spawn_fs_watcher(app_handle: AppHandle, root: PathBuf) -> NotifyResult<Wa
                             .collect::<Vec<String>>(),
                     )
                     .unwrap_or_else(|_| "[]".to_string());
-                    let _ = app_handle.emit("notes://fs", payload);
+                    let _ = tauri::Emitter::emit(&app_handle, "notes://fs", payload);
                 }
                 Err(err) => {
                     let payload = format!(r#"{{"error":"{}"}}"#, err);
-                    let _ = app_handle.emit("notes://fs", payload);
+                    let _ = tauri::Emitter::emit(&app_handle, "notes://fs", payload);
                 }
             }
         }
