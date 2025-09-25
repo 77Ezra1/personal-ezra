@@ -64,7 +64,7 @@ export default function Sites() {
       try {
         const rows = await db.sites.where('ownerEmail').equals(currentEmail).toArray()
         rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-        setItems(rows)
+        setItems(rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) })))
       } finally {
         if (showLoading) {
           setLoading(false)
