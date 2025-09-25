@@ -205,7 +205,7 @@ function buildNoteFile(content: string, frontMatter: NoteFrontMatter): string {
   return `---\n${fmSection}---\n\n${body}`
 }
 
-async function readNoteDocument(path: string): Promise<NoteDocument> {
+async function readNoteDocumentFromFs(path: string): Promise<NoteDocument> {
   try {
     const bytes = await readFile(path)
     const raw = decodeText(bytes)
@@ -226,7 +226,11 @@ async function readNoteDocument(path: string): Promise<NoteDocument> {
   }
 }
 
-async function writeNoteDocument(path: string, content: string, frontMatter: NoteFrontMatter): Promise<void> {
+async function writeNoteDocumentToFs(
+  path: string,
+  content: string,
+  frontMatter: NoteFrontMatter,
+): Promise<void> {
   const normalizedFront: NoteFrontMatter = {
     ...frontMatter,
     updatedAt: new Date().toISOString(),
@@ -235,7 +239,7 @@ async function writeNoteDocument(path: string, content: string, frontMatter: Not
   await writeFile(path, encodeText(output))
 }
 
-async function createNote(root: string, name: string, directory?: string): Promise<string> {
+async function createNoteOnFs(root: string, name: string, directory?: string): Promise<string> {
   const sanitized = sanitizeFileName(name)
   const baseDir = directory && directory.trim() ? directory : root
   await mkdir(baseDir, { recursive: true })
@@ -251,7 +255,7 @@ async function createNote(root: string, name: string, directory?: string): Promi
   return target
 }
 
-async function createFolder(root: string, name: string, parent?: string): Promise<string> {
+async function createFolderOnFs(root: string, name: string, parent?: string): Promise<string> {
   const sanitized = sanitizeFolderName(name)
   const baseDir = parent && parent.trim() ? parent : root
   const target = await join(baseDir, sanitized)
@@ -259,11 +263,11 @@ async function createFolder(root: string, name: string, parent?: string): Promis
   return target
 }
 
-async function deleteEntry(path: string): Promise<void> {
+async function deleteEntryOnFs(path: string): Promise<void> {
   await remove(path, { recursive: true })
 }
 
-async function renameEntry(path: string, nextName: string): Promise<string> {
+async function renameEntryOnFs(path: string, nextName: string): Promise<string> {
   const parent = await dirname(path)
   const sanitized = path.toLowerCase().endsWith('.md') ? sanitizeFileName(nextName) : sanitizeFolderName(nextName)
   const target = await join(parent, sanitized)
@@ -274,13 +278,13 @@ async function renameEntry(path: string, nextName: string): Promise<string> {
   return target
 }
 
-async function appendToInbox(root: string, body: string): Promise<void> {
+async function appendToInboxOnFs(root: string, body: string): Promise<void> {
   const inboxPath = await join(root, 'Inbox.md')
   await mkdir(root, { recursive: true })
   const existsInbox = await exists(inboxPath)
   let doc: NoteDocument
   if (existsInbox) {
-    doc = await readNoteDocument(inboxPath)
+    doc = await readNoteDocumentFromFs(inboxPath)
   } else {
     const frontMatter = buildDefaultFrontMatter('Inbox')
     await writeFile(inboxPath, encodeText(buildNoteFile('', frontMatter)))
@@ -295,13 +299,13 @@ async function appendToInbox(root: string, body: string): Promise<void> {
   const updatedContent = doc.content
     ? `${doc.content.replace(/\s+$/g, '')}\n\n${sectionHeader}${body.trim()}\n`
     : `${sectionHeader}${body.trim()}\n`
-  await writeNoteDocument(inboxPath, updatedContent, {
+  await writeNoteDocumentToFs(inboxPath, updatedContent, {
     ...doc.frontMatter,
     updatedAt: timestamp,
   })
 }
 
-async function registerNotesWatcher(path: string): Promise<void> {
+async function registerNotesWatcherOnFs(path: string): Promise<void> {
   if (!isTauriRuntime()) return
   try {
     await invoke('set_notes_root', { path })
@@ -329,14 +333,14 @@ function createTauriNotesAdapter(): NotesStorageAdapter {
       await mkdir(root, { recursive: true })
       return readDirectoryRecursive(root)
     },
-    readDocument: readNoteDocument,
-    writeDocument: writeNoteDocument,
-    createNote,
-    createFolder,
-    deleteEntry,
-    renameEntry,
-    appendToInbox,
-    registerWatcher: registerNotesWatcher,
+    readDocument: readNoteDocumentFromFs,
+    writeDocument: writeNoteDocumentToFs,
+    createNote: createNoteOnFs,
+    createFolder: createFolderOnFs,
+    deleteEntry: deleteEntryOnFs,
+    renameEntry: renameEntryOnFs,
+    appendToInbox: appendToInboxOnFs,
+    registerWatcher: registerNotesWatcherOnFs,
   }
 }
 
