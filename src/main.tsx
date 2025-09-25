@@ -23,6 +23,46 @@ if (!rootElement) {
   throw new Error('Failed to find the root element')
 }
 
+if (import.meta.env.DEV) {
+  window.addEventListener('error', (event) => {
+    console.error('[GlobalError]', event.error ?? event.message)
+  })
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('[UnhandledRejection]', event.reason)
+  })
+  window.addEventListener(
+    'click',
+    (event) => {
+      const path =
+        typeof event.composedPath === 'function' ? event.composedPath() : []
+      const formattedPath = path
+        .map((target) => {
+          if (target instanceof Window) return 'window'
+          if (target instanceof Document) return 'document'
+          if (target instanceof Element) {
+            const tag = target.tagName.toLowerCase()
+            const id = target.id ? `#${target.id}` : ''
+            const className = target.className
+            const classes =
+              typeof className === 'string' && className.trim().length > 0
+                ? `.${className
+                    .trim()
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .join('.')}`
+                : ''
+            return `${tag}${id}${classes}`
+          }
+          return '[unknown]'
+        })
+        .join(' > ')
+      console.log('[ClickPath]', formattedPath)
+    },
+    { capture: true },
+  )
+  // Listener cleanup isn’t necessary; they live for the app lifetime.
+}
+
 rootElement.classList.add('no-drag')
 
 // 应用首次主题
