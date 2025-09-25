@@ -70,7 +70,7 @@ export default function QuickCapture({ open, onClose, onSubmit }: QuickCapturePr
             onChange={event => setValue(event.target.value)}
             rows={6}
             placeholder="输入想法或待办，提交后将自动保存到 Inbox.md"
-            className="w-full resize-none rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+            className="note-editor w-full resize-none rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
             disabled={submitting}
           />
           {error ? <p className="text-xs text-red-500">{error}</p> : null}

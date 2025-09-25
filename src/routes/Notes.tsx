@@ -656,16 +656,18 @@ export default function Notes() {
                 placeholder="请输入标题"
                 className="mb-4 w-full rounded-xl border border-transparent bg-transparent text-2xl font-semibold text-text outline-none transition focus:border-primary/40 focus:bg-surface/60"
               />
-              <div className="flex-1 overflow-hidden rounded-xl border border-border/60 bg-surface/70">
-                <MdEditor
-                  value={content}
-                  onChange={handleContentChange}
-                  onPlainTextStats={stats => {
-                    setChars(stats.chars)
-                    setWords(stats.words)
-                  }}
-                  className="h-full overflow-y-auto px-6 py-4"
-                />
+              <div className="note-editor no-drag flex-1">
+                <div className="h-full overflow-hidden rounded-xl border border-border/60 bg-surface/70">
+                  <MdEditor
+                    value={content}
+                    onChange={handleContentChange}
+                    onPlainTextStats={stats => {
+                      setChars(stats.chars)
+                      setWords(stats.words)
+                    }}
+                    className="h-full overflow-y-auto px-6 py-4"
+                  />
+                </div>
               </div>
             </>
           ) : (
