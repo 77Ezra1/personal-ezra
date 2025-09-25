@@ -507,13 +507,13 @@ function mapDocs(records: DocRecord[]): DocBackupEntry[] {
 type ExportUserDataOptions = {
   masterPassword?: string | null
   allowSessionKey?: boolean
+  useSessionKey?: boolean
 }
 
 export async function exportUserData(
   email: string | null | undefined,
   encryptionKey: Uint8Array | null | undefined,
-  masterPassword: string | null | undefined,
-  options: { useSessionKey?: boolean } = {},
+  options: ExportUserDataOptions = {},
 ) {
   const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : ''
   if (!normalizedEmail) {
@@ -523,8 +523,10 @@ export async function exportUserData(
     throw new Error('缺少有效的加密密钥，无法导出数据。')
   }
 
-  const useSessionKey = options.useSessionKey === true
-  const passwordInput = typeof masterPassword === 'string' ? masterPassword : ''
+  const passwordInput = typeof options.masterPassword === 'string' ? options.masterPassword : ''
+  const allowSessionKey = options.allowSessionKey === true || options.useSessionKey === true
+  const useSessionKey = options.useSessionKey === true || (allowSessionKey && !passwordInput)
+
   if (!useSessionKey && !passwordInput) {
     throw new Error('导出备份前请输入主密码。')
   }
