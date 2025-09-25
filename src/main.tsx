@@ -1,3 +1,4 @@
+import './polyfills/node-globals'   // <-- 必须放最顶
 import { installPanicOverlay } from './lib/error-overlay'
 import { isTauriRuntime } from './env'
 import { swCleanup } from './lib/sw-clean'
