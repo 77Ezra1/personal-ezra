@@ -852,7 +852,7 @@ export default function Settings() {
         label: '账号安全',
         sections: [
           { key: 'change-password', label: '修改密码', render: () => <ChangePasswordSection /> },
-          { key: 'mnemonic-recovery', label: '助记词找回', render: () => <MnemonicRecoverySection /> },
+          { key: 'mnemonic-recovery', label: '助记词', render: () => <MnemonicRecoverySection /> },
           { key: 'idle-timeout', label: '自动锁定', render: () => <IdleTimeoutSettingsSection /> },
           { key: 'delete-account', label: '注销账号', render: () => <DeleteAccountSection /> },
         ],
