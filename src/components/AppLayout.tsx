@@ -49,8 +49,8 @@ export function AppLayout({
   ]
 
   return (
-    <div className="space-y-8">
-      <header className="space-y-6 rounded-3xl border border-border bg-surface p-8 shadow-lg shadow-black/10 transition-colors dark:shadow-black/40">
+    <div className="no-drag space-y-8">
+      <header className="no-drag space-y-6 rounded-3xl border border-border bg-surface p-8 shadow-lg shadow-black/10 transition-colors dark:shadow-black/40">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="space-y-2">
             <h1 className="text-2xl font-semibold text-text">{title}</h1>
@@ -115,7 +115,7 @@ export function AppLayout({
         </div>
         {filters && <div className="flex flex-wrap gap-3">{filters}</div>}
       </header>
-      <section>{children}</section>
+      <section className="no-drag">{children}</section>
       {commandPalette && (
         <CommandPalette
           open={commandPalette.isOpen}

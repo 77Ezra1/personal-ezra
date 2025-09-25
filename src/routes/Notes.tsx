@@ -497,7 +497,7 @@ export default function Notes() {
   }
 
   return (
-    <div className="flex min-h-[620px] flex-col gap-4">
+    <div className="no-drag flex min-h-[620px] flex-col gap-4">
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-text">笔记</h1>
