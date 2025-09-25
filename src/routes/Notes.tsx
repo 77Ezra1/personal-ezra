@@ -87,36 +87,6 @@ function flattenPaths(nodes: NotesTreeNode[], accumulator: Set<string>) {
   }
 }
 
-function findNodeByPath(nodes: NotesTreeNode[], target: string): NotesTreeNode | null {
-  for (const node of nodes) {
-    if (node.path === target) {
-      return node
-    }
-    if (node.children) {
-      const found = findNodeByPath(node.children, target)
-      if (found) {
-        return found
-      }
-    }
-  }
-  return null
-}
-
-function findParentPath(nodes: NotesTreeNode[], target: string, parent: string | null): string | null {
-  for (const node of nodes) {
-    if (node.path === target) {
-      return parent
-    }
-    if (node.children) {
-      const result = findParentPath(node.children, target, node.path)
-      if (result) {
-        return result
-      }
-    }
-  }
-  return null
-}
-
 export default function Notes() {
   const [rootPath, setRootPath] = useState('')
   const [tree, setTree] = useState<NotesTreeNode[]>([])
@@ -134,6 +104,25 @@ export default function Notes() {
   const { showToast } = useToast()
   const rootPromiseRef = useRef<Promise<string> | null>(null)
   const persistCancelRef = useRef<(() => void) | null>(null)
+
+  const { nodeMap, parentMap } = useMemo(() => {
+    const nodeMap = new Map<string, NotesTreeNode>()
+    const parentMap = new Map<string, string | null>()
+
+    const visit = (nodes: NotesTreeNode[], parent: string | null) => {
+      for (const node of nodes) {
+        nodeMap.set(node.path, node)
+        parentMap.set(node.path, parent)
+        if (node.children) {
+          visit(node.children, node.path)
+        }
+      }
+    }
+
+    visit(tree, null)
+
+    return { nodeMap, parentMap }
+  }, [tree])
 
   const ensureRootReady = useCallback(async () => {
     if (rootPath) {
@@ -305,7 +294,7 @@ export default function Notes() {
   const handleSelect = useCallback(
     async (path: string) => {
       setActivePath(path)
-      const node = findNodeByPath(tree, path)
+      const node = nodeMap.get(path)
       if (!node || node.kind === 'directory') {
         setCurrentNote(null)
         setContent('')
@@ -329,7 +318,7 @@ export default function Notes() {
         })
       }
     },
-    [showToast, tree],
+    [nodeMap, showToast],
   )
 
   const persist = useMemo(() => {
@@ -396,14 +385,14 @@ export default function Notes() {
     async () => {
       const root = await ensureRootReady()
       if (!activePath) return root
-      const node = findNodeByPath(tree, activePath)
+      const node = nodeMap.get(activePath)
       if (node?.kind === 'directory') {
         return node.path
       }
-      const parent = findParentPath(tree, activePath, root)
+      const parent = parentMap.get(activePath)
       return parent ?? root
     },
-    [activePath, ensureRootReady, tree],
+    [activePath, ensureRootReady, nodeMap, parentMap],
   )
 
   const handleCreateNote = useCallback(async () => {
