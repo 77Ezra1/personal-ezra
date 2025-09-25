@@ -1,17 +1,10 @@
 import { basename, dirname, homeDir, join } from '@tauri-apps/api/path'
-import {
-  exists,
-  mkdir,
-  readDir,
-  readTextFile,
-  remove,
-  rename,
-  writeTextFile,
-} from '@tauri-apps/plugin-fs'
-import matter from 'gray-matter'
+import { exists, mkdir, readDir, readFile, remove, rename, writeFile } from '@tauri-apps/plugin-fs'
 import { invoke } from '@tauri-apps/api/core'
+import { dump as stringifyYaml, load as parseYaml } from 'js-yaml'
 
 import { isTauriRuntime } from '../env'
+import { decodeText, encodeText } from './binary'
 
 export const NOTES_ROOT_STORAGE_KEY = 'pms-notes-root'
 export const DEFAULT_NOTES_ROOT_SEGMENTS = ['use_data', 'notes'] as const
@@ -155,6 +148,8 @@ export async function loadNotesTree(root: string): Promise<NotesTreeNode[]> {
   return readDirectoryRecursive(root)
 }
 
+const FRONT_MATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/
+
 function ensureFrontMatter(data: unknown, fallbackTitle: string): NoteFrontMatter {
   const now = new Date().toISOString()
   const result: NoteFrontMatter = buildDefaultFrontMatter(fallbackTitle)
@@ -183,17 +178,49 @@ function ensureFrontMatter(data: unknown, fallbackTitle: string): NoteFrontMatte
   return result
 }
 
+function parseNoteFile(raw: string, fallbackTitle: string): { frontMatter: NoteFrontMatter; content: string } {
+  const normalized = raw.replace(/\r\n/g, '\n')
+  const match = FRONT_MATTER_RE.exec(normalized)
+  let frontData: unknown = {}
+  let body = normalized
+  if (match) {
+    body = normalized.slice(match[0].length)
+    const yamlBlock = match[1]
+    if (yamlBlock.trim()) {
+      try {
+        frontData = parseYaml(yamlBlock) ?? {}
+      } catch (error) {
+        console.warn('Failed to parse note front matter', error)
+        frontData = {}
+      }
+    }
+  }
+  const frontMatter = ensureFrontMatter(frontData, fallbackTitle)
+  return {
+    frontMatter,
+    content: body.replace(/\s+$/g, ''),
+  }
+}
+
+function buildNoteFile(content: string, frontMatter: NoteFrontMatter): string {
+  const yamlBody = stringifyYaml(frontMatter, { lineWidth: 0 }).trimEnd()
+  const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\s+$/g, '')
+  const fmSection = yamlBody ? `${yamlBody}\n` : ''
+  const body = normalizedContent ? `${normalizedContent}\n` : ''
+  return `---\n${fmSection}---\n\n${body}`
+}
+
 export async function readNoteDocument(path: string): Promise<NoteDocument> {
   try {
-    const raw = await readTextFile(path)
-    const parsed = matter(raw)
+    const bytes = await readFile(path)
+    const raw = decodeText(bytes)
     const fileName = await basename(path)
     const titleBase = fileName.endsWith('.md') ? fileName.slice(0, -3) : fileName
-    const frontMatter = ensureFrontMatter(parsed.data, titleBase)
+    const parsed = parseNoteFile(raw, titleBase)
     return {
       path,
-      frontMatter,
-      content: parsed.content.replace(/\s+$/g, ''),
+      frontMatter: parsed.frontMatter,
+      content: parsed.content,
     }
   } catch (error) {
     console.error('Failed to read note document', { path, error })
@@ -209,8 +236,8 @@ export async function writeNoteDocument(path: string, content: string, frontMatt
     ...frontMatter,
     updatedAt: new Date().toISOString(),
   }
-  const output = matter.stringify(content, normalizedFront)
-  await writeTextFile(path, output.endsWith('\n') ? output : `${output}\n`)
+  const output = buildNoteFile(content, normalizedFront)
+  await writeFile(path, encodeText(output))
 }
 
 export async function createNote(root: string, name: string, directory?: string): Promise<string> {
@@ -224,8 +251,8 @@ export async function createNote(root: string, name: string, directory?: string)
   }
   const title = sanitized.endsWith('.md') ? sanitized.slice(0, -3) : sanitized
   const frontMatter = buildDefaultFrontMatter(title)
-  const output = matter.stringify('', frontMatter)
-  await writeTextFile(target, `${output}\n`)
+  const output = buildNoteFile('', frontMatter)
+  await writeFile(target, encodeText(output))
   return target
 }
 
@@ -261,7 +288,7 @@ export async function appendToInbox(root: string, body: string): Promise<void> {
     doc = await readNoteDocument(inboxPath)
   } else {
     const frontMatter = buildDefaultFrontMatter('Inbox')
-    await writeTextFile(inboxPath, `${matter.stringify('', frontMatter)}\n`)
+    await writeFile(inboxPath, encodeText(buildNoteFile('', frontMatter)))
     doc = {
       path: inboxPath,
       frontMatter,
