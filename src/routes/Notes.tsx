@@ -33,15 +33,23 @@ type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 
 function debounce<T extends (...args: any[]) => void | Promise<void>>(fn: T, wait = AUTO_SAVE_DELAY) {
   let handle: ReturnType<typeof setTimeout> | null = null
-  return (...args: Parameters<T>) => {
+
+  const cancel = () => {
     if (handle) {
       clearTimeout(handle)
+      handle = null
     }
+  }
+
+  const debounced = (...args: Parameters<T>) => {
+    cancel()
     handle = setTimeout(() => {
       handle = null
       void fn(...args)
     }, wait)
   }
+
+  return { run: debounced, cancel }
 }
 
 function filterTree(nodes: NotesTreeNode[], keyword: string): NotesTreeNode[] {
@@ -125,6 +133,7 @@ export default function Notes() {
   const isTauri = isTauriRuntime()
   const { showToast } = useToast()
   const rootPromiseRef = useRef<Promise<string> | null>(null)
+  const persistCancelRef = useRef<(() => void) | null>(null)
 
   const ensureRootReady = useCallback(async () => {
     if (rootPath) {
@@ -323,9 +332,9 @@ export default function Notes() {
     [showToast, tree],
   )
 
-  const persist = useMemo(
-    () =>
-      debounce(async ({ path, content: nextContent, frontMatter }: { path: string; content: string; frontMatter: NoteFrontMatter }) => {
+  const persist = useMemo(() => {
+    const { run, cancel } = debounce(
+      async ({ path, content: nextContent, frontMatter }: { path: string; content: string; frontMatter: NoteFrontMatter }) => {
         if (!path) return
         setSaveState('saving')
         try {
@@ -343,9 +352,18 @@ export default function Notes() {
             fallback: '写入笔记失败，请检查目录权限或浏览器存储空间。',
           })
         }
-      }),
-    [refreshTree, showToast],
-  )
+      },
+    )
+    persistCancelRef.current = cancel
+    return run
+  }, [refreshTree, showToast])
+
+  useEffect(() => {
+    const cancel = persistCancelRef.current
+    return () => {
+      cancel?.()
+    }
+  }, [persist])
 
   const queueSave = useCallback(
     (payload: { path: string; content: string; frontMatter: NoteFrontMatter }) => {
