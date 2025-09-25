@@ -3,6 +3,8 @@ import { appDataDir, join } from '@tauri-apps/api/path'
 import { open as openShell } from '@tauri-apps/plugin-shell'
 import { openExternal } from './external'
 
+type DigestSource = Parameters<SubtleCrypto['digest']>[1]
+
 const VAULT_DIR_NAME = 'vault'
 
 export interface VaultFileMeta {
@@ -31,10 +33,46 @@ function sanitizeFileName(name: string) {
   return normalized || 'document'
 }
 
-function toHex(buffer: ArrayBuffer) {
-  return Array.from(new Uint8Array(buffer))
+function toHex(bytes: Uint8Array) {
+  return Array.from(bytes)
     .map(byte => byte.toString(16).padStart(2, '0'))
     .join('')
+}
+
+async function blobToUint8Array(blob: Blob): Promise<Uint8Array> {
+  const stream = typeof blob.stream === 'function' ? blob.stream() : new Response(blob).body
+  if (!stream) {
+    throw new Error('无法读取文件数据')
+  }
+  const reader = stream.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+
+  let reading = true
+  while (reading) {
+    const { done, value } = await reader.read()
+    if (done) {
+      reading = false
+      continue
+    }
+    if (value) {
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value)
+      chunks.push(chunk)
+      total += chunk.length
+    }
+  }
+
+  if (typeof reader.releaseLock === 'function') {
+    reader.releaseLock()
+  }
+
+  const result = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    result.set(chunk, offset)
+    offset += chunk.length
+  }
+  return result
 }
 
 async function ensureVaultRoot() {
@@ -60,10 +98,9 @@ export async function resolveVaultPath(relPath: string) {
 
 export async function importFileToVault(file: File): Promise<VaultFileMeta> {
   const vaultRoot = await ensureVaultRoot()
-  const arrayBuffer = await file.arrayBuffer()
-  const bytes = new Uint8Array(arrayBuffer)
-  const shaBuffer = await crypto.subtle.digest('SHA-256', bytes)
-  const sha256 = toHex(shaBuffer)
+  const bytes = await blobToUint8Array(file)
+  const shaBytes = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as DigestSource))
+  const sha256 = toHex(shaBytes)
   const displayName = file.name || 'document'
   const storedName = `${sha256}-${sanitizeFileName(displayName)}`
   const destination = await join(vaultRoot, storedName)

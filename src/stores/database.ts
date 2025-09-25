@@ -261,7 +261,7 @@ class AppDatabase extends Dexie {
           mnemonic?: string
           createdAt?: number
           updatedAt?: number
-          mustChangePassword?: boolean
+          mustChangePassword: unknown
           github?: UserRecord['github']
         }
         const usersTable = tx.table('users') as Table<LegacyUserRecord, string>
@@ -283,8 +283,7 @@ class AppDatabase extends Dexie {
               typeof legacy.updatedAt === 'number' && Number.isFinite(legacy.updatedAt)
                 ? legacy.updatedAt
                 : createdAt
-            const mustChangePassword =
-              typeof legacy.mustChangePassword === 'boolean' ? legacy.mustChangePassword : false
+            const mustChangePassword = Boolean(legacy.mustChangePassword)
             const next: UserRecord = {
               email,
               salt: typeof legacy.salt === 'string' ? legacy.salt : '',
@@ -312,7 +311,7 @@ class AppDatabase extends Dexie {
         type LegacyUserRecord = Omit<UserRecord, 'mnemonic' | 'mustChangePassword' | 'github'> & {
           github?: UserRecord['github']
           mnemonic?: string
-          mustChangePassword?: boolean
+          mustChangePassword: unknown
         }
         const usersTable = tx.table('users') as Table<LegacyUserRecord, string>
         const users = await usersTable.toArray()
@@ -325,8 +324,7 @@ class AppDatabase extends Dexie {
             }
             const legacyWithGithub = ensureGithubValue(legacy)
             const mnemonic = generateMnemonicPhrase()
-            const mustChangePassword =
-              typeof legacy.mustChangePassword === 'boolean' ? legacy.mustChangePassword : false
+            const mustChangePassword = Boolean(legacy.mustChangePassword)
             const next: UserRecord = {
               ...legacy,
               github: legacyWithGithub.github,
@@ -467,9 +465,25 @@ function createDexieClient(): DatabaseClient {
     users: {
       get: async key => {
         const record = await database.users.get(key)
-        return record ? ensureGithubValue(record) : record
+        if (!record) {
+          return record
+        }
+        const normalized = ensureGithubValue({
+          ...record,
+          mustChangePassword: Boolean(record.mustChangePassword),
+        })
+        if (normalized.mustChangePassword !== record.mustChangePassword) {
+          await database.users.put(normalized)
+        }
+        return normalized
       },
-      put: record => database.users.put(ensureGithubValue({ ...record })),
+      put: record =>
+        database.users.put(
+          ensureGithubValue({
+            ...record,
+            mustChangePassword: Boolean(record.mustChangePassword),
+          }),
+        ),
       delete: key => database.users.delete(key),
     },
     passwords: createDexieOwnedCollection(database.passwords),
@@ -541,7 +555,7 @@ interface LegacyDocRecord {
   url?: string
   fileName?: string
   fileType?: string
-  fileData?: ArrayBuffer
+  fileData?: BlobPart
   createdAt: number
   updatedAt?: number
   tags?: string[]

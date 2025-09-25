@@ -48,8 +48,8 @@ const EMPTY_STATE: PasswordHealthState = {
   isAnalyzing: false,
 }
 
-function toHex(buffer: ArrayBuffer) {
-  return Array.from(new Uint8Array(buffer))
+function toHex(bytes: Uint8Array) {
+  return Array.from(bytes)
     .map(byte => byte.toString(16).padStart(2, '0'))
     .join('')
 }
@@ -63,7 +63,7 @@ async function hashPlainText(input: string) {
     const encoder = new TextEncoder()
     const data = encoder.encode(input)
     const digest = await cryptoSource.subtle.digest('SHA-256', data)
-    return toHex(digest)
+    return toHex(new Uint8Array(digest))
   } catch (error) {
     console.warn('Failed to hash password plaintext', error)
     return null

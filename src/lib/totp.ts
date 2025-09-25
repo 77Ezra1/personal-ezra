@@ -78,18 +78,18 @@ export async function generateTotp(
   const timestamp = options.timestamp ?? Date.now()
   const counter = Math.floor(timestamp / (period * 1_000))
 
-  const buffer = new ArrayBuffer(8)
-  const view = new DataView(buffer)
+  const counterBytes = new Uint8Array(8)
+  const view = new DataView(counterBytes.buffer)
   const high = Math.floor(counter / 0x1_0000_0000)
   const low = counter % 0x1_0000_0000
   view.setUint32(0, high)
   view.setUint32(4, low)
 
   const subtle = getSubtleCrypto()
-  const keyData = new ArrayBuffer(keyBytes.byteLength)
-  new Uint8Array(keyData).set(keyBytes)
+  const keyData = new Uint8Array(keyBytes.length)
+  keyData.set(keyBytes)
   const key = await subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign'])
-  const digest = new Uint8Array(await subtle.sign('HMAC', key, buffer))
+  const digest = new Uint8Array(await subtle.sign('HMAC', key, counterBytes))
 
   if (digest.length < 4) {
     throw new Error('生成验证码失败')
