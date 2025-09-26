@@ -15,6 +15,16 @@ export type MdEditorProps = {
 
 const Inner: FC<MdEditorProps> = ({ value, onChange, onPlainTextStats, className }) => {
   const editorRef = useRef<Editor | null>(null)
+  const onChangeRef = useRef(onChange)
+  const onPlainTextStatsRef = useRef(onPlainTextStats)
+
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
+
+  useEffect(() => {
+    onPlainTextStatsRef.current = onPlainTextStats
+  }, [onPlainTextStats])
 
   useEditor((root) => {
     const editor = Editor.make()
@@ -24,11 +34,11 @@ const Inner: FC<MdEditorProps> = ({ value, onChange, onPlainTextStats, className
         ctx.set(defaultValueCtx, value || '')
         const l = ctx.get(listenerCtx)
         l.markdownUpdated((_ctx, markdown) => {
-          onChange(markdown)
+          onChangeRef.current(markdown)
         })
         l.updated((_ctx, doc) => {
           const text = doc?.textContent ?? ''
-          onPlainTextStats?.({
+          onPlainTextStatsRef.current?.({
             text,
             chars: text.length,
             words: (text.match(/\S+/g) || []).length,
