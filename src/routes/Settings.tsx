@@ -49,7 +49,6 @@ import {
 import { BACKUP_IMPORTED_EVENT, importUserData } from '../lib/backup'
 import { estimatePasswordStrength, PASSWORD_STRENGTH_REQUIREMENT } from '../lib/password-utils'
 import { runScheduledBackup } from '../lib/auto-backup'
-import { ensureNotesRoot, resolveDefaultNotesRoot, saveStoredNotesRoot } from '../lib/notes-fs'
 import { DEFAULT_TIMEOUT, IDLE_TIMEOUT_OPTIONS, useIdleTimeoutStore } from '../features/lock/IdleLock'
 import { selectAuthProfile, useAuthStore } from '../stores/auth'
 import { db, type UserAvatarMeta } from '../stores/database'
@@ -865,10 +864,6 @@ function DataBackupSection() {
   const [defaultBackupPath, setDefaultBackupPath] = useState('')
   const [selectingBackupPath, setSelectingBackupPath] = useState(false)
   const [resettingBackupPath, setResettingBackupPath] = useState(false)
-  const [notesRootPath, setNotesRootPath] = useState('')
-  const [defaultNotesRoot, setDefaultNotesRoot] = useState('')
-  const [selectingNotesRoot, setSelectingNotesRoot] = useState(false)
-  const [resettingNotesRoot, setResettingNotesRoot] = useState(false)
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(false)
   const [autoBackupInterval, setAutoBackupInterval] = useState<number>(AUTO_BACKUP_DEFAULT_INTERVAL)
   const [autoBackupLastSuccess, setAutoBackupLastSuccess] = useState<number | null>(null)
@@ -1412,29 +1407,6 @@ function DataBackupSection() {
     }
   }, [isTauri, persistBackupPath])
 
-  useEffect(() => {
-    if (!isTauri) return
-    let mounted = true
-
-    const initNotesRoot = async () => {
-      try {
-        const root = await ensureNotesRoot()
-        const fallback = await resolveDefaultNotesRoot()
-        if (!mounted) return
-        setNotesRootPath(root)
-        setDefaultNotesRoot(fallback)
-      } catch (error) {
-        console.error('Failed to initialize notes root directory', error)
-      }
-    }
-
-    void initNotesRoot()
-
-    return () => {
-      mounted = false
-    }
-  }, [isTauri])
-
   const applyDataPath = useCallback(
     async (targetDir: string, options: { moveExisting?: boolean } = {}) => {
       if (!targetDir) {
@@ -1597,55 +1569,6 @@ function DataBackupSection() {
       showToast({ title: '恢复失败', description: message, variant: 'error' })
     } finally {
       setResettingBackupPath(false)
-    }
-  }
-
-  const handleSelectNotesRoot = async () => {
-    if (!isTauri) return
-    try {
-      setSelectingNotesRoot(true)
-      const selection = await openDialog({ directory: true })
-      const selectedPath = Array.isArray(selection) ? selection[0] : selection
-      if (!selectedPath) {
-        return
-      }
-      await mkdir(selectedPath, { recursive: true })
-      setNotesRootPath(selectedPath)
-      saveStoredNotesRoot(selectedPath)
-      showToast({
-        title: '笔记根目录已更新',
-        description: selectedPath,
-        variant: 'success',
-      })
-    } catch (error) {
-      console.error('Failed to select notes root', error)
-      const message = error instanceof Error ? error.message : '选择笔记根目录失败，请稍后再试。'
-      showToast({ title: '选择失败', description: message, variant: 'error' })
-    } finally {
-      setSelectingNotesRoot(false)
-    }
-  }
-
-  const handleResetNotesRoot = async () => {
-    if (!isTauri) return
-    try {
-      setResettingNotesRoot(true)
-      const target = await resolveDefaultNotesRoot()
-      await mkdir(target, { recursive: true })
-      setNotesRootPath(target)
-      setDefaultNotesRoot(target)
-      saveStoredNotesRoot(target)
-      showToast({
-        title: '已恢复默认笔记目录',
-        description: target,
-        variant: 'success',
-      })
-    } catch (error) {
-      console.error('Failed to reset notes root', error)
-      const message = error instanceof Error ? error.message : '恢复默认笔记目录失败，请稍后再试。'
-      showToast({ title: '恢复失败', description: message, variant: 'error' })
-    } finally {
-      setResettingNotesRoot(false)
     }
   }
 
@@ -1868,7 +1791,7 @@ function DataBackupSection() {
       const result = await importUserData(payload, encryptionKey, masterPassword)
       showToast({
         title: '导入成功',
-        description: `密码 ${result.passwords} 条｜网站 ${result.sites} 个｜文档 ${result.docs} 条｜笔记 ${result.notes} 条`,
+        description: `密码 ${result.passwords} 条｜网站 ${result.sites} 个｜文档 ${result.docs} 条`,
         variant: 'success',
       })
       setPasswordError(null)
@@ -2021,48 +1944,6 @@ function DataBackupSection() {
 
             <div className="space-y-2">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <label className="text-sm font-medium text-text">笔记根目录</label>
-                <button
-                  type="button"
-                  onClick={handleResetNotesRoot}
-                  disabled={resettingNotesRoot || !defaultNotesRoot || notesRootPath === defaultNotesRoot}
-                  className={clsx(
-                    'inline-flex items-center rounded-lg border border-border px-3 py-1 text-xs font-medium transition',
-                    'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
-                  )}
-                >
-                  {resettingNotesRoot ? '恢复中…' : '恢复默认'}
-                </button>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                <input
-                  type="text"
-                  value={notesRootPath || '尚未选择笔记目录'}
-                  readOnly
-                  className={clsx(
-                    'w-full min-w-0 truncate rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition sm:flex-1',
-                    notesRootPath ? 'focus:border-primary/60 focus:bg-surface-hover' : 'text-muted',
-                  )}
-                />
-                <button
-                  type="button"
-                  onClick={handleSelectNotesRoot}
-                  disabled={selectingNotesRoot || resettingNotesRoot}
-                  className={clsx(
-                    'inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-sm transition',
-                    'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
-                  )}
-                >
-                  {selectingNotesRoot ? '选择中…' : '选择目录'}
-                </button>
-              </div>
-              <p className="text-xs leading-relaxed text-muted">
-                Markdown 笔记与 Inbox 秒记内容将存储在该目录下，支持文件系统变更监听。
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <label className="text-sm font-medium text-text">备份导出路径</label>
                 <button
                   type="button"
@@ -2115,7 +1996,7 @@ function DataBackupSection() {
       <div className="space-y-1">
         <h3 className="text-sm font-semibold text-text">GitHub 仓库备份</h3>
         <p className="text-xs leading-relaxed text-muted">
-          指定仓库后，自动备份会同步包含密码库、文档与灵感妙记笔记的最新加密文件至 GitHub，提交消息会包含当前时间戳。
+          指定仓库后，自动备份会同步包含密码库与文档的最新加密文件至 GitHub，提交消息会包含当前时间戳。
         </p>
       </div>
       <label className="inline-flex items-center gap-2">

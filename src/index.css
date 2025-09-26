@@ -16,16 +16,6 @@ select,
   -webkit-app-region: no-drag;
 }
 
-.note-editor,
-.note-editor * {
-  -webkit-app-region: no-drag;
-  -webkit-user-select: text;
-  user-select: text;
-  -webkit-touch-callout: default;
-  -webkit-user-drag: auto;
-  pointer-events: auto;
-}
-
 .header-drag {
   -webkit-app-region: drag;
   user-select: none;
