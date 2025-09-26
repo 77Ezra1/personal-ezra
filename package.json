@@ -45,7 +45,6 @@
     "papaparse": "^5.5.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-markdown": "^10.1.0",
     "react-router-dom": "^6.26.2",
     "sql.js": "^1.10.2",
     "tiptap-markdown": "^0.8.8",
