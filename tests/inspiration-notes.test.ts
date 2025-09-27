@@ -9,6 +9,7 @@ vi.mock('../src/lib/storage-path', async () => {
   return {
     ...actual,
     loadStoredDataPath: vi.fn(() => null),
+    saveStoredDataPath: vi.fn(),
   }
 })
 
@@ -22,12 +23,13 @@ import {
   saveNote,
 } from '../src/lib/inspiration-notes'
 import { isTauriRuntime } from '../src/env'
-import { loadStoredDataPath } from '../src/lib/storage-path'
+import { loadStoredDataPath, saveStoredDataPath } from '../src/lib/storage-path'
 import { readDir, readTextFile, writeTextFile, mkdir, remove } from '@tauri-apps/plugin-fs'
 import { appDataDir, join } from '@tauri-apps/api/path'
 
 const isTauriRuntimeMock = vi.mocked(isTauriRuntime)
 const loadStoredDataPathMock = vi.mocked(loadStoredDataPath)
+const saveStoredDataPathMock = vi.mocked(saveStoredDataPath)
 const readDirMock = vi.mocked(readDir)
 const readTextFileMock = vi.mocked(readTextFile)
 const writeTextFileMock = vi.mocked(writeTextFile)
@@ -315,6 +317,37 @@ describe('inspiration notes storage', () => {
     const listB = await listNotes()
     expect(listB).toHaveLength(1)
     expect(listB[0]?.id).toBe(second.id)
+  })
+
+  it('falls back to default directory when custom data path becomes unavailable', async () => {
+    loadStoredDataPathMock.mockReturnValue('D:/Workspace/MyNotes')
+    mkdirMock.mockImplementation(async (path: string) => {
+      const normalized = normalizePath(path)
+      if (normalized.startsWith('D:/Workspace/MyNotes')) {
+        throw new Error('Access denied: custom path blocked')
+      }
+      trackDirectory(directories, path)
+    })
+
+    const saved = await saveNote({ title: '路径回退校验', content: '确认默认路径回退' })
+    expect(saved.id).toMatch(/\.md$/)
+
+    const storedPaths = Array.from(files.keys())
+    expect(storedPaths.some(path => path.startsWith('C:/mock/AppData/Personal/data/notes/'))).toBe(true)
+    expect(directories.has('C:/mock/AppData/Personal/data/notes')).toBe(true)
+    expect(saveStoredDataPathMock).toHaveBeenCalledWith('C:/mock/AppData/Personal/data')
+  })
+
+  it('throws friendly error when fallback directory cannot be created', async () => {
+    loadStoredDataPathMock.mockReturnValue('D:/Workspace/MyNotes')
+    mkdirMock.mockImplementation(async () => {
+      throw new Error('Access denied everywhere')
+    })
+
+    await expect(saveNote({ title: '无法保存', content: '权限不足' })).rejects.toThrow(
+      '无法访问自定义存储路径，也无法回退到默认目录，请检查磁盘权限或可用空间。',
+    )
+    expect(saveStoredDataPathMock).not.toHaveBeenCalled()
   })
 
   it('removes note files when deleting', async () => {
