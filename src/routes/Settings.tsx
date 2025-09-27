@@ -47,6 +47,7 @@ import {
   saveStoredDataPath,
 } from '../lib/storage-path'
 import { BACKUP_IMPORTED_EVENT, importUserData } from '../lib/backup'
+import { syncNotesRoot } from '../lib/inspiration-notes'
 import { estimatePasswordStrength, PASSWORD_STRENGTH_REQUIREMENT } from '../lib/password-utils'
 import { runScheduledBackup } from '../lib/auto-backup'
 import { DEFAULT_TIMEOUT, IDLE_TIMEOUT_OPTIONS, useIdleTimeoutStore } from '../features/lock/IdleLock'
@@ -1463,9 +1464,22 @@ function DataBackupSection() {
       setDataPath(targetDir)
       saveStoredDataPath(targetDir)
 
+      try {
+        await syncNotesRoot()
+      } catch (syncError) {
+        console.error('Failed to sync inspiration notes root directory', syncError)
+        const fallback = '无法更新灵感妙记目录，请检查路径权限。'
+        const details = syncError instanceof Error ? syncError.message : ''
+        showToast({
+          title: '同步灵感妙记目录失败',
+          description: details ? `${fallback}（${details}）` : fallback,
+          variant: 'error',
+        })
+      }
+
       return status
     },
-    [dataPath, defaultDataPath],
+    [dataPath, defaultDataPath, showToast, syncNotesRoot],
   )
 
   const handleSelectDataPath = async () => {

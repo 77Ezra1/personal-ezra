@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core'
 import { mkdir, readDir, readTextFile, remove, writeTextFile } from '@tauri-apps/plugin-fs'
 import { appDataDir, join } from '@tauri-apps/api/path'
 
@@ -70,7 +71,23 @@ async function resolveBaseDataPath() {
   return join(baseDir, ...DEFAULT_DATA_DIR_SEGMENTS)
 }
 
-async function ensureNotesDirectory() {
+let registeredNotesRoot: string | null = null
+
+async function syncNotesRootIfNeeded(notesDir: string, force = false) {
+  if (!isTauriRuntime()) {
+    registeredNotesRoot = notesDir
+    return
+  }
+
+  if (!force && registeredNotesRoot === notesDir) {
+    return
+  }
+
+  await invoke('set_notes_root', { path: notesDir })
+  registeredNotesRoot = notesDir
+}
+
+async function ensureNotesDirectory(options: { forceSync?: boolean } = {}) {
   const base = await resolveBaseDataPath()
   const notesDir = await join(base, NOTES_DIR_NAME)
   try {
@@ -102,6 +119,10 @@ async function ensureNotesDirectory() {
     console.warn('无法访问自定义存储路径，已回退到默认目录。')
     return fallbackNotesDir
   }
+}
+
+export async function syncNotesRoot() {
+  return ensureNotesDirectory({ forceSync: true })
 }
 
 function sanitizeDirectoryPath(raw: string) {
