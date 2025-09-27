@@ -6,6 +6,7 @@ import {
   DEFAULT_DATA_DIR_SEGMENTS,
   loadStoredDataPath,
   loadStoredRepositoryPath,
+  saveStoredDataPath,
 } from './storage-path'
 
 export const NOTES_DIR_NAME = 'notes'
@@ -72,8 +73,35 @@ async function resolveBaseDataPath() {
 async function ensureNotesDirectory() {
   const base = await resolveBaseDataPath()
   const notesDir = await join(base, NOTES_DIR_NAME)
-  await mkdir(notesDir, { recursive: true })
-  return notesDir
+  try {
+    await mkdir(notesDir, { recursive: true })
+    return notesDir
+  } catch (error) {
+    console.error('Failed to ensure custom inspiration notes directory, falling back to default path.', error)
+
+    const appDir = await appDataDir()
+    const fallbackBaseDir = await join(appDir, ...DEFAULT_DATA_DIR_SEGMENTS)
+    const fallbackNotesDir = await join(fallbackBaseDir, NOTES_DIR_NAME)
+
+    try {
+      await mkdir(fallbackNotesDir, { recursive: true })
+    } catch (fallbackError) {
+      console.error('Failed to ensure default inspiration notes directory.', fallbackError)
+      const friendlyError = new Error(
+        '无法访问自定义存储路径，也无法回退到默认目录，请检查磁盘权限或可用空间。',
+      )
+      Reflect.set(friendlyError, 'cause', fallbackError)
+      throw friendlyError
+    }
+
+    const stored = loadStoredDataPath()
+    if (stored && stored.trim()) {
+      saveStoredDataPath(fallbackBaseDir)
+    }
+
+    console.warn('无法访问自定义存储路径，已回退到默认目录。')
+    return fallbackNotesDir
+  }
 }
 
 function sanitizeDirectoryPath(raw: string) {
