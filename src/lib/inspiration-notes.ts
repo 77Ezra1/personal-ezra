@@ -88,10 +88,12 @@ async function syncNotesRootIfNeeded(notesDir: string, force = false) {
 }
 
 async function ensureNotesDirectory(options: { forceSync?: boolean } = {}) {
+  const { forceSync = false } = options
   const base = await resolveBaseDataPath()
   const notesDir = await join(base, NOTES_DIR_NAME)
   try {
     await mkdir(notesDir, { recursive: true })
+    await syncNotesRootIfNeeded(notesDir, forceSync)
     return notesDir
   } catch (error) {
     console.error('Failed to ensure custom inspiration notes directory, falling back to default path.', error)
@@ -102,6 +104,7 @@ async function ensureNotesDirectory(options: { forceSync?: boolean } = {}) {
 
     try {
       await mkdir(fallbackNotesDir, { recursive: true })
+      await syncNotesRootIfNeeded(fallbackNotesDir, true)
     } catch (fallbackError) {
       console.error('Failed to ensure default inspiration notes directory.', fallbackError)
       const friendlyError = new Error(
