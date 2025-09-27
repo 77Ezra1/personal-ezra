@@ -38,6 +38,7 @@ import {
   createNoteFile,
   createNoteFolder,
   deleteNote,
+  listNoteFolders,
   listNotes,
   loadNote,
   saveNote,
@@ -997,8 +998,22 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     if (!isDesktop) return
     try {
       setLoadingList(true)
-      const results = await listNotes()
+      const [results, folders] = await Promise.all([listNotes(), listNoteFolders()])
       setNotes(results)
+      setExtraFolders(() => {
+        const set = new Set(
+          folders
+            .map(folder =>
+              folder
+                .split('/')
+                .map(segment => segment.trim())
+                .filter(Boolean)
+                .join('/'),
+            )
+            .filter(Boolean),
+        )
+        return Array.from(set)
+      })
       setError(null)
     } catch (err) {
       console.error('Failed to load inspiration notes', err)

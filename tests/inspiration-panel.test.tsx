@@ -10,6 +10,7 @@ vi.mock('../src/env', () => ({
 }))
 
 const listNotesMock = vi.fn<[], Promise<unknown[]>>()
+const listNoteFoldersMock = vi.fn<[], Promise<string[]>>()
 const createNoteFileMock = vi.fn<(titleOrPath: string) => Promise<string>>()
 const createNoteFolderMock = vi.fn<(path: string) => Promise<string>>()
 const loadNoteMock = vi.fn<
@@ -56,6 +57,7 @@ vi.mock('../src/lib/inspiration-notes', () => ({
   createNoteFolder: (...args: Parameters<typeof createNoteFolderMock>) =>
     createNoteFolderMock(...args),
   deleteNote: (...args: Parameters<typeof deleteNoteMock>) => deleteNoteMock(...args),
+  listNoteFolders: () => listNoteFoldersMock(),
   listNotes: () => listNotesMock(),
   loadNote: (...args: Parameters<typeof loadNoteMock>) => loadNoteMock(...args),
   saveNote: (...args: Parameters<typeof saveNoteMock>) => saveNoteMock(...args),
@@ -77,6 +79,8 @@ function renderPanel() {
 beforeEach(() => {
   listNotesMock.mockReset()
   listNotesMock.mockResolvedValue([])
+  listNoteFoldersMock.mockReset()
+  listNoteFoldersMock.mockResolvedValue([])
   createNoteFileMock.mockReset()
   createNoteFolderMock.mockReset()
   loadNoteMock.mockReset()
@@ -100,9 +104,21 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+describe('InspirationPanel folder listing', () => {
+  it('renders folders returned from listNoteFolders even when there are no notes', async () => {
+    listNoteFoldersMock.mockResolvedValue(['Ideas'])
+
+    renderPanel()
+
+    expect(await screen.findByRole('button', { name: 'Ideas' })).toBeInTheDocument()
+  })
+})
+
 describe('InspirationPanel handleCreateFolder', () => {
 
   it('creates a folder, shows success toast, and refreshes notes', async () => {
+    listNoteFoldersMock.mockResolvedValueOnce([])
+    listNoteFoldersMock.mockResolvedValueOnce(['foo/bar'])
     createNoteFolderMock.mockResolvedValue('foo/bar')
     const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('  Foo /  Bar  ')
     const user = userEvent.setup()
