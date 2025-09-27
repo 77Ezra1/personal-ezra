@@ -13,6 +13,7 @@ const listNotesMock = vi.fn<[], Promise<unknown[]>>()
 const listNoteFoldersMock = vi.fn<[], Promise<string[]>>()
 const createNoteFileMock = vi.fn<(titleOrPath: string) => Promise<string>>()
 const createNoteFolderMock = vi.fn<(path: string) => Promise<string>>()
+const deleteNoteFolderMock = vi.fn<(path: string) => Promise<void>>()
 const loadNoteMock = vi.fn<
   [string],
   Promise<{
@@ -27,6 +28,7 @@ const loadNoteMock = vi.fn<
   }>
 >()
 const deleteNoteMock = vi.fn<(id: string) => Promise<void>>()
+const renameNoteFolderMock = vi.fn<(source: string, target: string) => Promise<string>>()
 const saveNoteMock = vi.fn<
   [
     {
@@ -56,10 +58,14 @@ vi.mock('../src/lib/inspiration-notes', () => ({
     createNoteFileMock(...args),
   createNoteFolder: (...args: Parameters<typeof createNoteFolderMock>) =>
     createNoteFolderMock(...args),
+  deleteNoteFolder: (...args: Parameters<typeof deleteNoteFolderMock>) =>
+    deleteNoteFolderMock(...args),
   deleteNote: (...args: Parameters<typeof deleteNoteMock>) => deleteNoteMock(...args),
   listNoteFolders: () => listNoteFoldersMock(),
   listNotes: () => listNotesMock(),
   loadNote: (...args: Parameters<typeof loadNoteMock>) => loadNoteMock(...args),
+  renameNoteFolder: (...args: Parameters<typeof renameNoteFolderMock>) =>
+    renameNoteFolderMock(...args),
   saveNote: (...args: Parameters<typeof saveNoteMock>) => saveNoteMock(...args),
 }))
 
@@ -83,8 +89,10 @@ beforeEach(() => {
   listNoteFoldersMock.mockResolvedValue([])
   createNoteFileMock.mockReset()
   createNoteFolderMock.mockReset()
+  deleteNoteFolderMock.mockReset()
   loadNoteMock.mockReset()
   deleteNoteMock.mockReset()
+  renameNoteFolderMock.mockReset()
   saveNoteMock.mockReset()
   saveNoteMock.mockImplementation(async draft => ({
     id: draft.id ?? 'note-id',
@@ -96,6 +104,8 @@ beforeEach(() => {
     excerpt: '',
     searchText: '',
   }))
+  deleteNoteFolderMock.mockResolvedValue()
+  renameNoteFolderMock.mockImplementation(async (_source, target) => target)
   queueInspirationBackupSyncMock.mockReset()
 })
 
@@ -159,6 +169,108 @@ describe('InspirationPanel handleCreateFolder', () => {
     expect(await screen.findByText('路径不可用')).toBeInTheDocument()
 
     promptSpy.mockRestore()
+  })
+})
+
+describe('InspirationPanel folder actions', () => {
+  it('renames a folder and refreshes the tree', async () => {
+    listNoteFoldersMock.mockResolvedValueOnce(['Projects'])
+    listNoteFoldersMock.mockResolvedValueOnce(['Projects-Renamed'])
+    renameNoteFolderMock.mockResolvedValue('Projects-Renamed')
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Projects-Renamed')
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: '重命名文件夹 Projects' }))
+
+    await waitFor(() => {
+      expect(renameNoteFolderMock).toHaveBeenCalledWith('Projects', 'Projects-Renamed')
+    })
+
+    await waitFor(() => {
+      expect(listNotesMock).toHaveBeenCalledTimes(2)
+    })
+
+    expect(await screen.findByText('文件夹已重命名')).toBeInTheDocument()
+    expect(await screen.findByText('已更新为：Projects-Renamed')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Projects-Renamed' })).toBeInTheDocument()
+
+    promptSpy.mockRestore()
+  })
+
+  it('shows an error toast when folder rename fails', async () => {
+    listNoteFoldersMock.mockResolvedValue(['Projects'])
+    renameNoteFolderMock.mockRejectedValue(new Error('目标已存在'))
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Projects-Renamed')
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: '重命名文件夹 Projects' }))
+
+    await waitFor(() => {
+      expect(renameNoteFolderMock).toHaveBeenCalledWith('Projects', 'Projects-Renamed')
+    })
+
+    expect(await screen.findByText('重命名失败')).toBeInTheDocument()
+    expect(await screen.findByText('目标已存在')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(listNotesMock).toHaveBeenCalledTimes(1)
+    })
+
+    promptSpy.mockRestore()
+  })
+
+  it('deletes a folder after confirmation and refreshes the tree', async () => {
+    listNoteFoldersMock.mockResolvedValueOnce(['Projects'])
+    listNoteFoldersMock.mockResolvedValueOnce([])
+    deleteNoteFolderMock.mockResolvedValue()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: '删除文件夹 Projects' }))
+
+    await waitFor(() => {
+      expect(deleteNoteFolderMock).toHaveBeenCalledWith('Projects')
+    })
+
+    await waitFor(() => {
+      expect(listNotesMock).toHaveBeenCalledTimes(2)
+    })
+
+    expect(await screen.findByText('文件夹已删除')).toBeInTheDocument()
+    expect(await screen.findByText('已从本地数据目录中移除：Projects')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Projects' })).not.toBeInTheDocument()
+    })
+
+    confirmSpy.mockRestore()
+  })
+
+  it('surfaces errors when folder deletion fails', async () => {
+    listNoteFoldersMock.mockResolvedValue(['Projects'])
+    deleteNoteFolderMock.mockRejectedValue(new Error('文件夹不存在'))
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: '删除文件夹 Projects' }))
+
+    await waitFor(() => {
+      expect(deleteNoteFolderMock).toHaveBeenCalledWith('Projects')
+    })
+
+    expect(await screen.findByText('删除失败')).toBeInTheDocument()
+    expect(await screen.findByText('文件夹不存在')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(listNotesMock).toHaveBeenCalledTimes(1)
+    })
+
+    confirmSpy.mockRestore()
   })
 })
 

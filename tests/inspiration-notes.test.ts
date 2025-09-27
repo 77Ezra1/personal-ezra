@@ -4,6 +4,10 @@ vi.mock('../src/env', () => ({
   isTauriRuntime: vi.fn(() => true),
 }))
 
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+}))
+
 vi.mock('../src/lib/storage-path', async () => {
   const actual = await vi.importActual<typeof import('../src/lib/storage-path')>('../src/lib/storage-path')
   return {
@@ -18,14 +22,17 @@ import {
   createNoteFile,
   createNoteFolder,
   deleteNote,
+  deleteNoteFolder,
   listNotes,
   loadNote,
+  renameNoteFolder,
   saveNote,
 } from '../src/lib/inspiration-notes'
 import { isTauriRuntime } from '../src/env'
 import { loadStoredDataPath, saveStoredDataPath } from '../src/lib/storage-path'
-import { readDir, readTextFile, writeTextFile, mkdir, remove } from '@tauri-apps/plugin-fs'
+import { readDir, readTextFile, writeTextFile, mkdir, remove, rename } from '@tauri-apps/plugin-fs'
 import { appDataDir, join } from '@tauri-apps/api/path'
+import { invoke } from '@tauri-apps/api/core'
 
 const isTauriRuntimeMock = vi.mocked(isTauriRuntime)
 const loadStoredDataPathMock = vi.mocked(loadStoredDataPath)
@@ -37,6 +44,8 @@ const mkdirMock = vi.mocked(mkdir)
 const removeMock = vi.mocked(remove)
 const appDataDirMock = vi.mocked(appDataDir)
 const joinMock = vi.mocked(join)
+const renameMock = vi.mocked(rename)
+const invokeMock = vi.mocked(invoke)
 
 type FileMap = Map<string, string>
 type FsDirEntry = Awaited<ReturnType<typeof readDir>>[number]
@@ -68,6 +77,9 @@ describe('inspiration notes storage', () => {
     loadStoredDataPathMock.mockReturnValue(null)
     appDataDirMock.mockResolvedValue('C:/mock/AppData/Personal')
     joinMock.mockImplementation(async (...parts: string[]) => normalizePath(parts.join('/')))
+    renameMock.mockReset()
+    invokeMock.mockReset()
+    invokeMock.mockResolvedValue(undefined)
     mkdirMock.mockImplementation(async (path: string) => {
       trackDirectory(directories, path)
     })
@@ -110,8 +122,68 @@ describe('inspiration notes storage', () => {
       })
       return entries
     })
-    removeMock.mockImplementation(async (path: string) => {
-      files.delete(normalizePath(path))
+    removeMock.mockImplementation(async (path: string, options?: { recursive?: boolean }) => {
+      const normalized = normalizePath(path)
+      if (options?.recursive) {
+        const hasTarget =
+          directories.has(normalized) ||
+          Array.from(files.keys()).some(key => key === normalized || key.startsWith(`${normalized}/`))
+        if (!hasTarget) {
+          throw new Error(`Path not found: ${normalized}`)
+        }
+        files.forEach((_, key) => {
+          if (key === normalized || key.startsWith(`${normalized}/`)) {
+            files.delete(key)
+          }
+        })
+        directories.forEach(dir => {
+          if (dir === normalized || dir.startsWith(`${normalized}/`)) {
+            directories.delete(dir)
+          }
+        })
+      } else {
+        if (!files.delete(normalized)) {
+          throw new Error(`File not found: ${normalized}`)
+        }
+      }
+    })
+    renameMock.mockImplementation(async (from: string, to: string) => {
+      const source = normalizePath(from)
+      const target = normalizePath(to)
+
+      if (directories.has(source)) {
+        if (directories.has(target)) {
+          throw new Error(`Target already exists: ${target}`)
+        }
+        const affectedDirs = Array.from(directories).filter(
+          dir => dir === source || dir.startsWith(`${source}/`),
+        )
+        if (affectedDirs.length === 0) {
+          throw new Error(`Directory not found: ${source}`)
+        }
+        affectedDirs.forEach(dir => {
+          directories.delete(dir)
+        })
+        affectedDirs.forEach(dir => {
+          const suffix = dir.slice(source.length)
+          const next = `${target}${suffix}`
+          trackDirectory(directories, next)
+        })
+        const fileEntries = Array.from(files.entries()).filter(
+          ([key]) => key === source || key.startsWith(`${source}/`),
+        )
+        fileEntries.forEach(([key, value]) => {
+          const suffix = key.slice(source.length)
+          files.delete(key)
+          files.set(`${target}${suffix}`, value)
+        })
+      } else if (files.has(source)) {
+        const content = files.get(source) as string
+        files.delete(source)
+        files.set(target, content)
+      } else {
+        throw new Error(`File not found: ${source}`)
+      }
     })
   })
 
@@ -155,6 +227,47 @@ describe('inspiration notes storage', () => {
     expect(directories.has('C:/mock/AppData/Personal/data/notes/规划')).toBe(true)
     expect(directories.has('C:/mock/AppData/Personal/data/notes/规划/2024-OKR')).toBe(true)
     expect(Array.from(directories).every(path => !path.startsWith('D:/Backups'))).toBe(true)
+  })
+
+  it('deletes an existing folder recursively', async () => {
+    await createNoteFolder('Projects/Ideas')
+    await createNoteFile('Projects/Ideas/First.md')
+
+    await deleteNoteFolder('Projects')
+
+    expect(removeMock).toHaveBeenCalledWith('C:/mock/AppData/Personal/data/notes/Projects', {
+      recursive: true,
+    })
+    expect(Array.from(files.keys()).every(path => !path.includes('/Projects/'))).toBe(true)
+    expect(Array.from(directories).every(path => !path.includes('/Projects'))).toBe(true)
+  })
+
+  it('throws friendly error when deleting a non-existent folder', async () => {
+    await expect(deleteNoteFolder('Missing')).rejects.toThrow('指定的文件夹不存在或已被删除。')
+  })
+
+  it('renames an existing folder and moves its contents', async () => {
+    await createNoteFolder('Projects/Ideas')
+    await createNoteFile('Projects/Ideas/First.md')
+
+    const renamed = await renameNoteFolder('Projects', 'Archive/Renamed')
+    expect(renamed).toBe('Archive/Renamed')
+
+    expect(renameMock).toHaveBeenCalledWith(
+      'C:/mock/AppData/Personal/data/notes/Projects',
+      'C:/mock/AppData/Personal/data/notes/Archive/Renamed',
+    )
+    expect(Array.from(directories).some(path => path.endsWith('/data/notes/Archive'))).toBe(true)
+    expect(Array.from(directories).some(path => path.endsWith('/data/notes/Archive/Renamed'))).toBe(true)
+    expect(Array.from(files.keys())).toContain(
+      'C:/mock/AppData/Personal/data/notes/Archive/Renamed/Ideas/First.md',
+    )
+  })
+
+  it('throws friendly error when renaming a missing folder', async () => {
+    await expect(renameNoteFolder('Missing', 'Archive/Target')).rejects.toThrow(
+      '指定的文件夹不存在或已被删除。',
+    )
   })
 
   it('creates markdown file and lists it from default directory', async () => {
