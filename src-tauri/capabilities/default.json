@@ -41,7 +41,9 @@
     {
       "identifier": "fs:allow-remove",
       "allow": [
-        { "path": "$APPDATA/vault/*" }
+        { "path": "$APPDATA/vault/*" },
+        { "path": "$APPDATA/data/*" },
+        { "path": "$HOME/*" }
       ]
     },
     {
