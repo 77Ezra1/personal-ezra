@@ -626,7 +626,7 @@ async function removeExistingNoteFiles(baseDir: string) {
   for (const relativeDir of sortedDirectories) {
     try {
       const target = await join(baseDir, ...relativeDir.split('/'))
-      await remove(target)
+      await remove(target, { recursive: true })
     } catch (error) {
       if (!isMissingFsEntryError(error)) {
         continue
