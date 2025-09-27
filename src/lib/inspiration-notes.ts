@@ -343,6 +343,33 @@ async function collectNoteFiles(
   return files
 }
 
+async function collectNoteFolders(
+  baseDir: string,
+  relativeSegments: string[] = [],
+): Promise<string[]> {
+  const folders: string[] = []
+  if (relativeSegments.length > 0) {
+    folders.push(relativeSegments.join('/'))
+  }
+
+  const currentDir = relativeSegments.length > 0 ? await join(baseDir, ...relativeSegments) : baseDir
+  let entries: Awaited<ReturnType<typeof readDir>> = []
+  try {
+    entries = await readDir(currentDir)
+  } catch {
+    return folders
+  }
+
+  for (const entry of entries) {
+    if (entry.isDirectory) {
+      const nested = await collectNoteFolders(baseDir, [...relativeSegments, entry.name])
+      folders.push(...nested)
+    }
+  }
+
+  return folders
+}
+
 function normalizeNoteId(id: string) {
   const trimmed = id.trim()
   if (!trimmed) {
@@ -683,6 +710,27 @@ export async function listNotes(): Promise<NoteSummary[]> {
   })
 
   return summaries
+}
+
+export async function listNoteFolders(): Promise<string[]> {
+  assertTauriRuntime()
+  const dir = await ensureNotesDirectory()
+  const folders = await collectNoteFolders(dir)
+  const unique = Array.from(
+    new Set(
+      folders
+        .map(folder =>
+          folder
+            .split('/')
+            .map(segment => segment.trim())
+            .filter(Boolean)
+            .join('/'),
+        )
+        .filter(Boolean),
+    ),
+  )
+  unique.sort((a, b) => a.localeCompare(b))
+  return unique
 }
 
 export async function loadNote(id: string): Promise<NoteDetail> {
