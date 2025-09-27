@@ -13,7 +13,8 @@
       "allow": [
         { "path": "$DOCUMENT/*" },
         { "path": "$APPDATA/vault/*" },
-        { "path": "$HOME/*" }
+        { "path": "$HOME/*" },
+        { "path": "$ENV:NOTES_ROOT/**" }
       ]
     },
     {
@@ -21,21 +22,24 @@
       "allow": [
         { "path": "$DOCUMENT/*" },
         { "path": "$APPDATA/vault/*" },
-        { "path": "$HOME/*" }
+        { "path": "$HOME/*" },
+        { "path": "$ENV:NOTES_ROOT/**" }
       ]
     },
     {
       "identifier": "fs:allow-write-file",
       "allow": [
         { "path": "$APPDATA/vault/*" },
-        { "path": "$HOME/*" }
+        { "path": "$HOME/*" },
+        { "path": "$ENV:NOTES_ROOT/**" }
       ]
     },
     {
       "identifier": "fs:allow-mkdir",
       "allow": [
         { "path": "$APPDATA/vault/*" },
-        { "path": "$HOME/*" }
+        { "path": "$HOME/*" },
+        { "path": "$ENV:NOTES_ROOT/**" }
       ]
     },
     {
@@ -48,7 +52,8 @@
       "identifier": "fs:allow-exists",
       "allow": [
         { "path": "$APPDATA/vault/*" },
-        { "path": "$HOME/*" }
+        { "path": "$HOME/*" },
+        { "path": "$ENV:NOTES_ROOT/**" }
       ]
     }
   ]
