@@ -10,7 +10,8 @@
         "allow": [
           "$APPDATA/**",
           "$HOME/**",
-          "$RESOURCE/**"
+          "$RESOURCE/**",
+          "$ENV:NOTES_ROOT/**"
         ]
       }
     },
