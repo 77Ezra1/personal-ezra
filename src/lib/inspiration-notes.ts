@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import { mkdir, readDir, readTextFile, remove, writeTextFile } from '@tauri-apps/plugin-fs'
+import { mkdir, readDir, readTextFile, remove, rename, writeTextFile } from '@tauri-apps/plugin-fs'
 import { appDataDir, join } from '@tauri-apps/api/path'
 
 import { isTauriRuntime } from '../env'
@@ -909,6 +909,76 @@ export async function createNoteFolder(path: string): Promise<string> {
   await mkdir(targetDir, { recursive: true })
 
   return sanitized
+}
+
+export async function deleteNoteFolder(path: string): Promise<void> {
+  assertTauriRuntime()
+  const dir = await ensureNotesDirectory()
+  const sanitized = sanitizeDirectoryPath(path)
+  const segments = sanitized.split('/').filter(Boolean)
+  if (segments.length === 0) {
+    throw new Error('无法删除根目录。')
+  }
+
+  const targetDir = await join(dir, ...segments)
+
+  try {
+    await remove(targetDir, { recursive: true })
+  } catch (error) {
+    if (isMissingFsEntryError(error)) {
+      const friendlyError = new Error('指定的文件夹不存在或已被删除。')
+      Reflect.set(friendlyError, 'cause', error)
+      throw friendlyError
+    }
+    throw error
+  }
+}
+
+export async function renameNoteFolder(source: string, target: string): Promise<string> {
+  assertTauriRuntime()
+  const dir = await ensureNotesDirectory()
+  const sourceSanitized = sanitizeDirectoryPath(source)
+  const targetSanitized = sanitizeDirectoryPath(target)
+
+  const sourceSegments = sourceSanitized.split('/').filter(Boolean)
+  if (sourceSegments.length === 0) {
+    throw new Error('无法重命名根目录。')
+  }
+
+  if (sourceSanitized === targetSanitized) {
+    return targetSanitized
+  }
+
+  if (targetSanitized.startsWith(`${sourceSanitized}/`)) {
+    throw new Error('无法将文件夹移动到其自身或子目录下。')
+  }
+
+  const targetSegments = targetSanitized.split('/').filter(Boolean)
+  if (targetSegments.length === 0) {
+    throw new Error('文件夹名称不能为空')
+  }
+
+  const sourceDir = await join(dir, ...sourceSegments)
+  const targetDir = await join(dir, ...targetSegments)
+
+  const parentSegments = targetSegments.slice(0, -1)
+  if (parentSegments.length > 0) {
+    const parentDir = await join(dir, ...parentSegments)
+    await mkdir(parentDir, { recursive: true })
+  }
+
+  try {
+    await rename(sourceDir, targetDir)
+  } catch (error) {
+    if (isMissingFsEntryError(error)) {
+      const friendlyError = new Error('指定的文件夹不存在或已被删除。')
+      Reflect.set(friendlyError, 'cause', error)
+      throw friendlyError
+    }
+    throw error
+  }
+
+  return targetSanitized
 }
 
 export async function deleteNote(id: string): Promise<void> {

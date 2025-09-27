@@ -37,10 +37,12 @@ import {
   NOTE_FEATURE_DISABLED_MESSAGE,
   createNoteFile,
   createNoteFolder,
+  deleteNoteFolder,
   deleteNote,
   listNoteFolders,
   listNotes,
   loadNote,
+  renameNoteFolder,
   saveNote,
   type NoteDraft,
   type NoteDetail,
@@ -310,6 +312,8 @@ type InspirationNoteListProps = {
   extraFolders: string[]
   expandedFolders: string[]
   onToggleFolder: (path: string) => void
+  onRenameFolder: (path: string) => void
+  onDeleteFolder: (path: string) => void
 }
 
 function InspirationNoteList({
@@ -323,6 +327,8 @@ function InspirationNoteList({
   extraFolders,
   expandedFolders,
   onToggleFolder,
+  onRenameFolder,
+  onDeleteFolder,
 }: InspirationNoteListProps) {
   const hasSearch = Boolean(searchTerm.trim())
   const hasActiveFilters = hasTagFilter || hasSearch
@@ -351,23 +357,50 @@ function InspirationNoteList({
     return nodes.map(node => {
       if (node.type === 'folder') {
         const isExpanded = expandedSet.has(node.path)
+        const canModify = Boolean(node.path)
         return (
           <div key={`folder-${node.path}`} className="space-y-2">
-            <button
-              type="button"
-              onClick={() => onToggleFolder(node.path)}
-              className="group flex w-full items-center gap-2 rounded-2xl border border-border/60 bg-surface/70 py-2 pr-3 text-left text-sm font-medium text-text transition hover:border-border hover:bg-surface-hover"
+            <div
+              className="group flex w-full items-center gap-2 rounded-2xl border border-border/60 bg-surface/70 py-2 pr-2 text-sm font-medium text-text transition hover:border-border hover:bg-surface-hover"
               style={indentStyle(depth)}
-              aria-expanded={isExpanded}
             >
-              {isExpanded ? (
-                <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted transition group-hover:text-text" aria-hidden />
-              ) : (
-                <ChevronRightIcon className="h-4 w-4 shrink-0 text-muted transition group-hover:text-text" aria-hidden />
+              <button
+                type="button"
+                onClick={() => onToggleFolder(node.path)}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                aria-expanded={isExpanded}
+              >
+                {isExpanded ? (
+                  <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted transition group-hover:text-text" aria-hidden />
+                ) : (
+                  <ChevronRightIcon className="h-4 w-4 shrink-0 text-muted transition group-hover:text-text" aria-hidden />
+                )}
+                <FolderIcon className="h-4 w-4 shrink-0 text-muted transition group-hover:text-text" aria-hidden />
+                <span className="truncate text-sm">{node.name}</span>
+              </button>
+              {canModify && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onRenameFolder(node.path)}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted transition hover:bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    aria-label={`重命名文件夹 ${node.name}`}
+                    title="重命名文件夹"
+                  >
+                    <PencilIcon className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDeleteFolder(node.path)}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted transition hover:bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-error/40"
+                    aria-label={`删除文件夹 ${node.name}`}
+                    title="删除文件夹"
+                  >
+                    <TrashIcon className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                </div>
               )}
-              <FolderIcon className="h-4 w-4 shrink-0 text-muted transition group-hover:text-text" aria-hidden />
-              <span className="truncate text-sm">{node.name}</span>
-            </button>
+            </div>
             {isExpanded && (
               node.children.length > 0 ? (
                 <div className="space-y-2">{renderNodes(node.children, depth + 1)}</div>
@@ -1237,6 +1270,77 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     }
   }, [expandFolderPath, refreshNotes, showToast])
 
+  const handleRenameFolder = useCallback(
+    async (path: string) => {
+      if (typeof window === 'undefined') return
+      const segments = path.split('/').filter(Boolean)
+      const currentName = segments.at(-1) ?? path
+      const parentPath = segments.slice(0, -1).join('/')
+      const input = window.prompt(
+        '请输入新的文件夹名称或路径（可使用 / 表示层级）',
+        currentName,
+      )
+      if (input === null) return
+      const normalizedInput = input
+        .split('/')
+        .map(segment => segment.trim())
+        .filter(Boolean)
+        .join('/')
+      if (!normalizedInput) {
+        showToast({
+          title: '重命名失败',
+          description: '文件夹名称不能为空，请重新输入。',
+          variant: 'error',
+        })
+        return
+      }
+
+      const nextPath = normalizedInput.includes('/')
+        ? normalizedInput
+        : parentPath
+        ? `${parentPath}/${normalizedInput}`
+        : normalizedInput
+
+      try {
+        const sanitized = await renameNoteFolder(path, nextPath)
+        await refreshNotes()
+        expandFolderPath(sanitized)
+        showToast({
+          title: '文件夹已重命名',
+          description: `已更新为：${sanitized}`,
+          variant: 'success',
+        })
+      } catch (err) {
+        console.error('Failed to rename inspiration note folder', err)
+        const message = err instanceof Error ? err.message : '重命名文件夹失败，请稍后再试。'
+        showToast({ title: '重命名失败', description: message, variant: 'error' })
+      }
+    },
+    [expandFolderPath, refreshNotes, showToast],
+  )
+
+  const handleDeleteFolder = useCallback(
+    async (path: string) => {
+      if (typeof window === 'undefined') return
+      const confirmed = window.confirm('确定要删除该文件夹吗？文件夹中的笔记也会被一并删除。')
+      if (!confirmed) return
+      try {
+        await deleteNoteFolder(path)
+        await refreshNotes()
+        showToast({
+          title: '文件夹已删除',
+          description: `已从本地数据目录中移除：${path}`,
+          variant: 'success',
+        })
+      } catch (err) {
+        console.error('Failed to delete inspiration note folder', err)
+        const message = err instanceof Error ? err.message : '删除文件夹失败，请稍后再试。'
+        showToast({ title: '删除失败', description: message, variant: 'error' })
+      }
+    },
+    [refreshNotes, showToast],
+  )
+
   const handleTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const { value } = event.currentTarget
     setDraft(prev => ({ ...prev, title: value }))
@@ -1500,6 +1604,8 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
           extraFolders={extraFolders}
           expandedFolders={expandedFolders}
           onToggleFolder={handleFolderToggle}
+          onRenameFolder={handleRenameFolder}
+          onDeleteFolder={handleDeleteFolder}
         />
       </div>
       <div className="flex flex-col gap-6 lg:col-span-1">
