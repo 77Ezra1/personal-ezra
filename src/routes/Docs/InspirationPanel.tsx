@@ -815,6 +815,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const skipNextAutoSaveRef = useRef(false)
   const lastAttemptedSnapshotRef = useRef<string | null>(null)
   const knownFoldersRef = useRef<Set<string>>(new Set())
+  const autoExpandedRef = useRef(false)
 
   const availableTags = useMemo(() => {
     const seen = new Set<string>()
@@ -910,12 +911,24 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
 
   useEffect(() => {
     const allPaths = collectAllFolderPaths()
-    if (!hasExpandedFolders) {
-      if (allPaths.size > 0) {
-        const initial = Array.from(allPaths).sort((a, b) => a.localeCompare(b))
-        setExpandedFolders(initial)
+
+    if (allPaths.size === 0) {
+      knownFoldersRef.current = new Set()
+      autoExpandedRef.current = false
+      if (hasExpandedFolders) {
+        setExpandedFolders([])
       }
+      return
+    }
+
+    if (!hasExpandedFolders) {
       knownFoldersRef.current = new Set(allPaths)
+      if (autoExpandedRef.current) {
+        return
+      }
+      autoExpandedRef.current = true
+      const initial = Array.from(allPaths).sort((a, b) => a.localeCompare(b))
+      setExpandedFolders(initial)
       return
     }
 
