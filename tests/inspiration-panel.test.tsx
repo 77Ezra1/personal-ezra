@@ -122,6 +122,41 @@ describe('InspirationPanel folder listing', () => {
 
     expect(await screen.findByRole('button', { name: 'Ideas' })).toBeInTheDocument()
   })
+
+  it('keeps folders collapsed after the user closes the last expanded folder', async () => {
+    const note = {
+      id: 'Projects/Project Plan',
+      title: 'Project Plan',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      excerpt: '',
+      searchText: '',
+      tags: [],
+    }
+    listNotesMock.mockResolvedValue([note])
+    listNoteFoldersMock.mockResolvedValue(['Projects'])
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    const folderButton = await screen.findByRole('button', { name: 'Projects' })
+
+    await waitFor(() => {
+      expect(folderButton).toHaveAttribute('aria-expanded', 'true')
+    })
+
+    expect(await screen.findByRole('button', { name: /Project Plan/ })).toBeInTheDocument()
+
+    await user.click(folderButton)
+
+    await waitFor(() => {
+      expect(folderButton).toHaveAttribute('aria-expanded', 'false')
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /Project Plan/ })).not.toBeInTheDocument()
+    })
+  })
 })
 
 describe('InspirationPanel handleCreateFolder', () => {
