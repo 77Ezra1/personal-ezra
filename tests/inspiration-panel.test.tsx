@@ -150,12 +150,59 @@ describe('InspirationPanel folder listing', () => {
     await user.click(folderButton)
 
     await waitFor(() => {
+      expect(folderButton).toHaveAttribute('aria-expanded', 'true')
+      expect(folderButton).toHaveAttribute('aria-current', 'true')
+    })
+
+    const collapseButton = await screen.findByRole('button', { name: '折叠 Projects' })
+
+    await user.click(collapseButton)
+
+    await waitFor(() => {
       expect(folderButton).toHaveAttribute('aria-expanded', 'false')
     })
 
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /Project Plan/ })).not.toBeInTheDocument()
     })
+  })
+
+  it('highlights the selected folder without collapsing it', async () => {
+    const note = {
+      id: 'Projects/Project Plan',
+      title: 'Project Plan',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      excerpt: '',
+      searchText: '',
+      tags: [],
+    }
+    listNotesMock.mockResolvedValue([note])
+    listNoteFoldersMock.mockResolvedValue(['Projects', 'Ideas'])
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    const folderButton = await screen.findByRole('button', { name: 'Projects' })
+
+    await waitFor(() => {
+      expect(folderButton).toHaveAttribute('aria-expanded', 'true')
+    })
+
+    const folderRow = folderButton.parentElement as HTMLElement | null
+    expect(folderRow).not.toBeNull()
+    if (!folderRow) throw new Error('Expected folder row to exist')
+    expect(folderRow).not.toHaveClass('border-primary')
+
+    await user.click(folderButton)
+
+    await waitFor(() => {
+      expect(folderButton).toHaveAttribute('aria-current', 'true')
+      expect(folderButton).toHaveAttribute('aria-expanded', 'true')
+    })
+
+    expect(folderRow).toHaveClass('border-primary')
+    expect(await screen.findByRole('button', { name: /Project Plan/ })).toBeInTheDocument()
   })
 })
 
@@ -354,6 +401,56 @@ describe('InspirationPanel handleCreateFile', () => {
     expect(await screen.findByText('已新建 Markdown 文件：Projects/Foo.md')).toBeInTheDocument()
     expect(await screen.findByDisplayValue('项目规划')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: '项目规划' })).toBeInTheDocument()
+
+    promptSpy.mockRestore()
+  })
+
+  it('prefills the create file prompt with the active folder and appends it when missing', async () => {
+    listNotesMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'Ideas/New Note.md',
+          title: '新建笔记',
+          createdAt: 1,
+          updatedAt: 1,
+          excerpt: '',
+          searchText: '',
+          tags: [],
+        },
+      ] as unknown[])
+    listNoteFoldersMock.mockResolvedValue(['Ideas'])
+    createNoteFileMock.mockResolvedValue('Ideas/New Note.md')
+    loadNoteMock.mockResolvedValue({
+      id: 'Ideas/New Note.md',
+      title: '新建笔记',
+      content: '',
+      tags: [],
+      createdAt: 1,
+      updatedAt: 1,
+      excerpt: '',
+      searchText: '',
+    })
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    const ideasFolderButton = await screen.findByRole('button', { name: 'Ideas' })
+    await user.click(ideasFolderButton)
+
+    const promptSpy = vi
+      .spyOn(window, 'prompt')
+      .mockImplementation((message, defaultValue) => {
+        expect(message).toBe('请输入要创建的 Markdown 文件名称（可使用 / 表示层级）')
+        expect(defaultValue).toBe('Ideas/')
+        return 'New Note'
+      })
+
+    await user.click(screen.getByRole('button', { name: '新建 Markdown 笔记' }))
+
+    await waitFor(() => {
+      expect(createNoteFileMock).toHaveBeenCalledWith('Ideas/New Note')
+    })
 
     promptSpy.mockRestore()
   })

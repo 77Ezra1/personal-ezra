@@ -298,6 +298,8 @@ type InspirationNoteListProps = {
   loading: boolean
   selectedId: string | null
   onSelect: (noteId: string) => void
+  activeFolderPath: string
+  onSelectFolder: (path: string) => void
   hasTagFilter: boolean
   searchTerm: string
   extraFolders: string[]
@@ -313,6 +315,8 @@ function InspirationNoteList({
   loading,
   selectedId,
   onSelect,
+  activeFolderPath,
+  onSelectFolder,
   hasTagFilter,
   searchTerm,
   extraFolders,
@@ -349,24 +353,47 @@ function InspirationNoteList({
       if (node.type === 'folder') {
         const isExpanded = expandedSet.has(node.path)
         const canModify = Boolean(node.path)
+        const isActive = activeFolderPath === node.path
+        const folderLabel = node.name || '文件夹'
         return (
           <div key={`folder-${node.path}`} className="space-y-2">
             <div
-              className="group flex w-full items-center gap-2 rounded-2xl border border-border/60 bg-surface/70 py-2 pr-2 text-sm font-medium text-text transition hover:border-border hover:bg-surface-hover"
+              className={clsx(
+                'group flex w-full items-center gap-2 rounded-2xl border border-border/60 bg-surface/70 py-2 pr-2 text-sm font-medium text-text transition hover:border-border hover:bg-surface-hover',
+                isActive && 'border-primary bg-primary/10 text-primary',
+              )}
               style={indentStyle(depth)}
             >
               <button
                 type="button"
                 onClick={() => onToggleFolder(node.path)}
-                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted transition hover:bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                aria-label={isExpanded ? `折叠 ${folderLabel}` : `展开 ${folderLabel}`}
                 aria-expanded={isExpanded}
               >
                 {isExpanded ? (
-                  <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted transition group-hover:text-text" aria-hidden />
+                  <ChevronDownIcon className="h-4 w-4 shrink-0 transition group-hover:text-text" aria-hidden />
                 ) : (
-                  <ChevronRightIcon className="h-4 w-4 shrink-0 text-muted transition group-hover:text-text" aria-hidden />
+                  <ChevronRightIcon className="h-4 w-4 shrink-0 transition group-hover:text-text" aria-hidden />
                 )}
-                <FolderIcon className="h-4 w-4 shrink-0 text-muted transition group-hover:text-text" aria-hidden />
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectFolder(node.path)}
+                className={clsx(
+                  'flex min-w-0 flex-1 items-center gap-2 rounded-full px-2 py-1 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+                  isActive ? 'text-primary' : 'text-text',
+                )}
+                aria-current={isActive ? 'true' : undefined}
+                aria-expanded={isExpanded}
+              >
+                <FolderIcon
+                  className={clsx(
+                    'h-4 w-4 shrink-0 transition',
+                    isActive ? 'text-primary' : 'text-muted group-hover:text-text',
+                  )}
+                  aria-hidden
+                />
                 <span className="truncate text-sm">{node.name}</span>
               </button>
               {canModify && (
@@ -802,6 +829,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [extraFolders, setExtraFolders] = useState<string[]>([])
   const [expandedFolders, setExpandedFolders] = useState<string[]>([])
+  const [activeFolderPath, setActiveFolderPath] = useState('')
   const [loadingList, setLoadingList] = useState(false)
   const [loadingNote, setLoadingNote] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -907,7 +935,25 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     })
   }, [])
 
+  const handleSelectFolder = useCallback(
+    (path: string) => {
+      setActiveFolderPath(path)
+      if (path) {
+        expandFolderPath(path)
+      }
+    },
+    [expandFolderPath],
+  )
+
   const hasExpandedFolders = expandedFolders.length > 0
+
+  useEffect(() => {
+    if (!activeFolderPath) return
+    const allPaths = collectAllFolderPaths()
+    if (!allPaths.has(activeFolderPath)) {
+      setActiveFolderPath('')
+    }
+  }, [activeFolderPath, collectAllFolderPaths])
 
   useEffect(() => {
     const allPaths = collectAllFolderPaths()
@@ -1176,14 +1222,19 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     if (!isDesktop) return
     if (typeof window === 'undefined') return
 
-    const raw = window.prompt('请输入要创建的 Markdown 文件名称（可使用 / 表示层级）')
+    const promptDefault = activeFolderPath ? `${activeFolderPath}/` : ''
+    const raw = window.prompt(
+      '请输入要创建的 Markdown 文件名称（可使用 / 表示层级）',
+      promptDefault,
+    )
     if (raw === null) return
 
-    const normalized = raw
+    const normalizedSegments = raw
       .split('/')
       .map(segment => segment.trim())
       .filter(Boolean)
-      .join('/')
+
+    const normalized = normalizedSegments.join('/')
 
     if (!normalized) {
       showToast({
@@ -1194,15 +1245,20 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       return
     }
 
+    const hasExplicitFolder = normalized.includes('/')
+    const targetPath =
+      activeFolderPath && !hasExplicitFolder ? `${activeFolderPath}/${normalized}` : normalized
+
     setLoadingNote(true)
     try {
-      const createdPath = await createNoteFile(normalized)
+      const createdPath = await createNoteFile(targetPath)
       const parentPath = createdPath
         .split('/')
         .slice(0, -1)
         .join('/')
       if (parentPath) {
         expandFolderPath(parentPath)
+        setActiveFolderPath(parentPath)
       }
 
       await refreshNotes()
@@ -1229,6 +1285,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       setLoadingNote(false)
     }
   }, [
+    activeFolderPath,
     expandFolderPath,
     isDesktop,
     refreshNotes,
@@ -1261,6 +1318,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         return Array.from(set)
       })
       expandFolderPath(sanitized)
+      setActiveFolderPath(sanitized)
       await refreshNotes()
       showToast({
         title: '文件夹已创建',
@@ -1309,6 +1367,15 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         const sanitized = await renameNoteFolder(path, nextPath)
         await refreshNotes()
         expandFolderPath(sanitized)
+        setActiveFolderPath(prev => {
+          if (!prev) return prev
+          if (prev === path) return sanitized
+          if (prev.startsWith(`${path}/`)) {
+            const suffix = prev.slice(path.length + 1)
+            return suffix ? `${sanitized}/${suffix}` : sanitized
+          }
+          return prev
+        })
         showToast({
           title: '文件夹已重命名',
           description: `已更新为：${sanitized}`,
@@ -1331,6 +1398,13 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       try {
         await deleteNoteFolder(path)
         await refreshNotes()
+        setActiveFolderPath(prev => {
+          if (!prev) return prev
+          if (prev === path || prev.startsWith(`${path}/`)) {
+            return ''
+          }
+          return prev
+        })
         showToast({
           title: '文件夹已删除',
           description: `已从本地数据目录中移除：${path}`,
@@ -1603,6 +1677,8 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
           onSelect={noteId => {
             void handleSelectNote(noteId)
           }}
+          activeFolderPath={activeFolderPath}
+          onSelectFolder={handleSelectFolder}
           hasTagFilter={hasTagFilter}
           searchTerm={searchTerm}
           extraFolders={extraFolders}
