@@ -88,3 +88,129 @@ GitHub 备份用于在本地冗余之外，将加密后的 `pms-backup-*.json` �
 - 构建时预缓存核心资源（HTML、JS、CSS、图标、字体等），首次访问后即可离线打开。
 - Workbox 运行时缓存 `/api/*` 与数据请求（JSON、`/data/` 路径），在网络不可用时回退到本地缓存。
 - 所有导航请求自动回退到应用壳（`index.html`），确保刷新或直接访问路由时也能离线渲染页面。
+
+下面是**可直接粘贴到官网或 README 的 Markdown 文档**（含分级标题、代码块、可折叠详情、占位符可替换）。不依赖脚本，适合静态站点。
+
+---
+
+# 📥 Personal 安装指引
+
+> 目标：在**不签名/未公证**的情况下，用户也能顺利安装并运行 Personal。
+> 如要「零打扰」安装体验，请使用 Apple Developer ID 进行**签名与公证**后再分发。
+
+---
+
+## 下载
+
+* **macOS 主下载（GitHub）**：`https://github.com/77Ezra1/pms-web/releases/download/personal/Personal_0.1.0_aarch64.dmg`
+* **macOS 国内镜像**：`https://gitee.com/ezra1/personal/releases/download/personal/Personal_0.1.0_aarch64.dmg`
+* **Windows 主下载（GitHub）**：`https://github.com/77Ezra1/pms-web/releases/download/personal/Personal_0.1.0_x64-setup.exe`
+* **Windows 国内镜像**：`https://gitee.com/ezra1/personal/releases/download/personal/Personal_0.1.0_x64-setup.exe`
+
+> 版本：`personal-0.1.0`　发布日期：`09/30/2025`
+> 系统要求：macOS `macOS 13 Ventura 或更高（Intel 64-bit 或 Apple Silicon）`+ / Windows `Windows 10 20H2（19042）或更高，或 Windows 11（仅 64-bit）`+
+> CPU 架构：x86_64 / arm64（建议 64-bit）
+> 内存：≥ 4 GB
+> 存储空间：可用 300 MB（不含你的笔记/附件数据）
+
+> 推荐配置：
+> 内存：8 GB 或以上
+> 存储：SSD，留出 ≥ 1 GB 余量便于数据增长
+> 显示：1920 × 1080 及以上
+
+---
+
+## macOS 安装（未签名 App 的正确姿势）
+
+1. **安装包**
+
+   * 下载 `Personal.dmg` → 双击挂载 → 将 `Personal.app` 拖入 **应用程序**（/Applications）。
+
+2. **首次打开（绕过 Gatekeeper）**
+
+   * 在「应用程序」里**右键**（或按住 Control 点击）**Personal** → **打开** → 选择 **仍要打开**，输入一次系统密码。
+
+3. **若仍提示“已损坏，无法打开”**
+
+   * 打开「终端」，执行：
+
+     ```bash
+     xattr -r -d com.apple.quarantine /Applications/Personal.app
+     ```
+   * 然后再双击运行。
+
+<details>
+<summary>📎 备用做法：在“隐私与安全性”里允许</summary>
+
+系统设置 → **隐私与安全性** → 找到「已阻止来自未验证开发者的 App」提示 → 点击 **仍要打开**。
+
+</details>
+
+---
+
+## Windows 安装（SmartScreen 提示的处理）
+
+1. **运行安装包**
+
+   * 下载并双击 `Personal.exe`。
+
+2. **如果出现「Windows 已保护您的电脑」**
+
+   * 点击 **更多信息** → **仍要运行**。
+
+3. **按向导完成安装**
+
+   * 选择安装路径 → 下一步 → 完成；在桌面/开始菜单启动 **Personal**。
+
+---
+
+## 验证文件完整性（可选，推荐）
+
+> 确认下载未损坏、未被篡改。
+
+**macOS：**
+
+```bash
+shasum -a 256 ~/Downloads/Personal.dmg
+# 输出应与 SHA256_MAC 一致
+```
+
+**Windows（PowerShell）：**
+
+```powershell
+Get-FileHash .\Personal.exe -Algorithm SHA256
+# Hash 值应与 SHA256_WIN 一致
+```
+
+---
+
+## 常见问题（FAQ）
+
+**Q1：macOS 仍然报“已损坏，要移到废纸篓”？**
+A：说明文件带有 `quarantine` 标签或未通过首次“右键打开”。按上面的 `xattr` 命令清除后再开；或在“隐私与安全性”中点击**仍要打开**。
+
+**Q2：Windows 提示来源不明/被拦截？**
+A：这是 SmartScreen 对未签名程序的默认拦截。点击**更多信息 → 仍要运行**即可。若公司策略阻拦，请在安全软件里将安装包标记为信任。
+
+**Q3：为什么没有开发者签名？安全吗？**
+A：应用为**本地优先**、不开网络依赖；未签名仅影响首次安装提示，不代表不安全。若需「零提示」体验，请使用带签名与公证的版本（待发布）。
+
+**Q4：打开后是空白/界面异常？**
+A：请确认系统版本满足要求；删除旧配置后重装。若问题复现，附带系统版本与日志反馈。
+
+---
+
+## 卸载
+
+**macOS：** 退出应用 → 从 **应用程序** 删除 `Personal.app`。
+**Windows：** 在「设置 → 应用」或「控制面板 → 程序和功能」中卸载 **Personal**。
+
+> 可选：删除用户数据/配置文件（卸载不会自动清理）。路径视你的应用实现而定（例如本地数据库/笔记目录），请在官网“隐私说明”中注明。
+
+---
+
+## 隐私与安全
+
+* 核心数据默认**仅存储在本地设备**，官方**不收集**个人信息。
+* App 可能请求本地文件系统权限以读取/写入你的笔记与配置。
+* 若后续提供云同步，将以**默认关闭**为前提，需用户主动开启。
