@@ -476,7 +476,7 @@ function InspirationNoteList({
   }
 
   return (
-    <section className="space-y-4 rounded-3xl border border-border bg-surface p-6 shadow-inner shadow-black/10 transition dark:shadow-black/40">
+    <section className="flex flex-col gap-4 rounded-3xl border border-border bg-surface p-6 shadow-inner shadow-black/10 transition dark:shadow-black/40">
       <div className="flex items-center justify-between text-xs text-muted">
         <span>笔记列表</span>
         <span>{statusText}</span>
@@ -497,7 +497,9 @@ function InspirationNoteList({
             : '暂无笔记，点击“新建笔记”开始记录灵感。'}
         </div>
       ) : (
-        <div className="space-y-2">{renderNodes(tree.children, 0)}</div>
+        <div className="min-h-0 overflow-y-auto pr-1 lg:max-h-[calc(100vh-320px)]">
+          <div className="space-y-2">{renderNodes(tree.children, 0)}</div>
+        </div>
       )}
     </section>
   )
