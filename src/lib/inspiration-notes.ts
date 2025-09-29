@@ -64,11 +64,12 @@ function assertTauriRuntime() {
 async function resolveBaseDataPath() {
   const stored = loadStoredDataPath()
   if (stored && stored.trim()) {
-    return stored.trim()
+    return { baseDir: stored.trim(), isCustom: true as const }
   }
 
   const baseDir = await appDataDir()
-  return join(baseDir, ...DEFAULT_DATA_DIR_SEGMENTS)
+  const defaultBaseDir = await join(baseDir, ...DEFAULT_DATA_DIR_SEGMENTS)
+  return { baseDir: defaultBaseDir, isCustom: false as const }
 }
 
 let registeredNotesRoot: string | null = null
@@ -87,40 +88,151 @@ async function syncNotesRootIfNeeded(notesDir: string, force = false) {
   registeredNotesRoot = notesDir
 }
 
+async function mergeLegacyCustomNotesDirectory(targetDir: string) {
+  const legacyDir = await join(targetDir, NOTES_DIR_NAME)
+  let legacyEntries: Awaited<ReturnType<typeof readDir>>
+  try {
+    legacyEntries = await readDir(legacyDir)
+  } catch (error) {
+    if (!isMissingFsEntryError(error)) {
+      console.warn('Failed to inspect legacy inspiration notes directory', error)
+    }
+    return
+  }
+
+  if (legacyEntries.length === 0) {
+    try {
+      await remove(legacyDir, { recursive: true })
+    } catch (error) {
+      if (!isMissingFsEntryError(error)) {
+        console.warn('Failed to clean up empty legacy inspiration notes directory', error)
+      }
+    }
+    return
+  }
+
+  async function mergeDirectory(sourceDir: string, destinationDir: string): Promise<void> {
+    let sourceEntries: Awaited<ReturnType<typeof readDir>>
+    try {
+      sourceEntries = await readDir(sourceDir)
+    } catch (error) {
+      if (!isMissingFsEntryError(error)) {
+        console.warn('Failed to enumerate legacy inspiration notes directory', error)
+      }
+      return
+    }
+
+    let destinationEntries: Awaited<ReturnType<typeof readDir>>
+    try {
+      destinationEntries = await readDir(destinationDir)
+    } catch {
+      destinationEntries = []
+    }
+
+    const existingNames = new Set(
+      destinationEntries
+        .map(entry => entry.name?.toLowerCase())
+        .filter((name): name is string => Boolean(name)),
+    )
+
+    for (const entry of sourceEntries) {
+      if (!entry.name) continue
+      const sourcePath = await join(sourceDir, entry.name)
+      if (entry.isDirectory) {
+        const destinationPath = await join(destinationDir, entry.name)
+        try {
+          await mkdir(destinationPath, { recursive: true })
+        } catch (error) {
+          if (!isMissingFsEntryError(error)) {
+            console.warn('Failed to prepare destination directory during legacy notes merge', error)
+          }
+        }
+        await mergeDirectory(sourcePath, destinationPath)
+        try {
+          await remove(sourcePath, { recursive: true })
+        } catch (error) {
+          if (!isMissingFsEntryError(error)) {
+            console.warn('Failed to clean up migrated legacy notes directory', error)
+          }
+        }
+      } else if (entry.isFile) {
+        const extIndex = entry.name.lastIndexOf('.')
+        const baseName = extIndex > 0 ? entry.name.slice(0, extIndex) : entry.name
+        const extension = extIndex > -1 ? entry.name.slice(extIndex) : ''
+        let candidateName = entry.name
+        let counter = 1
+        while (existingNames.has(candidateName.toLowerCase())) {
+          candidateName = `${baseName}-${counter}${extension}`
+          counter += 1
+        }
+        const destinationPath = await join(destinationDir, candidateName)
+        try {
+          await rename(sourcePath, destinationPath)
+        } catch (renameError) {
+          try {
+            const fileContents = await readTextFile(sourcePath)
+            await writeTextFile(destinationPath, fileContents)
+            await remove(sourcePath)
+          } catch (copyError) {
+            console.warn('Failed to migrate legacy inspiration note file', copyError)
+            continue
+          }
+        }
+        existingNames.add(candidateName.toLowerCase())
+      }
+    }
+  }
+
+  await mergeDirectory(legacyDir, targetDir)
+
+  try {
+    await remove(legacyDir, { recursive: true })
+  } catch (error) {
+    if (!isMissingFsEntryError(error)) {
+      console.warn('Failed to remove legacy inspiration notes directory after migration', error)
+    }
+  }
+}
+
 async function ensureNotesDirectory(options: { forceSync?: boolean } = {}) {
   const { forceSync = false } = options
-  const base = await resolveBaseDataPath()
-  const notesDir = await join(base, NOTES_DIR_NAME)
-  try {
-    await mkdir(notesDir, { recursive: true })
-    await syncNotesRootIfNeeded(notesDir, forceSync)
-    return notesDir
-  } catch (error) {
-    console.error('Failed to ensure custom inspiration notes directory, falling back to default path.', error)
+  const { baseDir, isCustom } = await resolveBaseDataPath()
 
-    const appDir = await appDataDir()
-    const fallbackBaseDir = await join(appDir, ...DEFAULT_DATA_DIR_SEGMENTS)
-    const fallbackNotesDir = await join(fallbackBaseDir, NOTES_DIR_NAME)
-
+  if (isCustom) {
     try {
-      await mkdir(fallbackNotesDir, { recursive: true })
-      await syncNotesRootIfNeeded(fallbackNotesDir, true)
-    } catch (fallbackError) {
-      console.error('Failed to ensure default inspiration notes directory.', fallbackError)
-      const friendlyError = new Error(
-        '无法访问自定义存储路径，也无法回退到默认目录，请检查磁盘权限或可用空间。',
-      )
-      Reflect.set(friendlyError, 'cause', fallbackError)
-      throw friendlyError
+      await mkdir(baseDir, { recursive: true })
+      await mergeLegacyCustomNotesDirectory(baseDir)
+      await syncNotesRootIfNeeded(baseDir, forceSync)
+      return baseDir
+    } catch (error) {
+      console.error('Failed to ensure custom inspiration notes directory, falling back to default path.', error)
+    }
+  }
+
+  try {
+    let defaultBase = baseDir
+    if (isCustom) {
+      const appDir = await appDataDir()
+      defaultBase = await join(appDir, ...DEFAULT_DATA_DIR_SEGMENTS)
+    }
+    const notesDir = await join(defaultBase, NOTES_DIR_NAME)
+    await mkdir(notesDir, { recursive: true })
+    await syncNotesRootIfNeeded(notesDir, forceSync || isCustom)
+
+    if (isCustom) {
+      const stored = loadStoredDataPath()
+      if (stored && stored.trim()) {
+        saveStoredDataPath(defaultBase)
+      }
+      console.warn('无法访问自定义存储路径，已回退到默认目录。')
     }
 
-    const stored = loadStoredDataPath()
-    if (stored && stored.trim()) {
-      saveStoredDataPath(fallbackBaseDir)
-    }
-
-    console.warn('无法访问自定义存储路径，已回退到默认目录。')
-    return fallbackNotesDir
+    return notesDir
+  } catch (fallbackError) {
+    console.error('Failed to ensure default inspiration notes directory.', fallbackError)
+    const friendlyError = new Error('无法访问自定义存储路径，也无法回退到默认目录，请检查磁盘权限或可用空间。')
+    Reflect.set(friendlyError, 'cause', fallbackError)
+    throw friendlyError
   }
 }
 
