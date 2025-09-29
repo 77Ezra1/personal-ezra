@@ -67,9 +67,9 @@ export default function Dashboard() {
   return (
     <div className="space-y-10">
       <section className="space-y-3">
-        <h2 className="text-2xl font-semibold text-text">欢迎使用离线管理工具</h2>
+        <h2 className="text-2xl font-semibold text-text">欢迎使用Personal</h2>
         <p className="text-sm text-muted">
-          在这里可以集中管理常用密码、常访问的网站和重要文档。所有数据均保存在浏览器本地 IndexedDB 中，不会上传到服务器。
+          在这里可以集中管理常用密码、常访问的网站、重要文档和编写笔记。所有数据均保存在本地中，不会上传到服务器。
         </p>
         <div className="grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm shadow-black/10 transition-colors dark:shadow-black/30">
