@@ -219,6 +219,20 @@ describe('inspiration notes storage', () => {
     await expect(createNoteFile(firstId)).rejects.toThrow('同名笔记已存在')
   })
 
+  it.each([
+    'The system cannot find the file specified.',
+    '找不到指定的文件',
+  ])('treats %s error as missing file when creating new note', async message => {
+    readTextFileMock.mockImplementationOnce(async () => {
+      throw new Error(message)
+    })
+
+    const noteId = await createNoteFile('Windows 缺失文件测试')
+
+    expect(noteId).toMatch(/\.md$/)
+    expect(writeTextFileMock).toHaveBeenCalled()
+  })
+
   it('creates nested folder structures in the local notes directory', async () => {
     const relative = await createNoteFolder('规划/2024 OKR')
     expect(relative).toBe('规划/2024-OKR')
