@@ -238,9 +238,9 @@ function AboutSection() {
               className="h-16 w-16 rounded-2xl border border-border/60 bg-surface shadow-inner"
             />
             <div className="space-y-1">
-              <h2 className="text-lg font-medium text-text">关于我们</h2>
+              <h2 className="text-lg font-medium text-text">关于Personal</h2>
               <p className="text-sm leading-relaxed text-muted">
-                一款专注于私密信息管理的本地优先密码保险箱。
+                一款专注于安全的个人信息本地管理工具。
               </p>
             </div>
           </div>
