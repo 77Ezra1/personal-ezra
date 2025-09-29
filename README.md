@@ -99,9 +99,9 @@ GitHub 备份用于在本地冗余之外，将加密后的 `pms-backup-*.json` �
 
 ## 下载
 
-* **macOS 主下载（GitHub）**：`https://github.com/77Ezra1/pms-web/releases/download/personal/Personal_0.1.0_aarch64.dmg`
+* **macOS 主下载（GitHub）**：`https://github.com/77Ezra1/personal-ezra/releases/download/personal/Personal_0.1.0_aarch64.dmg`
 * **macOS 国内镜像**：`https://gitee.com/ezra1/personal/releases/download/personal/Personal_0.1.0_aarch64.dmg`
-* **Windows 主下载（GitHub）**：`https://github.com/77Ezra1/pms-web/releases/download/personal/Personal_0.1.0_x64-setup.exe`
+* **Windows 主下载（GitHub）**：`https://github.com/77Ezra1/personal-ezra/releases/download/personal/Personal_0.1.0_x64-setup.exe`
 * **Windows 国内镜像**：`https://gitee.com/ezra1/personal/releases/download/personal/Personal_0.1.0_x64-setup.exe`
 
 > 版本：`personal-0.1.0`　发布日期：`09/30/2025`
