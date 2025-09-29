@@ -333,13 +333,16 @@ function extractErrorMessage(error: unknown) {
 function isMissingFsEntryError(error: unknown) {
   const message = extractErrorMessage(error)
   if (!message) return false
-  return (
-    /not found/i.test(message) ||
-    /no such file/i.test(message) ||
-    /enoent/i.test(message) ||
-    /不存在/.test(message) ||
-    /cannot find the path specified/i.test(message)
-  )
+  const missingFsErrorPatterns = [
+    /not found/i,
+    /no such file/i,
+    /enoent/i,
+    /不存在/,
+    /cannot find the path specified/i,
+    /cannot find the file specified/i,
+    /找不到指定的文件/,
+  ]
+  return missingFsErrorPatterns.some(pattern => pattern.test(message))
 }
 
 function deriveTitleFromFileName(fileName: string) {
