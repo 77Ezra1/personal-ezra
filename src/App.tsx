@@ -62,8 +62,8 @@ function AuthenticatedLayout() {
       <header className="no-drag border-b border-border/60 bg-surface/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 px-6 py-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-text">离线管理工具</h1>
-            <p className="text-sm text-muted">管理密码、网站与文档，数据仅保存在本地。</p>
+            <h1 className="text-2xl font-semibold text-text">Personal - 离线管理工具</h1>
+            <p className="text-sm text-muted">管理密码、网站、文档与笔记，数据仅保存在本地。</p>
           </div>
           <div className="flex flex-col items-end gap-3 text-sm text-text/80">
             <div className="flex items-center gap-4">
@@ -128,7 +128,7 @@ function AuthenticatedLayout() {
                 }`
               }
             >
-              密码库
+              密码管理
             </NavLink>
             <NavLink
               to="/dashboard/sites"
