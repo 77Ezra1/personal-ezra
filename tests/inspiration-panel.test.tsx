@@ -485,6 +485,47 @@ describe('InspirationPanel handleCreateFile', () => {
   })
 })
 
+describe('InspirationPanel search filtering', () => {
+  it('matches hashtag queries when tags contain the searched substring', async () => {
+    listNotesMock.mockResolvedValue([
+      {
+        id: 'Localization.md',
+        title: '多语言灵感',
+        createdAt: 1,
+        updatedAt: 1,
+        excerpt: '',
+        searchText: '',
+        tags: ['国际化测试'],
+      },
+      {
+        id: 'Other.md',
+        title: '日常记录',
+        createdAt: 1,
+        updatedAt: 1,
+        excerpt: '',
+        searchText: '',
+        tags: ['日志'],
+      },
+    ])
+
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    await screen.findByRole('button', { name: /多语言灵感/ })
+    await screen.findByRole('button', { name: /日常记录/ })
+
+    await user.type(screen.getByPlaceholderText('搜索笔记或 #标签'), '#测试')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /多语言灵感/ })).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /日常记录/ })).not.toBeInTheDocument()
+    })
+  })
+})
+
 describe('InspirationPanel synchronization queue', () => {
   const noteSummary = {
     id: 'Projects/Foo.md',
