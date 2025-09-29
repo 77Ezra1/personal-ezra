@@ -1043,8 +1043,8 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         if (!normalizedToken) return true
         if (isHashtagQuery) {
           return (
-            normalizedTags.some(tag => tag === normalizedToken) ||
-            excerptHashtags.some(tag => tag === normalizedToken)
+            normalizedTags.some(tag => tag.includes(normalizedToken)) ||
+            excerptHashtags.some(tag => tag.includes(normalizedToken))
           )
         }
 
