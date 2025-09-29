@@ -414,7 +414,9 @@ describe('inspiration notes storage', () => {
     loadStoredDataPathMock.mockReturnValue('D:/Workspace/MyNotes')
     const first = await saveNote({ title: 'Alpha', content: '计划A' })
     const storedPathsA = Array.from(files.keys())
-    expect(storedPathsA.some(path => path.startsWith('D:/Workspace/MyNotes/notes/'))).toBe(true)
+    expect(storedPathsA.some(path => path.startsWith('D:/Workspace/MyNotes/'))).toBe(true)
+    expect(storedPathsA.some(path => path.startsWith('D:/Workspace/MyNotes/notes/'))).toBe(false)
+    expect(directories.has('D:/Workspace/MyNotes')).toBe(true)
 
     loadStoredDataPathMock.mockReturnValue('D:/Workspace/MyNotes')
     const listA = await listNotes()
@@ -424,12 +426,36 @@ describe('inspiration notes storage', () => {
     loadStoredDataPathMock.mockReturnValue('E:/Archive')
     const second = await saveNote({ title: 'Beta', content: '计划B' })
     const storedPathsB = Array.from(files.keys())
-    expect(storedPathsB.some(path => path.startsWith('E:/Archive/notes/'))).toBe(true)
+    expect(storedPathsB.some(path => path.startsWith('E:/Archive/'))).toBe(true)
+    expect(storedPathsB.some(path => path.startsWith('E:/Archive/notes/'))).toBe(false)
+    expect(directories.has('E:/Archive')).toBe(true)
 
     loadStoredDataPathMock.mockReturnValue('E:/Archive')
     const listB = await listNotes()
     expect(listB).toHaveLength(1)
     expect(listB[0]?.id).toBe(second.id)
+  })
+
+  it('migrates legacy notes directory when using custom data path', async () => {
+    loadStoredDataPathMock.mockReturnValue('D:/Workspace/MyNotes')
+    const legacyPath = 'D:/Workspace/MyNotes/notes/legacy-note.md'
+    directories.add('D:/Workspace/MyNotes')
+    directories.add('D:/Workspace/MyNotes/notes')
+    files.set(
+      normalizePath(legacyPath),
+      ['---', 'title: 旧版笔记', 'createdAt: 1690000000000', 'updatedAt: 1690000000000', 'tags: []', '---', '', '内容'].join(
+        '\n',
+      ),
+    )
+
+    const summaries = await listNotes()
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]?.title).toBe('旧版笔记')
+
+    const migratedPaths = Array.from(files.keys())
+    expect(migratedPaths).toContain('D:/Workspace/MyNotes/legacy-note.md')
+    expect(migratedPaths.every(path => !path.startsWith('D:/Workspace/MyNotes/notes/'))).toBe(true)
+    expect(removeMock).toHaveBeenCalledWith('D:/Workspace/MyNotes/notes', { recursive: true })
   })
 
   it('falls back to default directory when custom data path becomes unavailable', async () => {
