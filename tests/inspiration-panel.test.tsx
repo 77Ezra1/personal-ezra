@@ -123,6 +123,51 @@ describe('InspirationPanel folder listing', () => {
     expect(await screen.findByRole('button', { name: 'Ideas' })).toBeInTheDocument()
   })
 
+  it('hides folders without matching notes when a tag filter is active', async () => {
+    const now = Date.now()
+    listNotesMock.mockResolvedValue([
+      {
+        id: 'Work/Weekly Report',
+        title: 'Weekly Report',
+        createdAt: now,
+        updatedAt: now,
+        excerpt: '',
+        searchText: '',
+        tags: ['work'],
+      },
+      {
+        id: 'Personal/Daily Journal',
+        title: 'Daily Journal',
+        createdAt: now,
+        updatedAt: now,
+        excerpt: '',
+        searchText: '',
+        tags: ['life'],
+      },
+    ])
+    listNoteFoldersMock.mockResolvedValue(['Work', 'Personal'])
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    expect(await screen.findByRole('button', { name: 'Work' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Personal' })).toBeInTheDocument()
+
+    await user.click(await screen.findByRole('button', { name: '#work' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Personal' })).not.toBeInTheDocument()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Work' })).toBeInTheDocument()
+    })
+
+    await user.click(await screen.findByRole('button', { name: '清除筛选' }))
+
+    expect(await screen.findByRole('button', { name: 'Personal' })).toBeInTheDocument()
+  })
+
   it('keeps folders collapsed after the user closes the last expanded folder', async () => {
     const note = {
       id: 'Projects/Project Plan',

@@ -860,10 +860,58 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     return list.sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
   }, [notes])
 
-  const collectAllFolderPaths = useCallback(() => {
+  const filteredNotes = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase()
+    const hasSearch = normalizedSearch.length > 0
+    const searchTokens = hasSearch ? normalizedSearch.split(/\s+/).filter(Boolean) : []
+
+    if (selectedTags.length === 0 && !hasSearch) return notes
+
+    return notes.filter(note => {
+      const matchesTags = selectedTags.every(tag => note.tags.includes(tag))
+      if (!matchesTags) return false
+      if (!hasSearch) return true
+
+      const title = note.title.toLowerCase()
+      const searchText = note.searchText.toLowerCase()
+      const normalizedTags = note.tags.map(tag => tag.toLowerCase())
+      const excerptHashtags = Array.from(
+        new Set((note.excerpt.match(/#[^\s#]+/g) ?? []).map(item => item.slice(1).toLowerCase())),
+      )
+
+      return searchTokens.every(token => {
+        if (!token) return true
+        const isHashtagQuery = token.startsWith('#')
+        const normalizedToken = isHashtagQuery ? token.slice(1) : token
+        if (!normalizedToken) return true
+        if (isHashtagQuery) {
+          return (
+            normalizedTags.some(tag => tag.includes(normalizedToken)) ||
+            excerptHashtags.some(tag => tag.includes(normalizedToken))
+          )
+        }
+
+        return (
+          title.includes(normalizedToken) ||
+          searchText.includes(normalizedToken) ||
+          normalizedTags.some(tag => tag.includes(normalizedToken)) ||
+          excerptHashtags.some(tag => tag.includes(normalizedToken))
+        )
+      })
+    })
+  }, [notes, searchTerm, selectedTags])
+
+  const hasTagFilter = selectedTags.length > 0
+  const hasSearch = searchTerm.trim().length > 0
+  const hasActiveFilters = hasTagFilter || hasSearch
+
+  const filteredFolderSet = useMemo(() => {
     const paths = new Set<string>()
-    for (const note of notes) {
-      const segments = note.id.split('/').filter(Boolean)
+    for (const note of filteredNotes) {
+      const segments = note.id
+        .split('/')
+        .map(segment => segment.trim())
+        .filter(Boolean)
       if (segments.length <= 1) continue
       segments.pop()
       let current = ''
@@ -874,22 +922,53 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         }
       }
     }
-    for (const folder of extraFolders) {
+    return paths
+  }, [filteredNotes])
+
+  const filteredFolderPaths = useMemo(() => Array.from(filteredFolderSet), [filteredFolderSet])
+  const visibleExtraFolders = useMemo(
+    () => (hasActiveFilters ? filteredFolderPaths : extraFolders),
+    [extraFolders, filteredFolderPaths, hasActiveFilters],
+  )
+
+  const collectAllFolderPaths = useCallback(() => {
+    const paths = new Set<string>()
+    const addSegments = (segments: string[]) => {
+      let current = ''
+      for (const segment of segments) {
+        const trimmed = segment.trim()
+        if (!trimmed) continue
+        current = current ? `${current}/${trimmed}` : trimmed
+        paths.add(current)
+      }
+    }
+
+    const sourceNotes = hasActiveFilters ? filteredNotes : notes
+    for (const note of sourceNotes) {
+      const segments = note.id
+        .split('/')
+        .map(segment => segment.trim())
+        .filter(Boolean)
+      if (segments.length <= 1) continue
+      segments.pop()
+      if (segments.length > 0) {
+        addSegments(segments)
+      }
+    }
+
+    for (const folder of visibleExtraFolders) {
       if (!folder) continue
       const segments = folder
         .split('/')
         .map(segment => segment.trim())
         .filter(Boolean)
-      let current = ''
-      for (const segment of segments) {
-        current = current ? `${current}/${segment}` : segment
-        if (current) {
-          paths.add(current)
-        }
+      if (segments.length > 0) {
+        addSegments(segments)
       }
     }
+
     return paths
-  }, [extraFolders, notes])
+  }, [filteredNotes, hasActiveFilters, notes, visibleExtraFolders])
 
   const expandFolderPath = useCallback(
     (path: string) => {
@@ -1000,6 +1079,15 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   }, [collectAllFolderPaths, hasExpandedFolders])
 
   useEffect(() => {
+    const allPaths = collectAllFolderPaths()
+    setExpandedFolders(prev => {
+      if (prev.length === 0) return prev
+      const filtered = prev.filter(path => allPaths.has(path))
+      return filtered.length === prev.length ? prev : filtered
+    })
+  }, [collectAllFolderPaths])
+
+  useEffect(() => {
     if (!selectedId) return
     const segments = selectedId.split('/').filter(Boolean)
     if (segments.length <= 1) return
@@ -1017,48 +1105,6 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     }
   }, [searchInput])
 
-  const filteredNotes = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase()
-    const hasSearch = normalizedSearch.length > 0
-    const searchTokens = hasSearch ? normalizedSearch.split(/\s+/).filter(Boolean) : []
-
-    if (selectedTags.length === 0 && !hasSearch) return notes
-
-    return notes.filter(note => {
-      const matchesTags = selectedTags.every(tag => note.tags.includes(tag))
-      if (!matchesTags) return false
-      if (!hasSearch) return true
-
-      const title = note.title.toLowerCase()
-      const searchText = note.searchText.toLowerCase()
-      const normalizedTags = note.tags.map(tag => tag.toLowerCase())
-      const excerptHashtags = Array.from(
-        new Set((note.excerpt.match(/#[^\s#]+/g) ?? []).map(item => item.slice(1).toLowerCase())),
-      )
-
-      return searchTokens.every(token => {
-        if (!token) return true
-        const isHashtagQuery = token.startsWith('#')
-        const normalizedToken = isHashtagQuery ? token.slice(1) : token
-        if (!normalizedToken) return true
-        if (isHashtagQuery) {
-          return (
-            normalizedTags.some(tag => tag.includes(normalizedToken)) ||
-            excerptHashtags.some(tag => tag.includes(normalizedToken))
-          )
-        }
-
-        return (
-          title.includes(normalizedToken) ||
-          searchText.includes(normalizedToken) ||
-          normalizedTags.some(tag => tag.includes(normalizedToken)) ||
-          excerptHashtags.some(tag => tag.includes(normalizedToken))
-        )
-      })
-    })
-  }, [notes, searchTerm, selectedTags])
-
-  const hasTagFilter = selectedTags.length > 0
 
   useEffect(() => {
     if (!selectedId) {
@@ -1682,7 +1728,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
           onSelectFolder={handleSelectFolder}
           hasTagFilter={hasTagFilter}
           searchTerm={searchTerm}
-          extraFolders={extraFolders}
+          extraFolders={visibleExtraFolders}
           expandedFolders={expandedFolders}
           onToggleFolder={handleFolderToggle}
           onRenameFolder={handleRenameFolder}
