@@ -141,11 +141,11 @@ function InspirationHeader({
             集中记录灵感碎片、会议纪要与规划要点，所有 Markdown 笔记都会安全存放在本地离线数据目录，可随时备份与迁移。
           </p>
         </div>
-        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:justify-end sm:gap-4">
+        <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:items-end sm:gap-4">
           <label htmlFor="inspiration-search" className="sr-only">
             搜索笔记
           </label>
-          <div className="flex w-full min-w-0 items-center gap-2 rounded-full border border-border bg-surface px-3 py-2 text-sm transition focus-within:border-primary/60 focus-within:bg-surface-hover sm:w-72 sm:flex-1">
+          <div className="flex w-full min-w-0 items-center gap-2 rounded-full border border-border bg-surface px-3 py-2 text-sm transition focus-within:border-primary/60 focus-within:bg-surface-hover sm:w-72">
             <SearchIcon className="h-4 w-4 text-muted" aria-hidden />
             <input
               id="inspiration-search"
@@ -169,7 +169,7 @@ function InspirationHeader({
               </button>
             )}
           </div>
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex w-full justify-end gap-2 sm:w-auto sm:gap-3">
             <button
               type="button"
               onClick={onCreateFile}
