@@ -141,7 +141,7 @@ function InspirationHeader({
             集中记录灵感碎片、会议纪要与规划要点，所有 Markdown 笔记都会安全存放在本地离线数据目录，可随时备份与迁移。
           </p>
         </div>
-        <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end">
+        <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end sm:gap-4">
           <label htmlFor="inspiration-search" className="sr-only">
             搜索笔记
           </label>
@@ -169,7 +169,7 @@ function InspirationHeader({
               </button>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={onCreateFile}
@@ -178,15 +178,6 @@ function InspirationHeader({
               title="新建 Markdown 笔记"
             >
               <FilePlusIcon className="h-4 w-4" aria-hidden />
-            </button>
-            <button
-              type="button"
-              onClick={onCreateFolder}
-              className="inline-flex items-center justify-center rounded-full border border-border bg-surface p-2 text-text transition hover:border-border/70 hover:bg-surface-hover"
-              aria-label="新建笔记文件夹"
-              title="新建笔记文件夹"
-            >
-              <FolderPlusIcon className="h-4 w-4" aria-hidden />
             </button>
           </div>
           <button
