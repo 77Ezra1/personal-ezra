@@ -275,6 +275,9 @@ describe('InspirationPanel handleCreateFolder', () => {
     expect(await screen.findByText('文件夹已创建')).toBeInTheDocument()
     expect(await screen.findByText('已在本地数据目录中创建：foo/bar')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'bar' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(queueInspirationBackupSyncMock).toHaveBeenCalledTimes(1)
+    })
 
     promptSpy.mockRestore()
   })
@@ -294,6 +297,7 @@ describe('InspirationPanel handleCreateFolder', () => {
 
     expect(await screen.findByText('创建失败')).toBeInTheDocument()
     expect(await screen.findByText('路径不可用')).toBeInTheDocument()
+    expect(queueInspirationBackupSyncMock).not.toHaveBeenCalled()
 
     promptSpy.mockRestore()
   })
@@ -322,6 +326,9 @@ describe('InspirationPanel folder actions', () => {
     expect(await screen.findByText('文件夹已重命名')).toBeInTheDocument()
     expect(await screen.findByText('已更新为：Projects-Renamed')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Projects-Renamed' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(queueInspirationBackupSyncMock).toHaveBeenCalledTimes(1)
+    })
 
     promptSpy.mockRestore()
   })
@@ -345,6 +352,7 @@ describe('InspirationPanel folder actions', () => {
     await waitFor(() => {
       expect(listNotesMock).toHaveBeenCalledTimes(1)
     })
+    expect(queueInspirationBackupSyncMock).not.toHaveBeenCalled()
 
     promptSpy.mockRestore()
   })
@@ -373,6 +381,9 @@ describe('InspirationPanel folder actions', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Projects' })).not.toBeInTheDocument()
     })
+    await waitFor(() => {
+      expect(queueInspirationBackupSyncMock).toHaveBeenCalledTimes(1)
+    })
 
     confirmSpy.mockRestore()
   })
@@ -396,6 +407,7 @@ describe('InspirationPanel folder actions', () => {
     await waitFor(() => {
       expect(listNotesMock).toHaveBeenCalledTimes(1)
     })
+    expect(queueInspirationBackupSyncMock).not.toHaveBeenCalled()
 
     confirmSpy.mockRestore()
   })
@@ -432,7 +444,7 @@ describe('InspirationPanel handleCreateFile', () => {
 
     renderPanel()
 
-    await user.click(screen.getByRole('button', { name: '新建 Markdown 笔记' }))
+    await user.click(screen.getByRole('button', { name: '新建笔记' }))
 
     await waitFor(() => {
       expect(createNoteFileMock).toHaveBeenCalledWith('Projects/Foo')
@@ -446,6 +458,9 @@ describe('InspirationPanel handleCreateFile', () => {
     expect(await screen.findByText('已新建 Markdown 文件：Projects/Foo.md')).toBeInTheDocument()
     expect(await screen.findByDisplayValue('项目规划')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: '项目规划' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(queueInspirationBackupSyncMock).toHaveBeenCalledTimes(1)
+    })
 
     promptSpy.mockRestore()
   })
@@ -491,10 +506,13 @@ describe('InspirationPanel handleCreateFile', () => {
         return 'New Note'
       })
 
-    await user.click(screen.getByRole('button', { name: '新建 Markdown 笔记' }))
+    await user.click(screen.getByRole('button', { name: '新建笔记' }))
 
     await waitFor(() => {
       expect(createNoteFileMock).toHaveBeenCalledWith('Ideas/New Note')
+    })
+    await waitFor(() => {
+      expect(queueInspirationBackupSyncMock).toHaveBeenCalledTimes(1)
     })
 
     promptSpy.mockRestore()
@@ -506,11 +524,12 @@ describe('InspirationPanel handleCreateFile', () => {
 
     renderPanel()
 
-    await user.click(screen.getByRole('button', { name: '新建 Markdown 笔记' }))
+    await user.click(screen.getByRole('button', { name: '新建笔记' }))
 
     expect(createNoteFileMock).not.toHaveBeenCalled()
     expect(await screen.findByText('创建失败')).toBeInTheDocument()
     expect(await screen.findByText('文件名称不能为空，请重新输入。')).toBeInTheDocument()
+    expect(queueInspirationBackupSyncMock).not.toHaveBeenCalled()
 
     promptSpy.mockRestore()
   })
@@ -521,10 +540,11 @@ describe('InspirationPanel handleCreateFile', () => {
 
     renderPanel()
 
-    await user.click(screen.getByRole('button', { name: '新建 Markdown 笔记' }))
+    await user.click(screen.getByRole('button', { name: '新建笔记' }))
 
     expect(createNoteFileMock).not.toHaveBeenCalled()
     expect(loadNoteMock).not.toHaveBeenCalled()
+    expect(queueInspirationBackupSyncMock).not.toHaveBeenCalled()
 
     promptSpy.mockRestore()
   })
@@ -595,11 +615,13 @@ describe('InspirationPanel synchronization queue', () => {
 
   it('queues GitHub sync after a successful save', async () => {
     listNotesMock.mockResolvedValue([noteSummary])
+    listNoteFoldersMock.mockResolvedValue(['Projects'])
     loadNoteMock.mockResolvedValue(noteDetail)
     const user = userEvent.setup()
 
     renderPanel()
 
+    await user.click(await screen.findByRole('button', { name: 'Projects' }))
     await user.click(await screen.findByRole('button', { name: '项目规划' }))
     await waitFor(() => {
       expect(loadNoteMock).toHaveBeenCalledWith('Projects/Foo.md')
@@ -617,12 +639,14 @@ describe('InspirationPanel synchronization queue', () => {
 
   it('does not queue sync when saving fails', async () => {
     listNotesMock.mockResolvedValue([noteSummary])
+    listNoteFoldersMock.mockResolvedValue(['Projects'])
     loadNoteMock.mockResolvedValue(noteDetail)
     saveNoteMock.mockRejectedValueOnce(new Error('网络异常'))
     const user = userEvent.setup()
 
     renderPanel()
 
+    await user.click(await screen.findByRole('button', { name: 'Projects' }))
     await user.click(await screen.findByRole('button', { name: '项目规划' }))
 
     await user.click(screen.getByRole('button', { name: '保存笔记' }))
@@ -634,12 +658,14 @@ describe('InspirationPanel synchronization queue', () => {
 
   it('queues sync after deleting a note', async () => {
     listNotesMock.mockResolvedValue([noteSummary])
+    listNoteFoldersMock.mockResolvedValue(['Projects'])
     loadNoteMock.mockResolvedValue(noteDetail)
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
 
     renderPanel()
 
+    await user.click(await screen.findByRole('button', { name: 'Projects' }))
     await user.click(await screen.findByRole('button', { name: '项目规划' }))
 
     await user.click(await screen.findByRole('button', { name: '删除' }))
