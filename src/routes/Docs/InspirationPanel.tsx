@@ -1324,6 +1324,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         description: `已新建 Markdown 文件：${note.id}`,
         variant: 'success',
       })
+      queueInspirationBackupSync(showToast)
     } catch (err) {
       console.error('Failed to create inspiration note file', err)
       const message = err instanceof Error ? err.message : '创建 Markdown 文件失败，请稍后再试。'
@@ -1335,6 +1336,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     activeFolderPath,
     expandFolderPath,
     isDesktop,
+    queueInspirationBackupSync,
     refreshNotes,
     resetTagEditor,
     showToast,
@@ -1372,12 +1374,13 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         description: `已在本地数据目录中创建：${sanitized}`,
         variant: 'success',
       })
+      queueInspirationBackupSync(showToast)
     } catch (err) {
       console.error('Failed to create inspiration note folder', err)
       const message = err instanceof Error ? err.message : '创建文件夹失败，请稍后再试。'
       showToast({ title: '创建失败', description: message, variant: 'error' })
     }
-  }, [expandFolderPath, refreshNotes, showToast])
+  }, [expandFolderPath, queueInspirationBackupSync, refreshNotes, showToast])
 
   const handleRenameFolder = useCallback(
     async (path: string) => {
@@ -1428,13 +1431,14 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
           description: `已更新为：${sanitized}`,
           variant: 'success',
         })
+        queueInspirationBackupSync(showToast)
       } catch (err) {
         console.error('Failed to rename inspiration note folder', err)
         const message = err instanceof Error ? err.message : '重命名文件夹失败，请稍后再试。'
         showToast({ title: '重命名失败', description: message, variant: 'error' })
       }
     },
-    [expandFolderPath, refreshNotes, showToast],
+    [expandFolderPath, queueInspirationBackupSync, refreshNotes, showToast],
   )
 
   const handleDeleteFolder = useCallback(
@@ -1457,13 +1461,14 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
           description: `已从本地数据目录中移除：${path}`,
           variant: 'success',
         })
+        queueInspirationBackupSync(showToast)
       } catch (err) {
         console.error('Failed to delete inspiration note folder', err)
         const message = err instanceof Error ? err.message : '删除文件夹失败，请稍后再试。'
         showToast({ title: '删除失败', description: message, variant: 'error' })
       }
     },
-    [refreshNotes, showToast],
+    [queueInspirationBackupSync, refreshNotes, showToast],
   )
 
   const handleTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
