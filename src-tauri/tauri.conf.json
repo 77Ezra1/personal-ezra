@@ -11,10 +11,19 @@
   },
   "bundle": {
     "active": true,
-    "icon": ["icons/icon.ico", "icons/icon.icns"],
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
     "windows": {
       "nsis": {
-        "installerIcon": "icons/installer.ico"
+        "installerIcon": "icons/installer.ico",
+        "languages": [
+          "SimpChinese"
+        ],
+        "customLanguageFiles": {
+          "SimpChinese": "installer/nsis/SimpChinese.nsh"
+        }
       }
     }
   },
