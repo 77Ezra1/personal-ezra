@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -257,12 +257,19 @@ describe('InspirationPanel handleCreateFolder', () => {
     listNoteFoldersMock.mockResolvedValueOnce([])
     listNoteFoldersMock.mockResolvedValueOnce(['foo/bar'])
     createNoteFolderMock.mockResolvedValue('foo/bar')
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('  Foo /  Bar  ')
     const user = userEvent.setup()
 
     renderPanel()
 
     await user.click(screen.getByRole('button', { name: '新建文件夹' }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    const input = within(dialog).getByLabelText('文件夹路径')
+    await user.type(input, '  Foo /  Bar  ')
+    const confirmButton = within(dialog).getByRole('button', { name: '创建' })
+    expect(confirmButton).toBeEnabled()
+
+    await user.click(confirmButton)
 
     await waitFor(() => {
       expect(createNoteFolderMock).toHaveBeenCalledWith('Foo/Bar')
@@ -278,18 +285,23 @@ describe('InspirationPanel handleCreateFolder', () => {
     await waitFor(() => {
       expect(queueInspirationBackupSyncMock).toHaveBeenCalledTimes(1)
     })
-
-    promptSpy.mockRestore()
   })
 
   it('surfaces errors when folder creation fails', async () => {
     createNoteFolderMock.mockRejectedValue(new Error('路径不可用'))
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('  新建文件夹  ')
     const user = userEvent.setup()
 
     renderPanel()
 
     await user.click(screen.getByRole('button', { name: '新建文件夹' }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    const input = within(dialog).getByLabelText('文件夹路径')
+    await user.type(input, '  新建文件夹  ')
+    const confirmButton = within(dialog).getByRole('button', { name: '创建' })
+    expect(confirmButton).toBeEnabled()
+
+    await user.click(confirmButton)
 
     await waitFor(() => {
       expect(createNoteFolderMock).toHaveBeenCalledWith('新建文件夹')
@@ -298,8 +310,6 @@ describe('InspirationPanel handleCreateFolder', () => {
     expect(await screen.findByText('创建失败')).toBeInTheDocument()
     expect(await screen.findByText('路径不可用')).toBeInTheDocument()
     expect(queueInspirationBackupSyncMock).not.toHaveBeenCalled()
-
-    promptSpy.mockRestore()
   })
 })
 
@@ -439,12 +449,19 @@ describe('InspirationPanel handleCreateFile', () => {
       excerpt: '',
       searchText: '',
     })
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('  Projects / Foo  ')
     const user = userEvent.setup()
 
     renderPanel()
 
     await user.click(screen.getByRole('button', { name: '新建笔记' }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    const input = within(dialog).getByLabelText('文件路径')
+    await user.type(input, '  Projects / Foo  ')
+    const confirmButton = within(dialog).getByRole('button', { name: '创建' })
+    expect(confirmButton).toBeEnabled()
+
+    await user.click(confirmButton)
 
     await waitFor(() => {
       expect(createNoteFileMock).toHaveBeenCalledWith('Projects/Foo')
@@ -461,11 +478,9 @@ describe('InspirationPanel handleCreateFile', () => {
     await waitFor(() => {
       expect(queueInspirationBackupSyncMock).toHaveBeenCalledTimes(1)
     })
-
-    promptSpy.mockRestore()
   })
 
-  it('prefills the create file prompt with the active folder and appends it when missing', async () => {
+  it('prefills the create file dialog with the active folder and appends it when missing', async () => {
     listNotesMock
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
@@ -498,15 +513,16 @@ describe('InspirationPanel handleCreateFile', () => {
     const ideasFolderButton = await screen.findByRole('button', { name: 'Ideas' })
     await user.click(ideasFolderButton)
 
-    const promptSpy = vi
-      .spyOn(window, 'prompt')
-      .mockImplementation((message, defaultValue) => {
-        expect(message).toBe('请输入要创建的 Markdown 文件名称（可使用 / 表示层级）')
-        expect(defaultValue).toBe('Ideas/')
-        return 'New Note'
-      })
-
     await user.click(screen.getByRole('button', { name: '新建笔记' }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    const input = within(dialog).getByLabelText('文件路径')
+    expect(input).toHaveValue('Ideas/')
+    await user.type(input, 'New Note')
+    const confirmButton = within(dialog).getByRole('button', { name: '创建' })
+    expect(confirmButton).toBeEnabled()
+
+    await user.click(confirmButton)
 
     await waitFor(() => {
       expect(createNoteFileMock).toHaveBeenCalledWith('Ideas/New Note')
@@ -514,39 +530,44 @@ describe('InspirationPanel handleCreateFile', () => {
     await waitFor(() => {
       expect(queueInspirationBackupSyncMock).toHaveBeenCalledTimes(1)
     })
-
-    promptSpy.mockRestore()
   })
 
-  it('shows an error toast when file name is empty', async () => {
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('   ')
+  it('shows inline validation when file name is empty', async () => {
     const user = userEvent.setup()
 
     renderPanel()
 
     await user.click(screen.getByRole('button', { name: '新建笔记' }))
 
-    expect(createNoteFileMock).not.toHaveBeenCalled()
-    expect(await screen.findByText('创建失败')).toBeInTheDocument()
-    expect(await screen.findByText('文件名称不能为空，请重新输入。')).toBeInTheDocument()
-    expect(queueInspirationBackupSyncMock).not.toHaveBeenCalled()
+    const dialog = await screen.findByRole('alertdialog')
+    const input = within(dialog).getByLabelText('文件路径')
+    await user.type(input, '   ')
 
-    promptSpy.mockRestore()
+    expect(await screen.findByText('文件名称不能为空，请重新输入。')).toBeInTheDocument()
+    const confirmButton = within(dialog).getByRole('button', { name: '创建' })
+    expect(confirmButton).toBeDisabled()
+    expect(createNoteFileMock).not.toHaveBeenCalled()
+    expect(queueInspirationBackupSyncMock).not.toHaveBeenCalled()
   })
 
   it('does nothing when creation is cancelled', async () => {
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue(null)
     const user = userEvent.setup()
 
     renderPanel()
 
     await user.click(screen.getByRole('button', { name: '新建笔记' }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    const cancelButton = within(dialog).getByRole('button', { name: '取消' })
+    await user.click(cancelButton)
+
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    })
 
     expect(createNoteFileMock).not.toHaveBeenCalled()
     expect(loadNoteMock).not.toHaveBeenCalled()
     expect(queueInspirationBackupSyncMock).not.toHaveBeenCalled()
-
-    promptSpy.mockRestore()
   })
 })
 

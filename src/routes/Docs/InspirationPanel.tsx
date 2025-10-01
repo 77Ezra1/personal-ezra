@@ -31,6 +31,7 @@ import {
 import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown'
 
 import { isTauriRuntime } from '../../env'
+import ConfirmDialog from '../../components/ConfirmDialog'
 import { useToast } from '../../components/ToastProvider'
 import { TagFilter } from '../../components/TagFilter'
 import {
@@ -93,6 +94,14 @@ function sortNoteSummaries(list: NoteSummary[]) {
     if (diff !== 0) return diff
     return a.title.localeCompare(b.title)
   })
+}
+
+function normalizePathInput(input: string) {
+  return input
+    .split('/')
+    .map(segment => segment.trim())
+    .filter(Boolean)
+    .join('/')
 }
 
 function toNoteSummary(detail: NoteDetail): NoteSummary {
@@ -838,6 +847,14 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastSavedAt, setLastSavedAt] = useState<number | undefined>(undefined)
+  const [createNoteDialogOpen, setCreateNoteDialogOpen] = useState(false)
+  const [createNoteInput, setCreateNoteInput] = useState('')
+  const [createNoteError, setCreateNoteError] = useState<string | null>(null)
+  const [createNoteSubmitting, setCreateNoteSubmitting] = useState(false)
+  const [createFolderDialogOpen, setCreateFolderDialogOpen] = useState(false)
+  const [createFolderInput, setCreateFolderInput] = useState('')
+  const [createFolderError, setCreateFolderError] = useState<string | null>(null)
+  const [createFolderSubmitting, setCreateFolderSubmitting] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const tagInputRef = useRef<HTMLInputElement | null>(null)
   const draftSnapshotRef = useRef<string>(createDraftSnapshot(createEmptyDraft()))
@@ -904,6 +921,11 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const hasTagFilter = selectedTags.length > 0
   const hasSearch = searchTerm.trim().length > 0
   const hasActiveFilters = hasTagFilter || hasSearch
+  const normalizedCreateNotePath = useMemo(() => normalizePathInput(createNoteInput), [createNoteInput])
+  const normalizedCreateFolderPath = useMemo(
+    () => normalizePathInput(createFolderInput),
+    [createFolderInput],
+  )
 
   const filteredFolderSet = useMemo(() => {
     const paths = new Set<string>()
@@ -1026,6 +1048,16 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   )
 
   const hasExpandedFolders = expandedFolders.length > 0
+
+  useEffect(() => {
+    if (hasExpandedFolders) return
+    if (foldersInitializedRef.current) return
+    const allPaths = collectAllFolderPaths()
+    if (allPaths.size === 0) return
+    knownFoldersRef.current = new Set(allPaths)
+    foldersInitializedRef.current = true
+    setExpandedFolders(Array.from(allPaths))
+  }, [collectAllFolderPaths, hasExpandedFolders])
 
   useEffect(() => {
     if (!activeFolderPath) return
@@ -1265,30 +1297,59 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     })
   }, [availableTags])
 
-  const handleCreateFile = useCallback(async () => {
+  const handleCreateFile = useCallback(() => {
     if (!isDesktop) return
-    if (typeof window === 'undefined') return
+    const defaultValue = activeFolderPath ? `${activeFolderPath}/` : ''
+    setCreateNoteInput(defaultValue)
+    setCreateNoteError(null)
+    setCreateNoteDialogOpen(true)
+  }, [activeFolderPath, isDesktop])
 
-    const promptDefault = activeFolderPath ? `${activeFolderPath}/` : ''
-    const raw = window.prompt(
-      '请输入要创建的 Markdown 文件名称（可使用 / 表示层级）',
-      promptDefault,
-    )
-    if (raw === null) return
+  const handleCreateFolder = useCallback(() => {
+    setCreateFolderInput('')
+    setCreateFolderError(null)
+    setCreateFolderDialogOpen(true)
+  }, [])
 
-    const normalizedSegments = raw
-      .split('/')
-      .map(segment => segment.trim())
-      .filter(Boolean)
+  const handleCreateNoteInputChange = useCallback((value: string) => {
+    setCreateNoteInput(value)
+    const normalized = normalizePathInput(value)
+    if (!normalized && value.length > 0) {
+      setCreateNoteError('文件名称不能为空，请重新输入。')
+    } else {
+      setCreateNoteError(null)
+    }
+  }, [])
 
-    const normalized = normalizedSegments.join('/')
+  const handleCreateFolderInputChange = useCallback((value: string) => {
+    setCreateFolderInput(value)
+    const normalized = normalizePathInput(value)
+    if (!normalized && value.length > 0) {
+      setCreateFolderError('文件夹名称不能为空，请重新输入。')
+    } else {
+      setCreateFolderError(null)
+    }
+  }, [])
 
+  const handleCreateNoteDialogCancel = useCallback(() => {
+    if (createNoteSubmitting) return
+    setCreateNoteDialogOpen(false)
+    setCreateNoteInput('')
+    setCreateNoteError(null)
+  }, [createNoteSubmitting])
+
+  const handleCreateFolderDialogCancel = useCallback(() => {
+    if (createFolderSubmitting) return
+    setCreateFolderDialogOpen(false)
+    setCreateFolderInput('')
+    setCreateFolderError(null)
+  }, [createFolderSubmitting])
+
+  const handleConfirmCreateNote = useCallback(async () => {
+    if (!isDesktop) return
+    const normalized = normalizePathInput(createNoteInput)
     if (!normalized) {
-      showToast({
-        title: '创建失败',
-        description: '文件名称不能为空，请重新输入。',
-        variant: 'error',
-      })
+      setCreateNoteError('文件名称不能为空，请重新输入。')
       return
     }
 
@@ -1296,6 +1357,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     const targetPath =
       activeFolderPath && !hasExplicitFolder ? `${activeFolderPath}/${normalized}` : normalized
 
+    setCreateNoteSubmitting(true)
     setLoadingNote(true)
     try {
       const createdPath = await createNoteFile(targetPath)
@@ -1325,40 +1387,39 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         variant: 'success',
       })
       queueInspirationBackupSync(showToast)
+
+      setCreateNoteDialogOpen(false)
+      setCreateNoteInput('')
+      setCreateNoteError(null)
     } catch (err) {
       console.error('Failed to create inspiration note file', err)
       const message = err instanceof Error ? err.message : '创建 Markdown 文件失败，请稍后再试。'
       showToast({ title: '创建失败', description: message, variant: 'error' })
     } finally {
+      setCreateNoteSubmitting(false)
       setLoadingNote(false)
     }
   }, [
     activeFolderPath,
+    createNoteFile,
+    createNoteInput,
     expandFolderPath,
     isDesktop,
+    loadNote,
     queueInspirationBackupSync,
     refreshNotes,
     resetTagEditor,
     showToast,
   ])
 
-  const handleCreateFolder = useCallback(async () => {
-    if (typeof window === 'undefined') return
-    const folderName = window.prompt('请输入要创建的文件夹名称（可使用 / 表示层级）')
-    if (folderName === null) return
-    const normalized = folderName
-      .split('/')
-      .map(segment => segment.trim())
-      .filter(Boolean)
-      .join('/')
+  const handleConfirmCreateFolder = useCallback(async () => {
+    const normalized = normalizePathInput(createFolderInput)
     if (!normalized) {
-      showToast({
-        title: '创建失败',
-        description: '文件夹名称不能为空，请重新输入。',
-        variant: 'error',
-      })
+      setCreateFolderError('文件夹名称不能为空，请重新输入。')
       return
     }
+
+    setCreateFolderSubmitting(true)
     try {
       const sanitized = await createNoteFolder(normalized)
       setExtraFolders(prev => {
@@ -1375,12 +1436,25 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         variant: 'success',
       })
       queueInspirationBackupSync(showToast)
+
+      setCreateFolderDialogOpen(false)
+      setCreateFolderInput('')
+      setCreateFolderError(null)
     } catch (err) {
       console.error('Failed to create inspiration note folder', err)
       const message = err instanceof Error ? err.message : '创建文件夹失败，请稍后再试。'
       showToast({ title: '创建失败', description: message, variant: 'error' })
+    } finally {
+      setCreateFolderSubmitting(false)
     }
-  }, [expandFolderPath, queueInspirationBackupSync, refreshNotes, showToast])
+  }, [
+    createNoteFolder,
+    createFolderInput,
+    expandFolderPath,
+    queueInspirationBackupSync,
+    refreshNotes,
+    showToast,
+  ])
 
   const handleRenameFolder = useCallback(
     async (path: string) => {
@@ -1695,79 +1769,177 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   }
 
   return (
-    <div
-      className={clsx(
-        'flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,0.6fr)_minmax(0,1.4fr)] lg:gap-6 xl:grid-cols-[minmax(0,0.55fr)_minmax(0,1.45fr)] xl:gap-8',
-        className,
-      )}
-    >
-      <div className="flex flex-col gap-6 lg:col-span-2">
-        <InspirationHeader
-          onCreateFile={handleCreateFile}
-          onCreateFolder={handleCreateFolder}
-          onRefresh={() => {
-            void refreshNotes()
-          }}
-          loading={loadingList}
-          error={error}
-          searchValue={searchInput}
-          onSearchChange={handleSearchChange}
-          onSearchClear={handleSearchClear}
-        />
-        {(availableTags.length > 0 || hasTagFilter) && (
-          <section className="rounded-3xl border border-border bg-surface p-4 shadow-inner shadow-black/10 transition dark:shadow-black/40">
-            <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
-          </section>
+    <>
+      <div
+        className={clsx(
+          'flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,0.6fr)_minmax(0,1.4fr)] lg:gap-6 xl:grid-cols-[minmax(0,0.55fr)_minmax(0,1.45fr)] xl:gap-8',
+          className,
         )}
+      >
+        <div className="flex flex-col gap-6 lg:col-span-2">
+          <InspirationHeader
+            onCreateFile={handleCreateFile}
+            onCreateFolder={handleCreateFolder}
+            onRefresh={() => {
+              void refreshNotes()
+            }}
+            loading={loadingList}
+            error={error}
+            searchValue={searchInput}
+            onSearchChange={handleSearchChange}
+            onSearchClear={handleSearchClear}
+          />
+          {(availableTags.length > 0 || hasTagFilter) && (
+            <section className="rounded-3xl border border-border bg-surface p-4 shadow-inner shadow-black/10 transition dark:shadow-black/40">
+              <TagFilter tags={availableTags} selected={selectedTags} onToggle={toggleTag} onClear={clearTagFilters} />
+            </section>
+          )}
+        </div>
+        <div className="flex h-full flex-col lg:col-span-1 lg:self-stretch">
+          <InspirationNoteList
+            notes={filteredNotes}
+            totalCount={notes.length}
+            loading={loadingList}
+            selectedId={selectedId}
+            onSelect={noteId => {
+              void handleSelectNote(noteId)
+            }}
+            activeFolderPath={activeFolderPath}
+            onSelectFolder={handleSelectFolder}
+            hasTagFilter={hasTagFilter}
+            searchTerm={searchTerm}
+            extraFolders={visibleExtraFolders}
+            expandedFolders={expandedFolders}
+            onToggleFolder={handleFolderToggle}
+            onRenameFolder={handleRenameFolder}
+            onDeleteFolder={handleDeleteFolder}
+          />
+        </div>
+        <div className="flex flex-col gap-6 lg:col-span-1">
+          <InspirationEditor
+            draft={draft}
+            onTitleChange={handleTitleChange}
+            onContentChange={handleContentChange}
+            onInsertLink={handleInsertLink}
+            onSubmit={handleSubmit}
+            onDelete={() => {
+              void handleDelete()
+            }}
+            textareaRef={textareaRef}
+            tagInputRef={tagInputRef}
+            tagInput={tagInput}
+            onTagInputChange={handleTagInputChange}
+            onTagSubmit={handleTagSubmit}
+            onTagEdit={handleTagEdit}
+            onTagRemove={handleTagRemove}
+            onTagEditCancel={handleTagEditCancel}
+            editingTagIndex={editingTagIndex}
+            saving={saving}
+            autoSaving={autoSaving}
+            deleting={deleting}
+            loadingNote={loadingNote}
+            canDelete={Boolean(draft.id)}
+            lastSavedAt={lastSavedAt}
+          />
+        </div>
       </div>
-      <div className="flex h-full flex-col lg:col-span-1 lg:self-stretch">
-        <InspirationNoteList
-          notes={filteredNotes}
-          totalCount={notes.length}
-          loading={loadingList}
-          selectedId={selectedId}
-          onSelect={noteId => {
-            void handleSelectNote(noteId)
-          }}
-          activeFolderPath={activeFolderPath}
-          onSelectFolder={handleSelectFolder}
-          hasTagFilter={hasTagFilter}
-          searchTerm={searchTerm}
-          extraFolders={visibleExtraFolders}
-          expandedFolders={expandedFolders}
-          onToggleFolder={handleFolderToggle}
-          onRenameFolder={handleRenameFolder}
-          onDeleteFolder={handleDeleteFolder}
-        />
-      </div>
-      <div className="flex flex-col gap-6 lg:col-span-1">
-        <InspirationEditor
-          draft={draft}
-          onTitleChange={handleTitleChange}
-          onContentChange={handleContentChange}
-          onInsertLink={handleInsertLink}
-          onSubmit={handleSubmit}
-          onDelete={() => {
-            void handleDelete()
-          }}
-          textareaRef={textareaRef}
-          tagInputRef={tagInputRef}
-          tagInput={tagInput}
-          onTagInputChange={handleTagInputChange}
-          onTagSubmit={handleTagSubmit}
-          onTagEdit={handleTagEdit}
-          onTagRemove={handleTagRemove}
-          onTagEditCancel={handleTagEditCancel}
-          editingTagIndex={editingTagIndex}
-          saving={saving}
-          autoSaving={autoSaving}
-          deleting={deleting}
-          loadingNote={loadingNote}
-          canDelete={Boolean(draft.id)}
-          lastSavedAt={lastSavedAt}
-        />
-      </div>
-    </div>
+      <ConfirmDialog
+        open={createNoteDialogOpen}
+        title="新建 Markdown 笔记"
+        description={
+          <div className="mt-4 space-y-3">
+            <p className="text-sm text-muted">请输入要创建的 Markdown 文件名称（可使用 / 表示层级）。</p>
+            <div className="space-y-1">
+              <label htmlFor="create-note-path" className="text-sm font-medium text-text">
+                文件路径
+              </label>
+              <input
+                id="create-note-path"
+                type="text"
+                value={createNoteInput}
+                onChange={event => {
+                  handleCreateNoteInputChange(event.currentTarget.value)
+                }}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    if (normalizedCreateNotePath && !createNoteSubmitting) {
+                      void handleConfirmCreateNote()
+                    }
+                  }
+                }}
+                autoComplete="off"
+                aria-invalid={createNoteError ? 'true' : 'false'}
+                className={clsx(
+                  'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary/40',
+                  createNoteError && 'border-rose-500/70 focus:border-rose-500 focus-visible:ring-rose-500/40',
+                )}
+              />
+              {createNoteError ? (
+                <p className="text-xs text-rose-500">{createNoteError}</p>
+              ) : (
+                <p className="text-xs text-muted">示例：Projects/Weekly Report.md</p>
+              )}
+            </div>
+          </div>
+        }
+        confirmLabel="创建"
+        onConfirm={() => {
+          void handleConfirmCreateNote()
+        }}
+        onCancel={handleCreateNoteDialogCancel}
+        disableConfirm={!normalizedCreateNotePath || createNoteSubmitting}
+        loading={createNoteSubmitting}
+      />
+      <ConfirmDialog
+        open={createFolderDialogOpen}
+        title="新建文件夹"
+        description={
+          <div className="mt-4 space-y-3">
+            <p className="text-sm text-muted">请输入要创建的文件夹名称（可使用 / 表示层级）。</p>
+            <div className="space-y-1">
+              <label htmlFor="create-folder-path" className="text-sm font-medium text-text">
+                文件夹路径
+              </label>
+              <input
+                id="create-folder-path"
+                type="text"
+                value={createFolderInput}
+                onChange={event => {
+                  handleCreateFolderInputChange(event.currentTarget.value)
+                }}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    if (normalizedCreateFolderPath && !createFolderSubmitting) {
+                      void handleConfirmCreateFolder()
+                    }
+                  }
+                }}
+                autoComplete="off"
+                aria-invalid={createFolderError ? 'true' : 'false'}
+                className={clsx(
+                  'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary/40',
+                  createFolderError && 'border-rose-500/70 focus:border-rose-500 focus-visible:ring-rose-500/40',
+                )}
+              />
+              {createFolderError ? (
+                <p className="text-xs text-rose-500">{createFolderError}</p>
+              ) : (
+                <p className="text-xs text-muted">示例：Projects/Ideas</p>
+              )}
+            </div>
+          </div>
+        }
+        confirmLabel="创建"
+        onConfirm={() => {
+          void handleConfirmCreateFolder()
+        }}
+        onCancel={handleCreateFolderDialogCancel}
+        disableConfirm={!normalizedCreateFolderPath || createFolderSubmitting}
+        loading={createFolderSubmitting}
+      />
+    </>
   )
 }
 
