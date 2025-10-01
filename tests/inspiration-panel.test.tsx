@@ -498,6 +498,7 @@ describe('InspirationPanel handleCreateFile', () => {
           updatedAt: 1,
           excerpt: '',
           searchText: '',
+          attachments: [],
         },
       ] as unknown[])
     createNoteFileMock.mockResolvedValue('Projects/Foo.md')
@@ -555,6 +556,7 @@ describe('InspirationPanel handleCreateFile', () => {
           excerpt: '',
           searchText: '',
           tags: [],
+          attachments: [],
         },
       ] as unknown[])
     listNoteFoldersMock.mockResolvedValue(['Ideas'])
