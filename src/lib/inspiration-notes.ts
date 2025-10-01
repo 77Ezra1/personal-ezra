@@ -9,6 +9,7 @@ import {
   loadStoredRepositoryPath,
   saveStoredDataPath,
 } from './storage-path'
+import { removeVaultFile, type VaultFileMeta } from './vault'
 
 export const NOTES_DIR_NAME = 'notes'
 export const NOTE_FILE_EXTENSION = '.md'
@@ -22,6 +23,7 @@ export interface NoteSummary {
   excerpt: string
   searchText: string
   tags: string[]
+  attachments: VaultFileMeta[]
 }
 
 export interface NoteDetail extends NoteSummary {
@@ -33,6 +35,7 @@ export interface NoteDraft {
   title: string
   content: string
   tags: string[]
+  attachments: VaultFileMeta[]
 }
 
 export interface InspirationNoteBackupEntry {
@@ -42,6 +45,7 @@ export interface InspirationNoteBackupEntry {
     createdAt: number
     updatedAt: number
     tags: string[]
+    attachments: VaultFileMeta[]
   }
   content: string
 }
@@ -51,6 +55,7 @@ type ParsedFrontMatter = {
   createdAt?: number
   updatedAt?: number
   tags?: string[]
+  attachments?: VaultFileMeta[]
 }
 
 const FRONT_MATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/m
@@ -409,6 +414,58 @@ function sanitizeTags(input?: string[] | null) {
   return result
 }
 
+function sanitizeVaultFileMeta(input: unknown): VaultFileMeta | null {
+  if (!input || typeof input !== 'object') return null
+  const relPathRaw = Reflect.get(input, 'relPath')
+  if (typeof relPathRaw !== 'string') return null
+  const normalizedRelPath = relPathRaw.replace(/^[\\/]+/, '').trim()
+  if (!normalizedRelPath) return null
+  const nameRaw = Reflect.get(input, 'name')
+  const sizeRaw = Reflect.get(input, 'size')
+  const mimeRaw = Reflect.get(input, 'mime')
+  const shaRaw = Reflect.get(input, 'sha256')
+  const relSegments = normalizedRelPath.split(/[\\/]/).filter(Boolean)
+  const fallbackName = relSegments[relSegments.length - 1] ?? 'attachment'
+  const name =
+    typeof nameRaw === 'string' && nameRaw.trim() ? nameRaw.trim() : fallbackName || 'attachment'
+  const size = typeof sizeRaw === 'number' && Number.isFinite(sizeRaw) && sizeRaw >= 0 ? sizeRaw : 0
+  const mime = typeof mimeRaw === 'string' && mimeRaw.trim() ? mimeRaw.trim() : 'application/octet-stream'
+  const sha256 = typeof shaRaw === 'string' && shaRaw.trim() ? shaRaw.trim() : ''
+  return { name, relPath: normalizedRelPath.replace(/\\/g, '/'), size, mime, sha256 }
+}
+
+function sanitizeAttachments(input?: unknown): VaultFileMeta[] {
+  if (!input) return []
+  const list = Array.isArray(input) ? input : []
+  const seen = new Set<string>()
+  const result: VaultFileMeta[] = []
+  for (const item of list) {
+    const normalized = sanitizeVaultFileMeta(item)
+    if (!normalized) continue
+    const key = normalized.relPath.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(normalized)
+  }
+  return result
+}
+
+function parseAttachmentsValue(raw: string) {
+  const trimmed = raw.trim()
+  if (!trimmed) return []
+
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (Array.isArray(parsed)) {
+      return sanitizeAttachments(parsed)
+    }
+  } catch {
+    // ignore parsing errors and fall back to empty list
+  }
+
+  return []
+}
+
 export function extractTagsFromContent(content: string | null | undefined) {
   if (!content) return [] as string[]
   const normalized = normalizeContent(content)
@@ -617,17 +674,20 @@ function parseFrontMatter(text: string): { metadata: ParsedFrontMatter; content:
       metadata.updatedAt = parseNumber(rawValue)
     } else if (normalizedKey === 'tags') {
       metadata.tags = parseTagsValue(rawValue)
+    } else if (normalizedKey === 'attachments') {
+      metadata.attachments = parseAttachmentsValue(rawValue)
     }
   }
 
   const normalizedBody = normalizeContent(body).replace(/^\n/, '')
   const tags = sanitizeTags(metadata.tags)
-  const normalizedMetadata: ParsedFrontMatter = { ...metadata, tags }
+  const attachments = sanitizeAttachments(metadata.attachments)
+  const normalizedMetadata: ParsedFrontMatter = { ...metadata, tags, attachments }
   return { metadata: normalizedMetadata, content: normalizedBody }
 }
 
 function serializeNoteFile(
-  meta: { title: string; createdAt: number; updatedAt: number; tags: string[] },
+  meta: { title: string; createdAt: number; updatedAt: number; tags: string[]; attachments: VaultFileMeta[] },
   content: string,
 ) {
   const normalized = normalizeContent(content)
@@ -639,12 +699,24 @@ function serializeNoteFile(
         })
         .join(', ')}]`
     : '[]'
+  const serializedAttachments = meta.attachments.length
+    ? JSON.stringify(
+        meta.attachments.map(item => ({
+          name: item.name,
+          relPath: item.relPath,
+          size: item.size,
+          mime: item.mime,
+          sha256: item.sha256,
+        })),
+      )
+    : '[]'
   return [
     '---',
     `title: ${meta.title}`,
     `createdAt: ${meta.createdAt}`,
     `updatedAt: ${meta.updatedAt}`,
     `tags: ${serializedTags}`,
+    `attachments: ${serializedAttachments}`,
     '---',
     '',
     normalized,
@@ -674,6 +746,7 @@ export async function exportNotesForBackup(): Promise<InspirationNoteBackupEntry
         const createdAt = parsed.metadata.createdAt ?? parsed.metadata.updatedAt ?? now
         const updatedAt = parsed.metadata.updatedAt ?? createdAt
         const tags = parsed.metadata.tags ?? []
+        const attachments = parsed.metadata.attachments ?? []
         entries.push({
           path: relativePath,
           meta: {
@@ -681,6 +754,7 @@ export async function exportNotesForBackup(): Promise<InspirationNoteBackupEntry
             createdAt,
             updatedAt,
             tags,
+            attachments,
           },
           content: parsed.content,
         })
@@ -710,7 +784,8 @@ function sanitizeBackupNoteMeta(
       ? input.updatedAt
       : createdAt
   const tags = sanitizeTags(input?.tags ?? [])
-  return { title, createdAt, updatedAt, tags }
+  const attachments = sanitizeAttachments(input?.attachments ?? [])
+  return { title, createdAt, updatedAt, tags, attachments }
 }
 
 async function removeExistingNoteFiles(baseDir: string) {
@@ -843,6 +918,7 @@ export async function listNotes(): Promise<NoteSummary[]> {
         const metadataTags = parsed.metadata.tags ?? []
         const contentTags = extractTagsFromContent(parsed.content)
         const tags = sanitizeTags([...metadataTags, ...contentTags])
+        const attachments = parsed.metadata.attachments ?? []
         const searchText = createSearchText(title, parsed.content, tags)
         const summary: NoteSummary = {
           id: relativePath,
@@ -852,6 +928,7 @@ export async function listNotes(): Promise<NoteSummary[]> {
           excerpt,
           searchText,
           tags,
+          attachments,
         }
         return summary
       } catch (error) {
@@ -864,6 +941,7 @@ export async function listNotes(): Promise<NoteSummary[]> {
           excerpt: '',
           searchText: '',
           tags: [],
+          attachments: [],
         }
         return fallback
       }
@@ -916,6 +994,7 @@ export async function loadNote(id: string): Promise<NoteDetail> {
   const metadataTags = parsed.metadata.tags ?? []
   const contentTags = extractTagsFromContent(content)
   const tags = sanitizeTags([...metadataTags, ...contentTags])
+  const attachments = parsed.metadata.attachments ?? []
   const searchText = createSearchText(title, content, tags)
   return {
     id: normalizedId,
@@ -926,6 +1005,7 @@ export async function loadNote(id: string): Promise<NoteDetail> {
     searchText,
     content,
     tags,
+    attachments,
   }
 }
 
@@ -938,9 +1018,11 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
   const draftTags = sanitizeTags(draft.tags)
   const contentTags = extractTagsFromContent(rawContent)
   const tags = sanitizeTags([...draftTags, ...contentTags])
+  const attachments = sanitizeAttachments(draft.attachments)
 
   let notePath = draft.id ? normalizeNoteId(draft.id) : await generateUniqueFileName(dir, title, now)
   let createdAt = now
+  let previousAttachments: VaultFileMeta[] = []
 
   if (draft.id) {
     try {
@@ -948,18 +1030,28 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
       createdAt = existing.createdAt
       // 使用原有文件名，避免外部引用失效
       notePath = existing.id
+      previousAttachments = existing.attachments
     } catch (error) {
       console.warn('Failed to load existing inspiration note, creating a new file instead', error)
     }
   }
 
-  const meta = { title, createdAt, updatedAt: now, tags }
+  const meta = { title, createdAt, updatedAt: now, tags, attachments }
   const serialized = serializeNoteFile(meta, rawContent)
   const { directories, fileName } = splitNotePath(notePath)
   const targetDir = directories.length > 0 ? await join(dir, ...directories) : dir
   await mkdir(targetDir, { recursive: true })
   const filePath = await join(targetDir, fileName)
   await writeTextFile(filePath, serialized)
+
+  const removedAttachments = previousAttachments.filter(
+    previous => !attachments.some(item => item.relPath === previous.relPath),
+  )
+  for (const attachment of removedAttachments) {
+    await removeVaultFile(attachment.relPath).catch(error => {
+      console.warn('Failed to remove detached inspiration note attachment', error)
+    })
+  }
 
   const normalizedContent = normalizeContent(rawContent)
   const searchText = createSearchText(title, normalizedContent, tags)
@@ -973,6 +1065,7 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
     searchText,
     content: normalizedContent,
     tags,
+    attachments,
   }
 }
 
@@ -1009,7 +1102,7 @@ export async function createNoteFile(titleOrPath: string): Promise<string> {
   }
 
   const title = sanitizeTitle(deriveTitleFromFileName(fileName))
-  const serialized = serializeNoteFile({ title, createdAt: now, updatedAt: now, tags: [] }, '')
+  const serialized = serializeNoteFile({ title, createdAt: now, updatedAt: now, tags: [], attachments: [] }, '')
   await writeTextFile(filePath, serialized)
 
   return notePath
@@ -1103,6 +1196,21 @@ export async function deleteNote(id: string): Promise<void> {
   const { directories, fileName } = splitNotePath(normalizedId)
   const targetDir = directories.length > 0 ? await join(dir, ...directories) : dir
   const filePath = await join(targetDir, fileName)
+  let attachments: VaultFileMeta[] = []
+  try {
+    const fileText = await readTextFile(filePath)
+    const parsed = parseFrontMatter(fileText)
+    attachments = parsed.metadata.attachments ?? []
+  } catch (error) {
+    if (!isMissingFsEntryError(error)) {
+      console.warn('Failed to read inspiration note before deletion', error)
+    }
+  }
+  for (const attachment of attachments) {
+    await removeVaultFile(attachment.relPath).catch(error => {
+      console.warn('Failed to remove inspiration note attachment during delete', error)
+    })
+  }
   try {
     await remove(filePath)
   } catch (error) {

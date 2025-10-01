@@ -17,6 +17,12 @@ vi.mock('../src/lib/storage-path', async () => {
   }
 })
 
+const removeVaultFileMock = vi.fn<(relPath: string) => Promise<void>>()
+
+vi.mock('../src/lib/vault', () => ({
+  removeVaultFile: (...args: Parameters<typeof removeVaultFileMock>) => removeVaultFileMock(...args),
+}))
+
 import {
   NOTE_FEATURE_DISABLED_MESSAGE,
   createNoteFile,
@@ -27,6 +33,7 @@ import {
   loadNote,
   renameNoteFolder,
   saveNote,
+  exportNotesForBackup,
 } from '../src/lib/inspiration-notes'
 import { isTauriRuntime } from '../src/env'
 import { loadStoredDataPath, saveStoredDataPath } from '../src/lib/storage-path'
@@ -80,6 +87,9 @@ describe('inspiration notes storage', () => {
     renameMock.mockReset()
     invokeMock.mockReset()
     invokeMock.mockResolvedValue(undefined)
+    removeVaultFileMock.mockClear()
+    removeVaultFileMock.mockResolvedValue(undefined)
+    removeVaultFileMock.mockResolvedValue(undefined)
     mkdirMock.mockImplementation(async (path: string) => {
       trackDirectory(directories, path)
     })
@@ -190,7 +200,9 @@ describe('inspiration notes storage', () => {
   it('raises friendly error when runtime is not Tauri', async () => {
     isTauriRuntimeMock.mockReturnValue(false)
     await expect(listNotes()).rejects.toThrow(NOTE_FEATURE_DISABLED_MESSAGE)
-    await expect(saveNote({ title: '测试', content: '内容' })).rejects.toThrow(NOTE_FEATURE_DISABLED_MESSAGE)
+    await expect(saveNote({ title: '测试', content: '内容', attachments: [] })).rejects.toThrow(
+      NOTE_FEATURE_DISABLED_MESSAGE,
+    )
   })
 
   it('creates empty markdown file with basic front matter', async () => {
@@ -207,11 +219,13 @@ describe('inspiration notes storage', () => {
     }
     expect(localContents).toContain('title: 项目规划')
     expect(localContents).toContain('tags: []')
+    expect(localContents).toContain('attachments: []')
 
     const created = await loadNote(noteId)
     expect(created.title).toBe('项目规划')
     expect(created.content).toBe('')
     expect(created.tags).toEqual([])
+    expect(created.attachments).toEqual([])
   })
 
   it('prevents overwriting an existing note when creating file with same path', async () => {
@@ -285,37 +299,48 @@ describe('inspiration notes storage', () => {
   })
 
   it('creates markdown file and lists it from default directory', async () => {
-    const saved = await saveNote({ title: '周报记录', content: '# 每周复盘\n- 事项A' })
+    const saved = await saveNote({ title: '周报记录', content: '# 每周复盘\n- 事项A', attachments: [] })
     expect(saved.id).toMatch(/\.md$/)
     expect(saved.title).toBe('周报记录')
+    expect(saved.attachments).toEqual([])
     expect(Array.from(files.keys())[0]).toContain('/data/notes/')
     const stored = files.get(Array.from(files.keys())[0]!)
     expect(stored).toContain('title: 周报记录')
+    expect(stored).toContain('attachments: []')
 
     const summaries = await listNotes()
     expect(summaries).toHaveLength(1)
     expect(summaries[0]?.id).toBe(saved.id)
     expect(summaries[0]?.title).toBe('周报记录')
+    expect(summaries[0]?.attachments).toEqual([])
 
     const loaded = await loadNote(saved.id)
     expect(loaded.content).toContain('# 每周复盘')
     expect(loaded.createdAt).toBe(saved.createdAt)
     expect(loaded.updatedAt).toBeGreaterThanOrEqual(saved.updatedAt)
+    expect(loaded.attachments).toEqual([])
   })
 
   it('updates existing note without changing creation time', async () => {
-    const saved = await saveNote({ title: '灵感合集', content: '初版内容' })
+    const saved = await saveNote({ title: '灵感合集', content: '初版内容', attachments: [] })
     const firstCreated = saved.createdAt
     const firstUpdated = saved.updatedAt
 
-    const updated = await saveNote({ id: saved.id, title: '灵感合集 2.0', content: '加入新的想法' })
+    const updated = await saveNote({
+      id: saved.id,
+      title: '灵感合集 2.0',
+      content: '加入新的想法',
+      attachments: [],
+    })
     expect(updated.id).toBe(saved.id)
     expect(updated.createdAt).toBe(firstCreated)
     expect(updated.updatedAt).toBeGreaterThanOrEqual(firstUpdated)
+    expect(updated.attachments).toEqual([])
 
     const reloaded = await loadNote(saved.id)
     expect(reloaded.title).toBe('灵感合集 2.0')
     expect(reloaded.content).toContain('加入新的想法')
+    expect(reloaded.attachments).toEqual([])
   })
 
   it('extracts hashtags from content and merges with provided tags when saving', async () => {
@@ -323,18 +348,122 @@ describe('inspiration notes storage', () => {
       title: '标签自动归类',
       content: '记录一些想法 #灵感 #产品-设计\n再提一次 #灵感',
       tags: ['计划'],
+      attachments: [],
     })
     expect(saved.tags).toEqual(['计划', '灵感', '产品-设计'])
 
     const storedContents = Array.from(files.values())[0]!
     expect(storedContents).toContain('tags: ["计划", "灵感", "产品-设计"]')
+    expect(storedContents).toContain('attachments: []')
 
     const summaries = await listNotes()
     expect(summaries).toHaveLength(1)
     expect(summaries[0]?.tags).toEqual(['计划', '灵感', '产品-设计'])
+    expect(summaries[0]?.attachments).toEqual([])
 
     const loaded = await loadNote(saved.id)
     expect(loaded.tags).toEqual(['计划', '灵感', '产品-设计'])
+    expect(loaded.attachments).toEqual([])
+  })
+
+  it('saves attachments metadata in front matter', async () => {
+    const attachment = {
+      name: '设计稿.pdf',
+      relPath: 'vault/design.pdf',
+      size: 1234,
+      mime: 'application/pdf',
+      sha256: 'hash-1',
+    }
+    const saved = await saveNote({
+      title: '附件测试',
+      content: '正文内容',
+      tags: [],
+      attachments: [attachment],
+    })
+    expect(saved.attachments).toEqual([attachment])
+
+    const storedContent = files.get(Array.from(files.keys())[0]!)
+    expect(storedContent).toContain('attachments: [{"name":"设计稿.pdf"')
+    expect(storedContent).toContain('"relPath":"vault/design.pdf"')
+
+    const summaries = await listNotes()
+    expect(summaries[0]?.attachments).toEqual([attachment])
+
+    const loaded = await loadNote(saved.id)
+    expect(loaded.attachments).toEqual([attachment])
+  })
+
+  it('removes detached attachments when updating a note', async () => {
+    const attachment = {
+      name: '文档.docx',
+      relPath: 'vault/doc.docx',
+      size: 2048,
+      mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      sha256: 'hash-2',
+    }
+    const saved = await saveNote({
+      title: '移除附件',
+      content: '初始内容',
+      tags: [],
+      attachments: [attachment],
+    })
+
+    removeVaultFileMock.mockClear()
+    removeVaultFileMock.mockResolvedValue(undefined)
+    const updated = await saveNote({
+      id: saved.id,
+      title: '移除附件',
+      content: '更新后的内容',
+      tags: [],
+      attachments: [],
+    })
+
+    expect(updated.attachments).toEqual([])
+    expect(removeVaultFileMock).toHaveBeenCalledTimes(1)
+    expect(removeVaultFileMock).toHaveBeenCalledWith('vault/doc.docx')
+  })
+
+  it('removes attachments when deleting a note', async () => {
+    const attachment = {
+      name: '截图.png',
+      relPath: 'vault/screenshot.png',
+      size: 512,
+      mime: 'image/png',
+      sha256: 'hash-3',
+    }
+    const saved = await saveNote({
+      title: '删除附件笔记',
+      content: '带附件的笔记',
+      tags: [],
+      attachments: [attachment],
+    })
+
+    removeVaultFileMock.mockClear()
+    removeVaultFileMock.mockResolvedValue(undefined)
+    await deleteNote(saved.id)
+
+    expect(removeVaultFileMock).toHaveBeenCalledTimes(1)
+    expect(removeVaultFileMock).toHaveBeenCalledWith('vault/screenshot.png')
+  })
+
+  it('includes attachments when exporting notes for backup', async () => {
+    const attachment = {
+      name: '导出附件.md',
+      relPath: 'vault/export.md',
+      size: 64,
+      mime: 'text/markdown',
+      sha256: 'hash-4',
+    }
+    await saveNote({
+      title: '备份附件',
+      content: '备份内容',
+      tags: ['备份'],
+      attachments: [attachment],
+    })
+
+    const entries = await exportNotesForBackup()
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.meta.attachments).toEqual([attachment])
   })
 
   it('derives tags from content when metadata tags are missing', async () => {
@@ -356,9 +485,11 @@ describe('inspiration notes storage', () => {
     const summaries = await listNotes()
     expect(summaries).toHaveLength(1)
     expect(summaries[0]?.tags).toEqual(['手动', '更多'])
+    expect(summaries[0]?.attachments).toEqual([])
 
     const loaded = await loadNote(summaries[0]!.id)
     expect(loaded.tags).toEqual(['手动', '更多'])
+    expect(loaded.attachments).toEqual([])
   })
 
   it('merges metadata tags with hashtags discovered in content', async () => {
@@ -379,9 +510,11 @@ describe('inspiration notes storage', () => {
     const summaries = await listNotes()
     expect(summaries).toHaveLength(1)
     expect(summaries[0]?.tags).toEqual(['已有', '补充'])
+    expect(summaries[0]?.attachments).toEqual([])
 
     const loaded = await loadNote(summaries[0]!.id)
     expect(loaded.tags).toEqual(['已有', '补充'])
+    expect(loaded.attachments).toEqual([])
   })
 
   it('supports managing notes stored in nested directories', async () => {
@@ -389,6 +522,7 @@ describe('inspiration notes storage', () => {
       title: '产品规划/路线图',
       content: '# 初稿内容\n- 聚焦 #目标A',
       tags: ['路线'],
+      attachments: [],
     })
 
     expect(saved.id).toMatch(/\//)
@@ -403,12 +537,14 @@ describe('inspiration notes storage', () => {
     const loaded = await loadNote(saved.id)
     expect(loaded.content).toContain('# 初稿内容')
     expect(loaded.tags).toEqual(['路线', '目标A'])
+    expect(loaded.attachments).toEqual([])
 
     const updated = await saveNote({
       id: saved.id,
       title: '产品规划/路线图',
       content: '# 修订版\n- 聚焦 #目标B',
       tags: ['路线'],
+      attachments: [],
     })
     expect(updated.id).toBe(saved.id)
     const updatedPaths = Array.from(files.keys())
@@ -417,6 +553,7 @@ describe('inspiration notes storage', () => {
     const reloaded = await loadNote(updated.id)
     expect(reloaded.content).toContain('# 修订版')
     expect(reloaded.tags).toEqual(['路线', '目标B'])
+    expect(reloaded.attachments).toEqual([])
 
     await deleteNote(saved.id)
     expect(files.size).toBe(0)
@@ -426,7 +563,7 @@ describe('inspiration notes storage', () => {
 
   it('honours custom data path when saving and reading notes', async () => {
     loadStoredDataPathMock.mockReturnValue('D:/Workspace/MyNotes')
-    const first = await saveNote({ title: 'Alpha', content: '计划A' })
+    const first = await saveNote({ title: 'Alpha', content: '计划A', attachments: [] })
     const storedPathsA = Array.from(files.keys())
     expect(storedPathsA.some(path => path.startsWith('D:/Workspace/MyNotes/'))).toBe(true)
     expect(storedPathsA.some(path => path.startsWith('D:/Workspace/MyNotes/notes/'))).toBe(false)
@@ -438,7 +575,7 @@ describe('inspiration notes storage', () => {
     expect(listA[0]?.id).toBe(first.id)
 
     loadStoredDataPathMock.mockReturnValue('E:/Archive')
-    const second = await saveNote({ title: 'Beta', content: '计划B' })
+    const second = await saveNote({ title: 'Beta', content: '计划B', attachments: [] })
     const storedPathsB = Array.from(files.keys())
     expect(storedPathsB.some(path => path.startsWith('E:/Archive/'))).toBe(true)
     expect(storedPathsB.some(path => path.startsWith('E:/Archive/notes/'))).toBe(false)
@@ -482,7 +619,7 @@ describe('inspiration notes storage', () => {
       trackDirectory(directories, path)
     })
 
-    const saved = await saveNote({ title: '路径回退校验', content: '确认默认路径回退' })
+    const saved = await saveNote({ title: '路径回退校验', content: '确认默认路径回退', attachments: [] })
     expect(saved.id).toMatch(/\.md$/)
 
     const storedPaths = Array.from(files.keys())
@@ -504,7 +641,7 @@ describe('inspiration notes storage', () => {
   })
 
   it('removes note files when deleting', async () => {
-    const saved = await saveNote({ title: '临时草稿', content: '准备删除' })
+    const saved = await saveNote({ title: '临时草稿', content: '准备删除', attachments: [] })
     expect(files.size).toBe(1)
     await deleteNote(saved.id)
     expect(files.size).toBe(0)

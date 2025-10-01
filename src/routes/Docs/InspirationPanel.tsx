@@ -6,8 +6,11 @@ import {
   FileText as FileTextIcon,
   Folder as FolderIcon,
   FolderPlus as FolderPlusIcon,
+  Copy as CopyIcon,
+  ExternalLink as ExternalLinkIcon,
   Link as LinkIcon,
   Loader2 as LoaderIcon,
+  Paperclip as PaperclipIcon,
   Pencil as PencilIcon,
   Plus as PlusIcon,
   Search as SearchIcon,
@@ -50,9 +53,15 @@ import {
   type NoteSummary,
 } from '../../lib/inspiration-notes'
 import { queueInspirationBackupSync } from '../../lib/inspiration-sync'
+import {
+  importFileToVault,
+  openDocument,
+  removeVaultFile,
+  type VaultFileMeta,
+} from '../../lib/vault'
 
 function createEmptyDraft(): NoteDraft {
-  return { title: '', content: '', tags: [] }
+  return { title: '', content: '', tags: [], attachments: [] }
 }
 
 function ensureUniqueTags(tags: string[]) {
@@ -79,12 +88,19 @@ function formatDateTime(timestamp?: number) {
   }
 }
 
-function createDraftSnapshot(value: { id?: string | null; title: string; content: string; tags: string[] }) {
+function createDraftSnapshot(value: {
+  id?: string | null
+  title: string
+  content: string
+  tags: string[]
+  attachments: VaultFileMeta[]
+}) {
   return JSON.stringify({
     id: value.id ?? null,
     title: value.title,
     content: value.content,
     tags: [...value.tags],
+    attachments: [...value.attachments.map(item => item.relPath)].sort(),
   })
 }
 
@@ -113,6 +129,7 @@ function toNoteSummary(detail: NoteDetail): NoteSummary {
     excerpt: detail.excerpt,
     searchText: detail.searchText,
     tags: detail.tags,
+    attachments: detail.attachments,
   }
 }
 
@@ -535,6 +552,11 @@ type InspirationEditorProps = {
   loadingNote: boolean
   canDelete: boolean
   lastSavedAt?: number
+  onAttachmentUpload: (files: FileList | null) => void
+  onAttachmentRemove: (attachment: VaultFileMeta) => void
+  onAttachmentOpen: (attachment: VaultFileMeta) => void
+  onAttachmentCopyPath: (attachment: VaultFileMeta) => void
+  attachmentUploading: boolean
 }
 
 type MarkdownCodeProps = ComponentPropsWithoutRef<'code'> & ExtraProps & {
@@ -635,8 +657,14 @@ function InspirationEditor({
   loadingNote,
   canDelete,
   lastSavedAt,
+  onAttachmentUpload,
+  onAttachmentRemove,
+  onAttachmentOpen,
+  onAttachmentCopyPath,
+  attachmentUploading,
 }: InspirationEditorProps) {
   const tagActionsDisabled = saving || autoSaving || deleting || loadingNote
+  const attachmentActionsDisabled = saving || autoSaving || deleting || loadingNote || attachmentUploading
   const hasContent = draft.content.trim().length > 0
   const handleTagInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
@@ -655,6 +683,98 @@ function InspirationEditor({
       onSubmit={onSubmit}
       className="space-y-5 rounded-3xl border border-border bg-surface p-6 shadow-inner shadow-black/10 transition dark:shadow-black/40"
     >
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <label htmlFor="note-attachments" className="text-sm font-medium text-text">
+            附件
+          </label>
+          {draft.attachments.length > 0 && (
+            <span className="text-xs text-muted">{draft.attachments.length} 个附件</span>
+          )}
+        </div>
+        <label
+          htmlFor="note-attachments"
+          className={clsx(
+            'group flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border/80 bg-surface-hover/40 px-4 py-6 text-center transition hover:border-primary/50 hover:bg-primary/5',
+            attachmentActionsDisabled && 'cursor-not-allowed opacity-60',
+          )}
+          aria-disabled={attachmentActionsDisabled ? 'true' : 'false'}
+        >
+          <input
+            id="note-attachments"
+            type="file"
+            multiple
+            className="sr-only"
+            disabled={attachmentActionsDisabled}
+            onChange={event => {
+              void onAttachmentUpload(event.currentTarget.files)
+              event.currentTarget.value = ''
+            }}
+          />
+          <PaperclipIcon className="h-6 w-6 text-muted transition group-hover:text-primary" aria-hidden />
+          {attachmentUploading && <LoaderIcon className="h-4 w-4 animate-spin text-primary" aria-hidden />}
+          <div className="space-y-1 text-xs text-muted">
+            <p>点击或拖入文件以添加附件</p>
+            <p>{attachmentUploading ? '正在导入附件…' : '支持批量上传多个文件'}</p>
+          </div>
+        </label>
+        {draft.attachments.length > 0 ? (
+          <ul className="space-y-2">
+            {draft.attachments.map(attachment => (
+              <li
+                key={attachment.relPath}
+                className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text shadow-inner shadow-black/5"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <PaperclipIcon className="h-4 w-4 flex-shrink-0 text-primary" aria-hidden />
+                  <div className="min-w-0 space-y-1">
+                    <p className="truncate font-medium">{attachment.name}</p>
+                    <p className="truncate text-xs text-muted">{attachment.relPath}</p>
+                  </div>
+                </div>
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void onAttachmentOpen(attachment)
+                    }}
+                    className="rounded-full p-1.5 text-muted transition hover:text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    disabled={attachmentActionsDisabled}
+                  >
+                    <ExternalLinkIcon className="h-4 w-4" aria-hidden />
+                    <span className="sr-only">打开附件 {attachment.name}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void onAttachmentCopyPath(attachment)
+                    }}
+                    className="rounded-full p-1.5 text-muted transition hover:text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    disabled={attachmentActionsDisabled}
+                  >
+                    <CopyIcon className="h-4 w-4" aria-hidden />
+                    <span className="sr-only">复制附件路径 {attachment.name}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void onAttachmentRemove(attachment)
+                    }}
+                    className="rounded-full p-1.5 text-muted transition hover:text-rose-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/40"
+                    disabled={attachmentActionsDisabled}
+                  >
+                    <TrashIcon className="h-4 w-4" aria-hidden />
+                    <span className="sr-only">移除附件 {attachment.name}</span>
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-muted">暂无附件，支持拖拽文件到上方区域或点击上传。</p>
+        )}
+      </div>
+
       <div className="space-y-2">
         <label htmlFor="note-title" className="text-sm font-medium text-text">
           笔记标题
@@ -847,6 +967,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastSavedAt, setLastSavedAt] = useState<number | undefined>(undefined)
+  const [attachmentUploading, setAttachmentUploading] = useState(false)
   const [createNoteDialogOpen, setCreateNoteDialogOpen] = useState(false)
   const [createNoteInput, setCreateNoteInput] = useState('')
   const [createNoteError, setCreateNoteError] = useState<string | null>(null)
@@ -862,6 +983,20 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const lastAttemptedSnapshotRef = useRef<string | null>(null)
   const knownFoldersRef = useRef<Set<string>>(new Set())
   const foldersInitializedRef = useRef(false)
+  const pendingAttachmentsRef = useRef<Set<string>>(new Set())
+
+  const cleanupPendingAttachments = useCallback(async () => {
+    const pending = Array.from(pendingAttachmentsRef.current)
+    if (pending.length === 0) return
+    pendingAttachmentsRef.current.clear()
+    await Promise.all(
+      pending.map(relPath =>
+        removeVaultFile(relPath).catch(error => {
+          console.warn('Failed to cleanup pending inspiration note attachment', error)
+        }),
+      ),
+    )
+  }, [])
 
   const availableTags = useMemo(() => {
     const seen = new Set<string>()
@@ -1200,7 +1335,8 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         const hasContent =
           draftToSave.title.trim().length > 0 ||
           draftToSave.content.trim().length > 0 ||
-          draftToSave.tags.length > 0
+          draftToSave.tags.length > 0 ||
+          draftToSave.attachments.length > 0
         if (!hasContent) {
           return null
         }
@@ -1228,7 +1364,16 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         skipNextAutoSaveRef.current = true
         draftSnapshotRef.current = createDraftSnapshot(saved)
         lastAttemptedSnapshotRef.current = null
-        setDraft({ id: saved.id, title: saved.title, content: saved.content, tags: saved.tags })
+        setDraft({
+          id: saved.id,
+          title: saved.title,
+          content: saved.content,
+          tags: saved.tags,
+          attachments: saved.attachments,
+        })
+        saved.attachments.forEach(attachment => {
+          pendingAttachmentsRef.current.delete(attachment.relPath)
+        })
         if (!isAuto) {
           resetTagEditor()
         }
@@ -1277,6 +1422,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
 
   useEffect(() => {
     if (!isDesktop) {
+      void cleanupPendingAttachments()
       setNotes([])
       setDraft(createEmptyDraft())
       setSelectedId(null)
@@ -1287,7 +1433,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       return
     }
     void refreshNotes()
-  }, [isDesktop, refreshNotes, resetTagEditor])
+  }, [cleanupPendingAttachments, isDesktop, refreshNotes, resetTagEditor])
 
   useEffect(() => {
     setSelectedTags(prev => {
@@ -1373,7 +1519,14 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       await refreshNotes()
 
       const note = await loadNote(createdPath)
-      setDraft({ id: note.id, title: note.title, content: note.content, tags: note.tags })
+      await cleanupPendingAttachments()
+      setDraft({
+        id: note.id,
+        title: note.title,
+        content: note.content,
+        tags: note.tags,
+        attachments: note.attachments,
+      })
       setSelectedId(note.id)
       setLastSavedAt(note.updatedAt)
       draftSnapshotRef.current = createDraftSnapshot(note)
@@ -1404,6 +1557,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     createNoteFile,
     createNoteInput,
     expandFolderPath,
+    cleanupPendingAttachments,
     isDesktop,
     loadNote,
     queueInspirationBackupSync,
@@ -1646,8 +1800,15 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       setSelectedId(noteId)
       setLoadingNote(true)
       try {
+        await cleanupPendingAttachments()
         const note = await loadNote(noteId)
-        setDraft({ id: note.id, title: note.title, content: note.content, tags: note.tags })
+        setDraft({
+          id: note.id,
+          title: note.title,
+          content: note.content,
+          tags: note.tags,
+          attachments: note.attachments,
+        })
         setLastSavedAt(note.updatedAt)
         draftSnapshotRef.current = createDraftSnapshot(note)
         skipNextAutoSaveRef.current = true
@@ -1664,7 +1825,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         setLoadingNote(false)
       }
     },
-    [isDesktop, resetTagEditor, showToast],
+    [cleanupPendingAttachments, isDesktop, resetTagEditor, showToast],
   )
 
   const handleInsertLink = useCallback(() => {
@@ -1683,6 +1844,121 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       textarea.setSelectionRange(caret, caret)
     })
   }, [])
+
+  const handleAttachmentUpload = useCallback(
+    async (files: FileList | null) => {
+      if (!isDesktop || !files || files.length === 0) return
+      setAttachmentUploading(true)
+      const selectedFiles = Array.from(files)
+      const imported: VaultFileMeta[] = []
+      const failed: unknown[] = []
+      for (const file of selectedFiles) {
+        try {
+          const meta = await importFileToVault(file)
+          imported.push(meta)
+        } catch (error) {
+          console.error('Failed to import inspiration note attachment', error)
+          failed.push(error)
+        }
+      }
+
+      if (imported.length > 0) {
+        const existing = new Set(draft.attachments.map(item => item.relPath))
+        const appended = imported.filter(meta => {
+          if (existing.has(meta.relPath)) {
+            return false
+          }
+          existing.add(meta.relPath)
+          return true
+        })
+        if (appended.length > 0) {
+          setDraft(prev => ({ ...prev, attachments: [...prev.attachments, ...appended] }))
+          appended.forEach(meta => {
+            pendingAttachmentsRef.current.add(meta.relPath)
+          })
+          skipNextAutoSaveRef.current = true
+          showToast({
+            title: '附件已添加',
+            description: `成功导入 ${appended.length} 个附件。`,
+            variant: 'success',
+          })
+        } else if (failed.length === 0) {
+          showToast({
+            title: '未添加附件',
+            description: '所选文件已存在于当前笔记。',
+            variant: 'info',
+          })
+        }
+      }
+
+      if (failed.length > 0) {
+        showToast({
+          title: imported.length > 0 ? '部分附件导入失败' : '附件导入失败',
+          description: '部分文件未能导入，请确认桌面端已运行后重试。',
+          variant: 'error',
+        })
+      }
+
+      setAttachmentUploading(false)
+    },
+    [isDesktop, showToast],
+  )
+
+  const handleAttachmentOpen = useCallback(
+    async (attachment: VaultFileMeta) => {
+      try {
+        await openDocument({ kind: 'file', file: attachment })
+      } catch (error) {
+        console.error('Failed to open inspiration note attachment', error)
+        showToast({ title: '打开失败', description: '无法打开附件，请稍后再试。', variant: 'error' })
+      }
+    },
+    [showToast],
+  )
+
+  const handleAttachmentCopyPath = useCallback(
+    async (attachment: VaultFileMeta) => {
+      try {
+        await navigator.clipboard.writeText(attachment.relPath)
+        showToast({ title: '路径已复制', description: attachment.relPath, variant: 'success' })
+      } catch (error) {
+        console.error('Failed to copy inspiration note attachment path', error)
+        showToast({ title: '复制失败', description: '无法复制附件路径，请手动复制。', variant: 'error' })
+      }
+    },
+    [showToast],
+  )
+
+  const handleAttachmentRemove = useCallback(
+    async (attachment: VaultFileMeta) => {
+      setDraft(prev => ({
+        ...prev,
+        attachments: prev.attachments.filter(item => item.relPath !== attachment.relPath),
+      }))
+
+      if (pendingAttachmentsRef.current.has(attachment.relPath)) {
+        pendingAttachmentsRef.current.delete(attachment.relPath)
+        try {
+          await removeVaultFile(attachment.relPath)
+          showToast({ title: '附件已移除', description: attachment.name, variant: 'success' })
+        } catch (error) {
+          console.error('Failed to remove pending inspiration note attachment', error)
+          showToast({
+            title: '清理失败',
+            description: '已从列表移除，但文件清理失败，请稍后重试。',
+            variant: 'error',
+          })
+        }
+      } else if (draft.id) {
+        showToast({
+          title: '附件已标记移除',
+          description: '保存笔记后将彻底删除该附件。',
+          variant: 'info',
+        })
+      }
+    },
+    [draft.id, showToast],
+  )
 
   useEffect(() => {
     if (!isDesktop) return undefined
@@ -1706,7 +1982,10 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
 
     if (!draft.id) {
       const hasContent =
-        draft.title.trim().length > 0 || draft.content.trim().length > 0 || draft.tags.length > 0
+        draft.title.trim().length > 0 ||
+        draft.content.trim().length > 0 ||
+        draft.tags.length > 0 ||
+        draft.attachments.length > 0
       if (!hasContent) {
         return undefined
       }
@@ -1744,6 +2023,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     try {
       setDeleting(true)
       await deleteNote(draft.id)
+      await cleanupPendingAttachments()
       showToast({ title: '已删除', description: '笔记已从本地移除。', variant: 'success' })
       queueInspirationBackupSync(showToast)
       const empty = createEmptyDraft()
@@ -1762,7 +2042,15 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     } finally {
       setDeleting(false)
     }
-  }, [draft.id, isDesktop, refreshNotes, resetTagEditor, showToast])
+  }, [
+    cleanupPendingAttachments,
+    draft.id,
+    isDesktop,
+    queueInspirationBackupSync,
+    refreshNotes,
+    resetTagEditor,
+    showToast,
+  ])
 
   if (!isDesktop) {
     return <InspirationDisabledNotice className={className} />
@@ -1840,6 +2128,11 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
             loadingNote={loadingNote}
             canDelete={Boolean(draft.id)}
             lastSavedAt={lastSavedAt}
+            onAttachmentUpload={handleAttachmentUpload}
+            onAttachmentRemove={handleAttachmentRemove}
+            onAttachmentOpen={handleAttachmentOpen}
+            onAttachmentCopyPath={handleAttachmentCopyPath}
+            attachmentUploading={attachmentUploading}
           />
         </div>
       </div>
