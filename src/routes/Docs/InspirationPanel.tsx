@@ -182,27 +182,37 @@ function InspirationHeader({
             <button
               type="button"
               onClick={onCreateFile}
-              className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition hover:border-border/70 hover:bg-surface-hover"
+              title="新建笔记"
+              aria-label="新建笔记"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-text transition hover:border-border/70 hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
-              <FilePlusIcon className="h-4 w-4" aria-hidden />
-              新建笔记
+              <FilePlusIcon className="h-5 w-5" aria-hidden />
+              <span className="sr-only">新建笔记</span>
             </button>
             <button
               type="button"
               onClick={onCreateFolder}
-              className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition hover:border-border/70 hover:bg-surface-hover"
+              title="新建文件夹"
+              aria-label="新建文件夹"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-text transition hover:border-border/70 hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
-              <FolderPlusIcon className="h-4 w-4" aria-hidden />
-              新建文件夹
+              <FolderPlusIcon className="h-5 w-5" aria-hidden />
+              <span className="sr-only">新建文件夹</span>
             </button>
             <button
               type="button"
               onClick={onRefresh}
-              className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition hover:border-border/70 hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-70"
+              title="刷新列表"
+              aria-label="刷新列表"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-text transition hover:border-border/70 hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-70"
               disabled={loading}
             >
-              {loading ? <LoaderIcon className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshIcon className="h-4 w-4" aria-hidden />}
-              刷新列表
+              {loading ? (
+                <LoaderIcon className="h-5 w-5 animate-spin" aria-hidden />
+              ) : (
+                <RefreshIcon className="h-5 w-5" aria-hidden />
+              )}
+              <span className="sr-only">刷新列表</span>
             </button>
           </div>
         </div>
