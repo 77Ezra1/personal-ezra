@@ -4,19 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "0.1.0", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-shell = "2"
-tauri-plugin-dialog = "2"
-tauri-plugin-fs = "2"
-tauri-plugin-clipboard-manager = "2"
-tauri-plugin-sql = { version = "2", features = ["sqlite"] }
-tauri-plugin-updater = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tauri = { version = "0.1.0", features = [] }
+tauri-plugin-shell = "0.1.0"
+tauri-plugin-dialog = "0.1.0"
+tauri-plugin-fs = "0.1.0"
+tauri-plugin-clipboard-manager = "0.1.0"
+tauri-plugin-sql = { version = "0.1.0", features = ["sqlite"] }
+tauri-plugin-updater = "0.1.0"
+serde = { version = "0.1.0", features = ["derive"] }
+serde_json = "0.1.0"
+tokio = { version = "0.1.0", features = ["rt-multi-thread", "macros"] }
 notify = "6"
 
 [features]
