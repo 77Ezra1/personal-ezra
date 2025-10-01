@@ -65,7 +65,10 @@ export function AppLayout({
               value={searchValue}
               onChange={event => onSearchChange(event.target.value)}
               placeholder={searchPlaceholder ?? '搜索'}
-              className="h-12 w-full rounded-full border border-border bg-surface pl-12 pr-28 text-sm text-text shadow-inner shadow-black/5 outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+              className={clsx(
+                'h-12 w-full rounded-full border border-border bg-surface pl-12 text-sm text-text shadow-inner shadow-black/5 outline-none transition focus:border-primary/60 focus:bg-surface-hover',
+                commandPalette ? 'pr-28' : 'pr-4 sm:pr-6',
+              )}
             />
             {commandPalette && (
               <button
