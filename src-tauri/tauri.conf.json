@@ -16,6 +16,10 @@
       "icons/icon.icns"
     ],
     "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller",
+        "silent": true
+      },
       "nsis": {
         "installerIcon": "icons/installer.ico",
         "languages": [
