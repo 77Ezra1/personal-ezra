@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
@@ -62,5 +62,42 @@ describe('AppLayout', () => {
     )
 
     expect(screen.getByTestId('filters')).toBeInTheDocument()
+  })
+
+  it('adjusts search input padding based on command palette availability', () => {
+    const baseProps = {
+      title: '搜索布局',
+      searchValue: '',
+      onSearchChange: (_value: string) => {},
+    }
+
+    const { rerender, container } = render(
+      <AppLayout {...baseProps}>
+        <div>内容</div>
+      </AppLayout>,
+    )
+
+    const searchInput = within(container).getByPlaceholderText('搜索')
+    expect(searchInput).toHaveClass('pr-4', 'sm:pr-6')
+    expect(searchInput).not.toHaveClass('pr-28')
+
+    rerender(
+      <AppLayout
+        {...baseProps}
+        commandPalette={{
+          items: [],
+          isOpen: false,
+          onOpen: () => {},
+          onClose: () => {},
+          onSelect: (_item) => {},
+        }}
+      >
+        <div>内容</div>
+      </AppLayout>,
+    )
+
+    const searchInputWithPalette = within(container).getByPlaceholderText('搜索')
+    expect(searchInputWithPalette).toHaveClass('pr-28')
+    expect(searchInputWithPalette).not.toHaveClass('pr-4', 'sm:pr-6')
   })
 })
