@@ -142,79 +142,69 @@ function InspirationHeader({
   onSearchClear,
 }: InspirationHeaderProps) {
   return (
-    <header className="space-y-4 rounded-3xl border border-border bg-surface p-6 shadow-lg shadow-black/10 transition-colors dark:shadow-black/40 sm:p-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <header className="space-y-6 rounded-3xl border border-border bg-surface p-6 shadow-lg shadow-black/10 transition-colors dark:shadow-black/40 sm:p-8">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-2">
           <h2 className="text-2xl font-semibold text-text">灵感妙记</h2>
           <p className="text-sm text-muted">
             集中记录灵感碎片、会议纪要与规划要点，所有 Markdown 笔记都会安全存放在本地离线数据目录，可随时备份与迁移。
           </p>
         </div>
-        <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:items-end sm:gap-4">
+      </div>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+        <div className="relative flex-1">
           <label htmlFor="inspiration-search" className="sr-only">
             搜索笔记
           </label>
-          <div className="flex w-full min-w-0 items-center gap-2 rounded-full border border-border bg-surface px-3 py-2 text-sm transition focus-within:border-primary/60 focus-within:bg-surface-hover sm:w-72">
-            <SearchIcon className="h-4 w-4 text-muted" aria-hidden />
-            <input
-              id="inspiration-search"
-              type="search"
-              value={searchValue}
-              onChange={event => {
-                onSearchChange(event.currentTarget.value)
-              }}
-              placeholder="搜索笔记或 #标签"
-              className="flex-1 bg-transparent text-sm text-text outline-none placeholder:text-muted"
-              autoComplete="off"
-            />
-            {searchValue && (
-              <button
-                type="button"
-                onClick={onSearchClear}
-                className="rounded-full p-1 text-muted transition hover:text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-              >
-                <XIcon className="h-3.5 w-3.5" aria-hidden />
-                <span className="sr-only">清除搜索</span>
-              </button>
-            )}
-          </div>
-          <div className="flex w-full justify-end gap-2 sm:w-auto sm:gap-3">
+          <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
+          <input
+            id="inspiration-search"
+            type="search"
+            value={searchValue}
+            onChange={event => {
+              onSearchChange(event.currentTarget.value)
+            }}
+            placeholder="搜索笔记或 #标签"
+            className="h-12 w-full rounded-full border border-border bg-surface pl-12 pr-28 text-sm text-text shadow-inner shadow-black/5 outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+            autoComplete="off"
+          />
+          {searchValue && (
             <button
               type="button"
-              onClick={onCreateFile}
-              title="新建笔记"
-              aria-label="新建笔记"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-text transition hover:border-border/70 hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              onClick={onSearchClear}
+              className="absolute right-4 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-muted transition hover:text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
-              <FilePlusIcon className="h-5 w-5" aria-hidden />
-              <span className="sr-only">新建笔记</span>
+              <XIcon className="h-3.5 w-3.5" aria-hidden />
+              <span className="sr-only">清除搜索</span>
             </button>
-            <button
-              type="button"
-              onClick={onCreateFolder}
-              title="新建文件夹"
-              aria-label="新建文件夹"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-text transition hover:border-border/70 hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-            >
-              <FolderPlusIcon className="h-5 w-5" aria-hidden />
-              <span className="sr-only">新建文件夹</span>
-            </button>
-            <button
-              type="button"
-              onClick={onRefresh}
-              title="刷新列表"
-              aria-label="刷新列表"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-text transition hover:border-border/70 hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-70"
-              disabled={loading}
-            >
-              {loading ? (
-                <LoaderIcon className="h-5 w-5 animate-spin" aria-hidden />
-              ) : (
-                <RefreshIcon className="h-5 w-5" aria-hidden />
-              )}
-              <span className="sr-only">刷新列表</span>
-            </button>
-          </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end lg:w-auto">
+          <button
+            type="button"
+            onClick={onCreateFile}
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition hover:border-border/70 hover:bg-surface-hover"
+          >
+            <FilePlusIcon className="h-4 w-4" aria-hidden />
+            新建笔记
+          </button>
+          <button
+            type="button"
+            onClick={onCreateFolder}
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition hover:border-border/70 hover:bg-surface-hover"
+          >
+            <FolderPlusIcon className="h-4 w-4" aria-hidden />
+            新建文件夹
+          </button>
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-medium text-text transition hover:border-border/70 hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={loading}
+          >
+            {loading ? <LoaderIcon className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshIcon className="h-4 w-4" aria-hidden />}
+            刷新列表
+          </button>
         </div>
       </div>
       {error && (
