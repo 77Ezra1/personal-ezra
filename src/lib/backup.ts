@@ -24,6 +24,7 @@ import {
   restoreNotesFromBackup,
   type InspirationNoteBackupEntry,
 } from './inspiration-notes'
+import type { BackupHistorySummary } from '../stores/backup-history'
 
 export const BACKUP_IMPORTED_EVENT = 'pms-backup-imported'
 
@@ -199,6 +200,31 @@ type BackupPayloadV1 = {
 type BackupPayload = BackupPayloadV1 & {
   github?: BackupGithubConnection | null
   notes?: InspirationNoteBackupEntry[]
+}
+
+export type ExportUserDataResult = {
+  blob: Blob
+  summary: BackupHistorySummary
+}
+
+function createBackupSummary(payload: BackupPayload): BackupHistorySummary {
+  const notesCount = Array.isArray(payload.notes) ? payload.notes.length : 0
+  const profileSummary = payload.profile
+    ? {
+        displayName: typeof payload.profile.displayName === 'string' ? payload.profile.displayName : null,
+        hasAvatar: Boolean(payload.profile.avatar),
+      }
+    : null
+  return {
+    version: payload.version,
+    counts: {
+      passwords: Array.isArray(payload.passwords) ? payload.passwords.length : 0,
+      sites: Array.isArray(payload.sites) ? payload.sites.length : 0,
+      docs: Array.isArray(payload.docs) ? payload.docs.length : 0,
+      notes: notesCount,
+    },
+    profile: profileSummary,
+  }
 }
 
 type ImportResult = {
@@ -514,7 +540,7 @@ export async function exportUserData(
   email: string | null | undefined,
   encryptionKey: Uint8Array | null | undefined,
   options: ExportUserDataOptions = {},
-) {
+): Promise<ExportUserDataResult> {
   const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : ''
   if (!normalizedEmail) {
     throw new Error('请先登录后再导出备份。')
@@ -657,7 +683,8 @@ export async function exportUserData(
     payload: encryptedPayload,
   }
 
-  return new Blob([JSON.stringify(envelope)], { type: 'application/json' })
+  const blob = new Blob([JSON.stringify(envelope)], { type: 'application/json' })
+  return { blob, summary: createBackupSummary(payload) }
 }
 
 function parseBackupPayload(data: unknown): BackupPayload {

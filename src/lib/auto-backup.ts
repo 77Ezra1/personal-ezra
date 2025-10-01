@@ -6,6 +6,10 @@ import { exportUserData } from './backup'
 import { decryptString } from './crypto'
 import { uploadGithubBackup } from './github-backup'
 import { db } from '../stores/database'
+import {
+  recordBackupHistory,
+  type BackupHistoryRetentionPolicy,
+} from '../stores/backup-history'
 
 export type ScheduledBackupAuthContext = {
   email: string | null | undefined
@@ -26,6 +30,7 @@ export type RunScheduledBackupResult = {
   fileName: string
   destinationPath?: string
   github?: GithubBackupExecutionResult | null
+  historyEntryId?: number | null
 }
 
 export type RunScheduledBackupOptions = {
@@ -36,6 +41,7 @@ export type RunScheduledBackupOptions = {
   allowDialogFallback?: boolean
   githubBackup?: { enabled: boolean }
   skipLocalExport?: boolean
+  historyRetention?: BackupHistoryRetentionPolicy | null
 }
 
 function formatBackupFileTimestamp(date: Date) {
@@ -56,6 +62,7 @@ export async function runScheduledBackup({
   allowDialogFallback = false,
   githubBackup,
   skipLocalExport = false,
+  historyRetention = null,
 }: RunScheduledBackupOptions): Promise<RunScheduledBackupResult | null> {
   const shouldRunLocal = !skipLocalExport
   const shouldRunGithub = githubBackup?.enabled === true
@@ -79,7 +86,7 @@ export async function runScheduledBackup({
     }
   }
 
-  const blob = await exportUserData(email, encryptionKey, {
+  const { blob, summary } = await exportUserData(email, encryptionKey, {
     masterPassword: auth.masterPassword ?? null,
     useSessionKey: auth.useSessionKey === true,
   })
@@ -207,5 +214,30 @@ export async function runScheduledBackup({
     }
   }
 
-  return { exportedAt, fileName, destinationPath, github: githubResult }
+  let historyEntryId: number | null = null
+  try {
+    historyEntryId = await recordBackupHistory(
+      {
+        ownerEmail: email,
+        fileName,
+        exportedAt,
+        content: fileContent,
+        summary,
+        destinationPath: destinationPath ?? null,
+        github: githubResult
+          ? {
+              path: githubResult.path,
+              commitSha: githubResult.commitSha,
+              htmlUrl: githubResult.htmlUrl,
+              uploadedAt: githubResult.uploadedAt,
+            }
+          : null,
+      },
+      historyRetention,
+    )
+  } catch (error) {
+    console.warn('Failed to record backup history metadata', error)
+  }
+
+  return { exportedAt, fileName, destinationPath, github: githubResult, historyEntryId }
 }
