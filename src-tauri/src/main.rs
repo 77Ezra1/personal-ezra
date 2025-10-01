@@ -10,16 +10,26 @@ use tauri::Manager;
 #[cfg(target_os = "windows")]
 fn ensure_webview2_installed() -> Result<(), String> {
     const WEBVIEW_RELATIVE_PATH: &str = "Microsoft\\EdgeWebView\\Application\\msedgewebview2.exe";
+    const WEBVIEW_ENV_VARS: &[&str] = &["ProgramFiles", "ProgramFiles(x86)", "ProgramFiles(Arm)", "LOCALAPPDATA"];
 
-    let env_vars = ["ProgramFiles", "ProgramFiles(x86)"];
+    fn webview_runtime_exists(env_vars: &[&str], relative_path: &str) -> bool {
+        env_vars
+            .iter()
+            .filter_map(|var| {
+                std::env::var(var).ok().and_then(|dir| {
+                    let trimmed = dir.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(Path::new(trimmed).join(relative_path))
+                    }
+                })
+            })
+            .any(|candidate| candidate.exists())
+    }
 
-    for var in env_vars.iter().copied() {
-        if let Ok(dir) = std::env::var(var) {
-            let candidate = Path::new(&dir).join(WEBVIEW_RELATIVE_PATH);
-            if candidate.exists() {
-                return Ok(());
-            }
-        }
+    if webview_runtime_exists(WEBVIEW_ENV_VARS, WEBVIEW_RELATIVE_PATH) {
+        return Ok(());
     }
 
     Err("Microsoft Edge WebView2 Runtime is not installed on this system.".to_string())
