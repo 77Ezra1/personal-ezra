@@ -25,12 +25,15 @@ fn ensure_webview2_installed() -> Result<(), String> {
     }
 
     fn runtime_version_directories(path: &Path) -> impl Iterator<Item = PathBuf> {
-        match fs::read_dir(path) {
+        let dirs: Vec<PathBuf> = match fs::read_dir(path) {
             Ok(entries) => entries
                 .filter_map(|entry| entry.ok().map(|e| e.path()))
-                .filter(|p| p.is_dir()),
-            Err(_) => Vec::new().into_iter(),
-        }
+                .filter(|p| p.is_dir())
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+
+        dirs.into_iter()
     }
 
     fn webview_runtime_exists(env_vars: &[&str]) -> bool {
