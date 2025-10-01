@@ -104,7 +104,7 @@ function AuthenticatedLayout() {
           </div>
         </div>
         <nav className="border-t border-border/60">
-          <div className="mx-auto flex w-full max-w-5xl gap-4 px-6 py-3 text-sm">
+          <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-2 overflow-x-auto px-4 py-3 text-sm sm:flex-nowrap sm:gap-4 sm:px-6">
             <NavLink
               to="/dashboard"
               end
