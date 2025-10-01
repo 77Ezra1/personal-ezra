@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import InspirationPanel from '../src/routes/Docs/InspirationPanel'
 import { ToastProvider } from '../src/components/ToastProvider'
+import type { VaultFileMeta } from '../src/lib/vault'
 
 vi.mock('../src/env', () => ({
   isTauriRuntime: () => true,
@@ -21,6 +22,7 @@ const loadNoteMock = vi.fn<
     title: string
     content: string
     tags: string[]
+    attachments: VaultFileMeta[]
     createdAt: number
     updatedAt: number
     excerpt: string
@@ -36,6 +38,7 @@ const saveNoteMock = vi.fn<
       title: string
       content: string
       tags: string[]
+      attachments: VaultFileMeta[]
     },
   ],
   Promise<{
@@ -43,13 +46,18 @@ const saveNoteMock = vi.fn<
     title: string
     content: string
     tags: string[]
+    attachments: VaultFileMeta[]
     createdAt: number
     updatedAt: number
     excerpt: string
     searchText: string
   }>
 >()
+const importFileToVaultMock = vi.fn<(file: File) => Promise<VaultFileMeta>>()
+const openDocumentMock = vi.fn<(target: { kind: 'file'; file: VaultFileMeta }) => Promise<void>>()
+const removeVaultFileMock = vi.fn<(relPath: string) => Promise<void>>()
 
+const clipboardWriteTextMock = vi.fn<(text: string) => Promise<void>>()
 const queueInspirationBackupSyncMock = vi.fn()
 
 vi.mock('../src/lib/inspiration-notes', () => ({
@@ -72,6 +80,13 @@ vi.mock('../src/lib/inspiration-notes', () => ({
 vi.mock('../src/lib/inspiration-sync', () => ({
   queueInspirationBackupSync: (...args: Parameters<typeof queueInspirationBackupSyncMock>) =>
     queueInspirationBackupSyncMock(...args),
+}))
+
+vi.mock('../src/lib/vault', () => ({
+  importFileToVault: (...args: Parameters<typeof importFileToVaultMock>) =>
+    importFileToVaultMock(...args),
+  openDocument: (...args: Parameters<typeof openDocumentMock>) => openDocumentMock(...args),
+  removeVaultFile: (...args: Parameters<typeof removeVaultFileMock>) => removeVaultFileMock(...args),
 }))
 
 function renderPanel() {
@@ -99,6 +114,7 @@ beforeEach(() => {
     title: draft.title,
     content: draft.content,
     tags: [...draft.tags],
+    attachments: [...draft.attachments],
     createdAt: Date.now(),
     updatedAt: Date.now(),
     excerpt: '',
@@ -107,11 +123,53 @@ beforeEach(() => {
   deleteNoteFolderMock.mockResolvedValue()
   renameNoteFolderMock.mockImplementation(async (_source, target) => target)
   queueInspirationBackupSyncMock.mockReset()
+  importFileToVaultMock.mockReset()
+  openDocumentMock.mockReset()
+  removeVaultFileMock.mockReset()
+  removeVaultFileMock.mockResolvedValue(undefined)
+  clipboardWriteTextMock.mockReset()
+  clipboardWriteTextMock.mockResolvedValue(undefined)
+  if (navigator.clipboard && 'writeText' in navigator.clipboard) {
+    vi.spyOn(navigator.clipboard, 'writeText').mockImplementation(text =>
+      clipboardWriteTextMock(text),
+    )
+  } else {
+    Object.defineProperty(window.navigator, 'clipboard', {
+      value: {
+        writeText: clipboardWriteTextMock,
+      },
+      configurable: true,
+    })
+  }
+  loadNoteMock.mockResolvedValue({
+    id: 'note-id',
+    title: 'Sample Note',
+    content: '内容',
+    tags: [],
+    attachments: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    excerpt: '',
+    searchText: '',
+  })
 })
 
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  if (
+    navigator.clipboard &&
+    'writeText' in navigator.clipboard &&
+    'mockRestore' in (navigator.clipboard.writeText as unknown as { mockRestore?: () => void })
+  ) {
+    ;(navigator.clipboard.writeText as unknown as { mockRestore: () => void }).mockRestore()
+  } else {
+    delete (
+      window.navigator as Navigator & {
+        clipboard?: { writeText: typeof clipboardWriteTextMock }
+      }
+    ).clipboard
+  }
 })
 
 describe('InspirationPanel folder listing', () => {
@@ -134,6 +192,7 @@ describe('InspirationPanel folder listing', () => {
         excerpt: '',
         searchText: '',
         tags: ['work'],
+        attachments: [],
       },
       {
         id: 'Personal/Daily Journal',
@@ -143,6 +202,7 @@ describe('InspirationPanel folder listing', () => {
         excerpt: '',
         searchText: '',
         tags: ['life'],
+        attachments: [],
       },
     ])
     listNoteFoldersMock.mockResolvedValue(['Work', 'Personal'])
@@ -177,6 +237,7 @@ describe('InspirationPanel folder listing', () => {
       excerpt: '',
       searchText: '',
       tags: [],
+      attachments: [],
     }
     listNotesMock.mockResolvedValue([note])
     listNoteFoldersMock.mockResolvedValue(['Projects'])
@@ -221,6 +282,7 @@ describe('InspirationPanel folder listing', () => {
       excerpt: '',
       searchText: '',
       tags: [],
+      attachments: [],
     }
     listNotesMock.mockResolvedValue([note])
     listNoteFoldersMock.mockResolvedValue(['Projects', 'Ideas'])
@@ -444,6 +506,7 @@ describe('InspirationPanel handleCreateFile', () => {
       title: '项目规划',
       content: '',
       tags: [],
+      attachments: [],
       createdAt: 1,
       updatedAt: 1,
       excerpt: '',
@@ -501,6 +564,7 @@ describe('InspirationPanel handleCreateFile', () => {
       title: '新建笔记',
       content: '',
       tags: [],
+      attachments: [],
       createdAt: 1,
       updatedAt: 1,
       excerpt: '',
@@ -571,6 +635,79 @@ describe('InspirationPanel handleCreateFile', () => {
   })
 })
 
+describe('InspirationPanel attachments', () => {
+  it('allows uploading, opening, copying, and removing attachments', async () => {
+    const now = Date.now()
+    listNotesMock.mockResolvedValue([
+      {
+        id: 'note-id',
+        title: 'Attachment Note',
+        createdAt: now,
+        updatedAt: now,
+        excerpt: '',
+        searchText: '',
+        tags: [],
+        attachments: [],
+      },
+    ])
+    const firstAttachment: VaultFileMeta = {
+      name: 'pending.txt',
+      relPath: 'vault/pending.txt',
+      size: 5,
+      mime: 'text/plain',
+      sha256: 'abc',
+    }
+    const secondAttachment: VaultFileMeta = {
+      name: 'test.txt',
+      relPath: 'vault/test.txt',
+      size: 10,
+      mime: 'text/plain',
+      sha256: 'def',
+    }
+    importFileToVaultMock
+      .mockResolvedValueOnce(firstAttachment)
+      .mockResolvedValueOnce(secondAttachment)
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: 'Attachment Note' }))
+
+    const fileInput = screen.getByLabelText('附件') as HTMLInputElement
+    const firstFile = new File(['one'], 'pending.txt', { type: 'text/plain' })
+    await user.upload(fileInput, firstFile)
+
+    await screen.findByText('pending.txt')
+    expect(importFileToVaultMock).toHaveBeenCalledWith(firstFile)
+
+    await user.click(screen.getByRole('button', { name: '移除附件 pending.txt' }))
+    await waitFor(() => {
+      expect(removeVaultFileMock).toHaveBeenCalledWith('vault/pending.txt')
+      expect(screen.queryByRole('button', { name: '移除附件 pending.txt' })).not.toBeInTheDocument()
+    })
+
+    const secondFile = new File(['hello'], 'test.txt', { type: 'text/plain' })
+    await user.upload(fileInput, secondFile)
+
+    await screen.findByText('test.txt')
+    expect(importFileToVaultMock).toHaveBeenCalledWith(secondFile)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '复制附件路径 test.txt' })).toBeEnabled()
+    })
+    await user.click(screen.getByRole('button', { name: '打开附件 test.txt' }))
+    expect(openDocumentMock).toHaveBeenCalledWith({ kind: 'file', file: secondAttachment })
+
+    await user.click(screen.getByRole('button', { name: '复制附件路径 test.txt' }))
+    await screen.findByText('路径已复制')
+
+    await user.click(screen.getByRole('button', { name: '移除附件 test.txt' }))
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: '移除附件 test.txt' })).not.toBeInTheDocument()
+    })
+  })
+})
+
 describe('InspirationPanel search filtering', () => {
   it('matches hashtag queries when tags contain the searched substring', async () => {
     listNotesMock.mockResolvedValue([
@@ -582,6 +719,7 @@ describe('InspirationPanel search filtering', () => {
         excerpt: '',
         searchText: '',
         tags: ['国际化测试'],
+        attachments: [],
       },
       {
         id: 'Other.md',
@@ -591,6 +729,7 @@ describe('InspirationPanel search filtering', () => {
         excerpt: '',
         searchText: '',
         tags: ['日志'],
+        attachments: [],
       },
     ])
 
@@ -621,6 +760,7 @@ describe('InspirationPanel synchronization queue', () => {
     updatedAt: 1,
     excerpt: '',
     searchText: '',
+    attachments: [],
   }
 
   const noteDetail = {
@@ -632,6 +772,7 @@ describe('InspirationPanel synchronization queue', () => {
     updatedAt: 1,
     excerpt: '',
     searchText: '',
+    attachments: [],
   }
 
   it('queues GitHub sync after a successful save', async () => {
