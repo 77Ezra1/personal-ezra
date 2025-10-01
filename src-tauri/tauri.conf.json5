@@ -18,5 +18,14 @@
         "resizable": true
       }
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/ezrmm/personal-ezra/releases/latest/download/latest.json"
+      ],
+      "dialog": true,
+      "pubkey": "$env(UPDATER_PUBKEY)"
+    }
   }
 }
