@@ -16,7 +16,7 @@ import {
   rename,
   writeTextFile,
 } from '@tauri-apps/plugin-fs'
-import { check } from '@tauri-apps/plugin-updater'
+import { open as openShell } from '@tauri-apps/plugin-shell'
 import { openDialog } from '../lib/tauri-dialog'
 import { isTauriRuntime } from '../env'
 import {
@@ -199,55 +199,25 @@ function describeDataPathUpdate(path: string, status: DataPathUpdateStatus) {
   }
 }
 
+const OFFICIAL_SITE_URL = 'https://www.eccoretech.cn/'
+
 export function AboutSection() {
   const isDesktop = isTauriRuntime()
-  const { showToast } = useToast()
-  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
-  const [updateError, setUpdateError] = useState<string | null>(null)
   const runtimeLabel = isDesktop ? '桌面端 (Tauri)' : 'Web / PWA'
   const runtimeDescription = isDesktop
     ? '依托 Rust + SQLite 等原生能力，将数据加密保存在本机文件系统，并支持自定义备份路径。'
     : '通过 Service Worker 与 IndexedDB 缓存数据，即使离线也能查看与录入账户信息。'
 
-  const handleCheckUpdates = useCallback(async () => {
-    if (!isDesktop || isCheckingUpdate) {
+  const handleVisitOfficialSite = useCallback(() => {
+    if (isDesktop) {
+      void openShell(OFFICIAL_SITE_URL)
       return
     }
 
-    setIsCheckingUpdate(true)
-    setUpdateError(null)
-
-    try {
-      const update = await check()
-
-      if (!update) {
-        showToast({
-          title: '当前已是最新版本',
-          description: `版本 ${APP_VERSION_BADGE}`,
-          variant: 'info',
-        })
-        return
-      }
-
-      await update.downloadAndInstall()
-      const nextVersion = update.version ?? '最新版本'
-      showToast({
-        title: '更新已安装',
-        description: `已升级至 ${nextVersion}，如未自动重启请手动重新打开应用。`,
-        variant: 'success',
-      })
-    } catch (error) {
-      console.error('Failed to check for updates', error)
-      const message =
-        error instanceof Error && error.message
-          ? error.message
-          : '检查更新时发生未知错误。'
-      setUpdateError(message)
-      showToast({ title: '检查更新失败', description: message, variant: 'error' })
-    } finally {
-      setIsCheckingUpdate(false)
+    if (typeof window !== 'undefined') {
+      window.open(OFFICIAL_SITE_URL, '_blank', 'noopener,noreferrer')
     }
-  }, [isCheckingUpdate, isDesktop, showToast])
+  }, [isDesktop])
 
   const metaCards: AboutMetaCard[] = [
     {
@@ -298,27 +268,18 @@ export function AboutSection() {
               {runtimeLabel}
             </span>
           </div>
-          {isDesktop ? (
-            <button
-              type="button"
-              onClick={handleCheckUpdates}
-              disabled={isCheckingUpdate}
-              className={clsx(
-                'inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-background shadow-sm transition',
-                'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/60',
-              )}
-            >
-              {isCheckingUpdate ? '检查中…' : '检查更新'}
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={handleVisitOfficialSite}
+            className={clsx(
+              'inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-background shadow-sm transition',
+              'hover:bg-primary/90',
+            )}
+          >
+            访问官网
+          </button>
         </div>
       </div>
-
-      {isDesktop && updateError ? (
-        <p className="text-xs text-rose-400" role="status" aria-live="polite">
-          {updateError}
-        </p>
-      ) : null}
 
       <p className="text-sm leading-relaxed text-muted">
         {APP_DISPLAY_NAME} 是一款面向个人与小团队的零知识密码与私密资料管理应用。基于 React、Tauri 与 SQLite
