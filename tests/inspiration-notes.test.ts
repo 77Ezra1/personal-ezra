@@ -200,7 +200,9 @@ describe('inspiration notes storage', () => {
   it('raises friendly error when runtime is not Tauri', async () => {
     isTauriRuntimeMock.mockReturnValue(false)
     await expect(listNotes()).rejects.toThrow(NOTE_FEATURE_DISABLED_MESSAGE)
-    await expect(saveNote({ title: '测试', content: '内容', attachments: [] })).rejects.toThrow(
+    await expect(
+      saveNote({ title: '测试', content: '内容', tags: [], attachments: [] }),
+    ).rejects.toThrow(
       NOTE_FEATURE_DISABLED_MESSAGE,
     )
   })
@@ -299,7 +301,12 @@ describe('inspiration notes storage', () => {
   })
 
   it('creates markdown file and lists it from default directory', async () => {
-    const saved = await saveNote({ title: '周报记录', content: '# 每周复盘\n- 事项A', attachments: [] })
+    const saved = await saveNote({
+      title: '周报记录',
+      content: '# 每周复盘\n- 事项A',
+      tags: [],
+      attachments: [],
+    })
     expect(saved.id).toMatch(/\.md$/)
     expect(saved.title).toBe('周报记录')
     expect(saved.attachments).toEqual([])
@@ -322,7 +329,12 @@ describe('inspiration notes storage', () => {
   })
 
   it('updates existing note without changing creation time', async () => {
-    const saved = await saveNote({ title: '灵感合集', content: '初版内容', attachments: [] })
+    const saved = await saveNote({
+      title: '灵感合集',
+      content: '初版内容',
+      tags: [],
+      attachments: [],
+    })
     const firstCreated = saved.createdAt
     const firstUpdated = saved.updatedAt
 
@@ -330,6 +342,7 @@ describe('inspiration notes storage', () => {
       id: saved.id,
       title: '灵感合集 2.0',
       content: '加入新的想法',
+      tags: [],
       attachments: [],
     })
     expect(updated.id).toBe(saved.id)
@@ -563,7 +576,7 @@ describe('inspiration notes storage', () => {
 
   it('honours custom data path when saving and reading notes', async () => {
     loadStoredDataPathMock.mockReturnValue('D:/Workspace/MyNotes')
-    const first = await saveNote({ title: 'Alpha', content: '计划A', attachments: [] })
+    const first = await saveNote({ title: 'Alpha', content: '计划A', tags: [], attachments: [] })
     const storedPathsA = Array.from(files.keys())
     expect(storedPathsA.some(path => path.startsWith('D:/Workspace/MyNotes/'))).toBe(true)
     expect(storedPathsA.some(path => path.startsWith('D:/Workspace/MyNotes/notes/'))).toBe(false)
@@ -575,7 +588,7 @@ describe('inspiration notes storage', () => {
     expect(listA[0]?.id).toBe(first.id)
 
     loadStoredDataPathMock.mockReturnValue('E:/Archive')
-    const second = await saveNote({ title: 'Beta', content: '计划B', attachments: [] })
+    const second = await saveNote({ title: 'Beta', content: '计划B', tags: [], attachments: [] })
     const storedPathsB = Array.from(files.keys())
     expect(storedPathsB.some(path => path.startsWith('E:/Archive/'))).toBe(true)
     expect(storedPathsB.some(path => path.startsWith('E:/Archive/notes/'))).toBe(false)
@@ -619,7 +632,12 @@ describe('inspiration notes storage', () => {
       trackDirectory(directories, path)
     })
 
-    const saved = await saveNote({ title: '路径回退校验', content: '确认默认路径回退', attachments: [] })
+    const saved = await saveNote({
+      title: '路径回退校验',
+      content: '确认默认路径回退',
+      tags: [],
+      attachments: [],
+    })
     expect(saved.id).toMatch(/\.md$/)
 
     const storedPaths = Array.from(files.keys())
@@ -634,14 +652,16 @@ describe('inspiration notes storage', () => {
       throw new Error('Access denied everywhere')
     })
 
-    await expect(saveNote({ title: '无法保存', content: '权限不足' })).rejects.toThrow(
+    await expect(
+      saveNote({ title: '无法保存', content: '权限不足', tags: [], attachments: [] }),
+    ).rejects.toThrow(
       '无法访问自定义存储路径，也无法回退到默认目录，请检查磁盘权限或可用空间。',
     )
     expect(saveStoredDataPathMock).not.toHaveBeenCalled()
   })
 
   it('removes note files when deleting', async () => {
-    const saved = await saveNote({ title: '临时草稿', content: '准备删除', attachments: [] })
+    const saved = await saveNote({ title: '临时草稿', content: '准备删除', tags: [], attachments: [] })
     expect(files.size).toBe(1)
     await deleteNote(saved.id)
     expect(files.size).toBe(0)
