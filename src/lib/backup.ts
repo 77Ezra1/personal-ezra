@@ -363,6 +363,33 @@ function sanitizeNoteTags(value: unknown): string[] {
   return result
 }
 
+type SanitizedVaultFileMeta = NonNullable<ReturnType<typeof sanitizeVaultFileMeta>>
+
+function sanitizeNoteAttachments(value: unknown): SanitizedVaultFileMeta[] {
+  if (!isObject(value)) {
+    return []
+  }
+
+  const attachments = (value as { attachments?: unknown }).attachments
+  if (!Array.isArray(attachments)) {
+    return []
+  }
+
+  const seen = new Set<string>()
+  const result: SanitizedVaultFileMeta[] = []
+
+  for (const item of attachments) {
+    const meta = sanitizeVaultFileMeta(item)
+    if (!meta) continue
+    const key = meta.relPath.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(meta)
+  }
+
+  return result
+}
+
 function sanitizeNoteMeta(
   value: unknown,
   fallbackTitle: string,
@@ -376,7 +403,8 @@ function sanitizeNoteMeta(
     createdAt,
   )
   const tags = sanitizeNoteTags((value as { tags?: unknown })?.tags)
-  return { title: titleInput, createdAt, updatedAt, tags }
+  const attachments = sanitizeNoteAttachments(value)
+  return { title: titleInput, createdAt, updatedAt, tags, attachments }
 }
 
 function sanitizeNoteEntry(value: unknown, fallbackTimestamp: number): InspirationNoteBackupEntry | null {
