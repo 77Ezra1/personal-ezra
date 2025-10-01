@@ -1,20 +1,14 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ToastProvider } from '../src/components/ToastProvider'
 import { AboutSection } from '../src/routes/Settings'
 
-const checkMock = vi.fn<[], Promise<
-  | ({
-      version?: string | undefined
-      downloadAndInstall: () => Promise<void>
-    } & Record<string, unknown>)
-  | null
->>()
+const openShellMock = vi.fn<[string], Promise<void>>().mockResolvedValue()
 
-vi.mock('@tauri-apps/plugin-updater', () => ({
-  check: () => checkMock(),
+vi.mock('@tauri-apps/plugin-shell', () => ({
+  open: (url: string) => openShellMock(url),
 }))
 
 const isTauriRuntimeMock = vi.fn<[], boolean>()
@@ -23,34 +17,28 @@ vi.mock('../src/env', () => ({
   isTauriRuntime: () => isTauriRuntimeMock(),
 }))
 
-describe('AboutSection updater controls', () => {
+const OFFICIAL_SITE_URL = 'https://www.eccoretech.cn/'
+
+describe('AboutSection official site button', () => {
+  let originalWindowOpen: typeof window.open
+  let windowOpenSpy: ReturnType<typeof vi.fn>
+
   beforeEach(() => {
-    checkMock.mockReset()
+    openShellMock.mockClear()
     isTauriRuntimeMock.mockReset()
+    originalWindowOpen = window.open
+    windowOpenSpy = vi.fn()
+    window.open = windowOpenSpy as unknown as typeof window.open
   })
 
   afterEach(() => {
+    window.open = originalWindowOpen
     cleanup()
     vi.clearAllMocks()
   })
 
-  it('hides the desktop update button when running on web', () => {
+  it('renders and uses window.open on web', async () => {
     isTauriRuntimeMock.mockReturnValue(false)
-    checkMock.mockResolvedValue(null)
-
-    render(
-      <ToastProvider>
-        <AboutSection />
-      </ToastProvider>,
-    )
-
-    expect(screen.queryByRole('button', { name: '检查更新' })).not.toBeInTheDocument()
-  })
-
-  it('invokes the updater workflow when the button is clicked', async () => {
-    const downloadAndInstallMock = vi.fn<[], Promise<void>>().mockResolvedValue()
-    isTauriRuntimeMock.mockReturnValue(true)
-    checkMock.mockResolvedValue({ version: 'v0.2.0', downloadAndInstall: downloadAndInstallMock })
 
     const user = userEvent.setup()
 
@@ -60,21 +48,30 @@ describe('AboutSection updater controls', () => {
       </ToastProvider>,
     )
 
-    const button = screen.getByRole('button', { name: '检查更新' })
+    const button = screen.getByRole('button', { name: '访问官网' })
 
-    const clickPromise = user.click(button)
+    await user.click(button)
 
-    await waitFor(() => {
-      expect(button).toBeDisabled()
-    })
+    expect(windowOpenSpy).toHaveBeenCalledWith(OFFICIAL_SITE_URL, '_blank', 'noopener,noreferrer')
+    expect(openShellMock).not.toHaveBeenCalled()
+  })
 
-    await clickPromise
+  it('uses shell.open on desktop runtime', async () => {
+    isTauriRuntimeMock.mockReturnValue(true)
 
-    await waitFor(() => {
-      expect(checkMock).toHaveBeenCalledTimes(1)
-      expect(downloadAndInstallMock).toHaveBeenCalledTimes(1)
-    })
+    const user = userEvent.setup()
 
-    expect(await screen.findByText('更新已安装')).toBeInTheDocument()
+    render(
+      <ToastProvider>
+        <AboutSection />
+      </ToastProvider>,
+    )
+
+    const button = screen.getByRole('button', { name: '访问官网' })
+
+    await user.click(button)
+
+    expect(openShellMock).toHaveBeenCalledWith(OFFICIAL_SITE_URL)
+    expect(windowOpenSpy).not.toHaveBeenCalled()
   })
 })
