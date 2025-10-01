@@ -1,4 +1,4 @@
-import Fuse from 'fuse.js'
+import Fuse, { type IFuseOptions } from 'fuse.js'
 import { isTauriRuntime } from '../env'
 import { useAuthStore } from '../stores/auth'
 import { getDatabase, getDexieInstance, rebuildSearchIndex, SearchEntryKind, SearchIndexRecord } from '../stores/database'
@@ -15,7 +15,7 @@ export type SearchResult = {
   route: string
 }
 
-const fuseOptions: Fuse.IFuseOptions<SearchIndexRecord> = {
+const fuseOptions: IFuseOptions<SearchIndexRecord> = {
   includeScore: true,
   threshold: 0.32,
   keys: [
