@@ -1,16 +1,7 @@
 import clsx from 'clsx'
 import type { ReactNode } from 'react'
 import { Search as SearchIcon, Plus as PlusIcon, Command as CommandIcon, LayoutGrid, List as ListIcon } from 'lucide-react'
-import { CommandPalette, type CommandItem } from './CommandPalette'
-
-type CommandPaletteConfig = {
-  items: CommandItem[]
-  isOpen: boolean
-  onOpen: () => void
-  onClose: () => void
-  onSelect: (item: CommandItem) => void
-  placeholder?: string
-}
+import { useCommandPalette } from '../providers/CommandPaletteProvider'
 
 type AppLayoutProps = {
   title: string
@@ -21,7 +12,6 @@ type AppLayoutProps = {
   createLabel?: string
   onCreate?: () => void
   children: ReactNode
-  commandPalette?: CommandPaletteConfig
   actions?: ReactNode
   viewMode?: 'card' | 'list'
   onViewModeChange?: (mode: 'card' | 'list') => void
@@ -37,12 +27,12 @@ export function AppLayout({
   createLabel = '新增',
   onCreate,
   children,
-  commandPalette,
   actions,
   viewMode = 'card',
   onViewModeChange,
   filters,
 }: AppLayoutProps) {
+  const { open: openCommandPalette } = useCommandPalette()
   const viewModes: Array<{ value: 'card' | 'list'; label: string; icon: ReactNode }> = [
     { value: 'card', label: '卡片视图', icon: <LayoutGrid className="h-3.5 w-3.5" aria-hidden /> },
     { value: 'list', label: '列表视图', icon: <ListIcon className="h-3.5 w-3.5" aria-hidden /> },
@@ -67,19 +57,17 @@ export function AppLayout({
               placeholder={searchPlaceholder ?? '搜索'}
               className={clsx(
                 'h-12 w-full rounded-full border border-border bg-surface pl-12 text-sm text-text shadow-inner shadow-black/5 outline-none transition focus:border-primary/60 focus:bg-surface-hover',
-                commandPalette ? 'pr-28' : 'pr-4 sm:pr-6',
+                'pr-28',
               )}
             />
-            {commandPalette && (
-              <button
-                type="button"
-                onClick={commandPalette.onOpen}
-                className="absolute right-2 top-1/2 inline-flex -translate-y-1/2 items-center gap-1 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-text transition hover:bg-surface-hover"
-              >
-                <CommandIcon className="h-3.5 w-3.5" />
-                <span>Ctrl / Cmd + K</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={openCommandPalette}
+              className="absolute right-2 top-1/2 inline-flex -translate-y-1/2 items-center gap-1 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-text transition hover:bg-surface-hover"
+            >
+              <CommandIcon className="h-3.5 w-3.5" />
+              <span>Ctrl / Cmd + K</span>
+            </button>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
             {onViewModeChange && (
@@ -119,15 +107,6 @@ export function AppLayout({
         {filters && <div className="flex flex-wrap gap-3">{filters}</div>}
       </header>
       <section className="no-drag">{children}</section>
-      {commandPalette && (
-        <CommandPalette
-          open={commandPalette.isOpen}
-          onClose={commandPalette.onClose}
-          items={commandPalette.items}
-          onSelect={commandPalette.onSelect}
-          placeholder={commandPalette.placeholder}
-        />
-      )}
     </div>
   )
 }

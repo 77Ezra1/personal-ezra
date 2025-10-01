@@ -1,5 +1,6 @@
 import Dexie, { Table } from 'dexie'
 import { generateMnemonicPhrase } from '../lib/mnemonic'
+import { ensureTagsArray } from '../lib/tags'
 import type { StoredDocument, VaultFileMeta } from '../lib/vault'
 
 export type DocDocument = StoredDocument
@@ -70,6 +71,19 @@ export interface DocRecord {
   document?: DocDocument
   tags?: string[]
   createdAt: number
+  updatedAt: number
+}
+
+export type SearchEntryKind = 'password' | 'site' | 'doc' | 'note'
+
+export interface SearchIndexRecord {
+  id?: number
+  ownerEmail: string
+  kind: SearchEntryKind
+  refId: string
+  title: string
+  subtitle?: string
+  keywords: string[]
   updatedAt: number
 }
 
@@ -148,6 +162,24 @@ export interface DatabaseClient {
   passwords: OwnedCollection<PasswordRecord>
   sites: OwnedCollection<SiteRecord>
   docs: OwnedCollection<DocRecord>
+  searchIndex: SearchIndexCollection
+}
+
+type SearchIndexOwnerKey = [string, SearchEntryKind]
+type SearchIndexRefKey = [string, SearchEntryKind, string]
+
+export interface SearchIndexQuery {
+  toArray(): Promise<SearchIndexRecord[]>
+  delete(): Promise<number>
+}
+
+export interface SearchIndexCollection {
+  where(index: 'ownerEmail'): { equals(value: string): SearchIndexQuery }
+  where(index: '[ownerEmail+kind]'): { equals(value: SearchIndexOwnerKey): SearchIndexQuery }
+  where(index: '[ownerEmail+kind+refId]'): { equals(value: SearchIndexRefKey): SearchIndexQuery }
+  bulkPut(records: SearchIndexRecord[]): Promise<void>
+  put(record: SearchIndexRecord): Promise<number>
+  delete(key: number): Promise<void>
 }
 
 class AppDatabase extends Dexie {
@@ -155,6 +187,7 @@ class AppDatabase extends Dexie {
   passwords!: Table<PasswordRecord, number>
   sites!: Table<SiteRecord, number>
   docs!: Table<DocRecord, number>
+  searchIndex!: Table<SearchIndexRecord, number>
 
   constructor() {
     super('Personal')
@@ -417,6 +450,7 @@ class AppDatabase extends Dexie {
         passwords: '++id, ownerEmail, updatedAt, *tags',
         sites: '++id, ownerEmail, updatedAt, *tags',
         docs: '++id, ownerEmail, updatedAt, *tags',
+        searchIndex: '++id, ownerEmail, kind, refId, [ownerEmail+kind+refId], updatedAt, *keywords',
       })
       .upgrade(async tx => {
         type LegacyUserRecord = Omit<UserRecord, 'github'> & { github?: UserGithubConnection | null }
@@ -438,8 +472,22 @@ class AppDatabase extends Dexie {
           }),
         )
       })
+    this.version(10)
+      .stores({
+        users: '&email',
+        passwords: '++id, ownerEmail, updatedAt, *tags',
+        sites: '++id, ownerEmail, updatedAt, *tags',
+        docs: '++id, ownerEmail, updatedAt, *tags',
+        searchIndex: '++id, ownerEmail, kind, refId, [ownerEmail+kind+refId], updatedAt, *keywords',
+      })
+      .upgrade(async tx => {
+        const table = tx.table('searchIndex') as Table<SearchIndexRecord, number>
+        await table.clear()
+      })
   }
 }
+
+let activeDexieInstance: AppDatabase | null = null
 
 function createDexieOwnedCollection<T extends { ownerEmail: string; id?: number }>(
   table: Table<T, number>,
@@ -456,8 +504,23 @@ function createDexieOwnedCollection<T extends { ownerEmail: string; id?: number 
   }
 }
 
+function createDexieSearchIndex(table: Table<SearchIndexRecord, number>): SearchIndexCollection {
+  return {
+    where: index => ({
+      equals: value => ({
+        toArray: () => table.where(index as any).equals(value as any).toArray(),
+        delete: () => table.where(index as any).equals(value as any).delete(),
+      }),
+    }),
+    bulkPut: records => table.bulkPut(records),
+    put: record => table.put(record),
+    delete: key => table.delete(key),
+  }
+}
+
 function createDexieClient(): DatabaseClient {
   const database = new AppDatabase()
+  activeDexieInstance = database
   return {
     open: async () => {
       await database.open()
@@ -489,6 +552,7 @@ function createDexieClient(): DatabaseClient {
     passwords: createDexieOwnedCollection(database.passwords),
     sites: createDexieOwnedCollection(database.sites),
     docs: createDexieOwnedCollection(database.docs),
+    searchIndex: createDexieSearchIndex(database.searchIndex),
   }
 }
 
@@ -523,6 +587,26 @@ function createLazyOwnedCollection<T extends { ownerEmail: string }>(
   }
 }
 
+function createLazySearchIndex(ready: Promise<DatabaseClient>): SearchIndexCollection {
+  return {
+    where: index => ({
+      equals: value => ({
+        toArray: async () => {
+          const client = await ready
+          return client.searchIndex.where(index as any).equals(value as any).toArray()
+        },
+        delete: async () => {
+          const client = await ready
+          return client.searchIndex.where(index as any).equals(value as any).delete()
+        },
+      }),
+    }),
+    bulkPut: records => ready.then(client => client.searchIndex.bulkPut(records)),
+    put: record => ready.then(client => client.searchIndex.put(record)),
+    delete: key => ready.then(client => client.searchIndex.delete(key)),
+  }
+}
+
 function createLazyDatabaseClient(ready: Promise<DatabaseClient>): DatabaseClient {
   return {
     open: () => ready.then(client => client.open()),
@@ -530,6 +614,7 @@ function createLazyDatabaseClient(ready: Promise<DatabaseClient>): DatabaseClien
     passwords: createLazyOwnedCollection(ready, client => client.passwords),
     sites: createLazyOwnedCollection(ready, client => client.sites),
     docs: createLazyOwnedCollection(ready, client => client.docs),
+    searchIndex: createLazySearchIndex(ready),
   }
 }
 
@@ -547,6 +632,10 @@ export function getDatabase(): Promise<DatabaseClient> {
   return databaseReady
 }
 
+export function getDexieInstance(): AppDatabase | null {
+  return activeDexieInstance
+}
+
 interface LegacyDocRecord {
   id?: number
   ownerEmail: string
@@ -559,4 +648,151 @@ interface LegacyDocRecord {
   createdAt: number
   updatedAt?: number
   tags?: string[]
+}
+
+function normalizeKeywords(values: Array<string | undefined | null>, tags: string[] = []): string[] {
+  const keywords = new Set<string>()
+  for (const value of values) {
+    if (typeof value !== 'string') continue
+    const trimmed = value.trim()
+    if (!trimmed) continue
+    keywords.add(trimmed)
+  }
+  for (const tag of tags) {
+    const trimmed = typeof tag === 'string' ? tag.trim() : ''
+    if (!trimmed) continue
+    keywords.add(trimmed)
+    keywords.add(`#${trimmed}`)
+  }
+  return Array.from(keywords)
+}
+
+function buildPasswordSearchEntry(record: PasswordRecord & { id: number }): SearchIndexRecord {
+  const tags = ensureTagsArray(record.tags)
+  const subtitleParts = [record.username, record.url, ...tags.map(tag => `#${tag}`)].filter(Boolean)
+  const subtitle = subtitleParts.length > 0 ? subtitleParts.join(' · ') : undefined
+  const keywords = normalizeKeywords([record.title, record.username, record.url, subtitle], tags)
+  const updatedAt = record.updatedAt ?? record.createdAt ?? Date.now()
+  return {
+    ownerEmail: record.ownerEmail,
+    kind: 'password',
+    refId: String(record.id),
+    title: record.title,
+    subtitle,
+    keywords,
+    updatedAt,
+  }
+}
+
+function buildSiteSearchEntry(record: SiteRecord & { id: number }): SearchIndexRecord {
+  const tags = ensureTagsArray(record.tags)
+  const subtitleParts = [record.url, record.description, ...tags.map(tag => `#${tag}`)].filter(Boolean)
+  const subtitle = subtitleParts.length > 0 ? subtitleParts.join(' · ') : undefined
+  const keywords = normalizeKeywords([record.title, record.url, record.description, subtitle], tags)
+  const updatedAt = record.updatedAt ?? record.createdAt ?? Date.now()
+  return {
+    ownerEmail: record.ownerEmail,
+    kind: 'site',
+    refId: String(record.id),
+    title: record.title,
+    subtitle,
+    keywords,
+    updatedAt,
+  }
+}
+
+function buildDocSearchEntry(record: DocRecord & { id: number }): SearchIndexRecord {
+  const tags = ensureTagsArray(record.tags)
+  const subtitle = record.description?.trim() || undefined
+  const keywords = normalizeKeywords([record.title, record.description, subtitle], tags)
+  const updatedAt = record.updatedAt ?? record.createdAt ?? Date.now()
+  return {
+    ownerEmail: record.ownerEmail,
+    kind: 'doc',
+    refId: String(record.id),
+    title: record.title,
+    subtitle,
+    keywords,
+    updatedAt,
+  }
+}
+
+export async function rebuildSearchIndex(ownerEmail: string): Promise<void> {
+  const trimmed = ownerEmail.trim()
+  if (!trimmed) return
+
+  const client = await getDatabase()
+
+  const [passwordRows, siteRows, docRows] = await Promise.all([
+    client.passwords.where('ownerEmail').equals(trimmed).toArray(),
+    client.sites.where('ownerEmail').equals(trimmed).toArray(),
+    client.docs.where('ownerEmail').equals(trimmed).toArray(),
+  ])
+
+  await Promise.all([
+    client.searchIndex.where('[ownerEmail+kind]').equals([trimmed, 'password']).delete(),
+    client.searchIndex.where('[ownerEmail+kind]').equals([trimmed, 'site']).delete(),
+    client.searchIndex.where('[ownerEmail+kind]').equals([trimmed, 'doc']).delete(),
+  ])
+
+  const passwordEntries = passwordRows
+    .filter((record): record is PasswordRecord & { id: number } => typeof record.id === 'number')
+    .map(record => buildPasswordSearchEntry({ ...record, id: record.id as number }))
+  const siteEntries = siteRows
+    .filter((record): record is SiteRecord & { id: number } => typeof record.id === 'number')
+    .map(record => buildSiteSearchEntry({ ...record, id: record.id as number }))
+  const docEntries = docRows
+    .filter((record): record is DocRecord & { id: number } => typeof record.id === 'number')
+    .map(record => buildDocSearchEntry({ ...record, id: record.id as number }))
+
+  const entries = [...passwordEntries, ...siteEntries, ...docEntries]
+  if (entries.length > 0) {
+    await client.searchIndex.bulkPut(entries)
+  }
+}
+
+export async function upsertSearchEntry(entry: SearchIndexRecord): Promise<void> {
+  if (!entry.ownerEmail.trim()) return
+  if (!entry.refId.trim()) return
+
+  const client = await getDatabase()
+  const existing = await client.searchIndex
+    .where('[ownerEmail+kind+refId]')
+    .equals([entry.ownerEmail, entry.kind, entry.refId])
+    .toArray()
+  const currentId = existing.find(item => typeof item.id === 'number')?.id
+  await client.searchIndex.put(currentId ? { ...entry, id: currentId } : entry)
+}
+
+export async function removeSearchEntry(
+  ownerEmail: string,
+  kind: SearchEntryKind,
+  refId: string,
+): Promise<void> {
+  const trimmedOwner = ownerEmail.trim()
+  const trimmedRef = refId.trim()
+  if (!trimmedOwner || !trimmedRef) return
+  const client = await getDatabase()
+  const rows = await client.searchIndex
+    .where('[ownerEmail+kind+refId]')
+    .equals([trimmedOwner, kind, trimmedRef])
+    .toArray()
+  await Promise.all(
+    rows.map(row => {
+      if (typeof row.id === 'number') {
+        return client.searchIndex.delete(row.id)
+      }
+      return Promise.resolve()
+    }),
+  )
+}
+
+export async function removeSearchEntriesByKind(
+  ownerEmail: string,
+  kind: SearchEntryKind,
+): Promise<void> {
+  const trimmedOwner = ownerEmail.trim()
+  if (!trimmedOwner) return
+  const client = await getDatabase()
+  await client.searchIndex.where('[ownerEmail+kind]').equals([trimmedOwner, kind]).delete()
 }

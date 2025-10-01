@@ -63,7 +63,7 @@ class MockSqliteDatabase {
       return
     }
 
-    const createIndexMatch = trimmed.match(/^CREATE INDEX IF NOT EXISTS/i)
+    const createIndexMatch = trimmed.match(/^CREATE (?:UNIQUE\s+)?INDEX IF NOT EXISTS/i)
     if (createIndexMatch) return
 
     const alterMatch = trimmed.match(/^ALTER TABLE\s+(\w+)\s+ADD COLUMN\s+(\w+)/i)
@@ -124,13 +124,30 @@ class MockSqliteDatabase {
       return
     }
 
-    const deleteMatch = trimmed.match(/^DELETE FROM\s+(\w+)\s+WHERE\s+id\s*=\s*\?/i)
-    if (deleteMatch) {
-      const table = deleteMatch[1]
-      const id = Array.isArray(params) ? params[0] : params
+    const deleteWhereMatch = trimmed.match(/^DELETE FROM\s+(\w+)\s+WHERE\s+(.+)$/i)
+    if (deleteWhereMatch) {
+      const [, table, clause] = deleteWhereMatch
       const rows = this.ensureTable(table)
-      const index = rows.findIndex(entry => entry.id === id)
-      if (index >= 0) rows.splice(index, 1)
+      const normalizedParams = Array.isArray(params) ? params : [params]
+      const conditions = clause
+        .split(/\s+AND\s+/i)
+        .map(part => part.trim())
+        .filter(Boolean)
+        .map((part, index) => {
+          const match = part.match(/^(\w+)\s*=\s*\?$/i)
+          if (!match) {
+            throw new Error(`Unhandled SQL delete mock condition: ${part}`)
+          }
+          return { field: match[1], paramIndex: index }
+        })
+
+      for (let i = rows.length - 1; i >= 0; i -= 1) {
+        const row = rows[i]
+        const matches = conditions.every(({ field, paramIndex }) => row[field] === normalizedParams[paramIndex])
+        if (matches) {
+          rows.splice(i, 1)
+        }
+      }
       return
     }
 
@@ -167,18 +184,33 @@ class MockSqliteDatabase {
     }
 
     const whereMatch = trimmed.match(
-      /^SELECT\s+(.+?)\s+FROM\s+(\w+)\s+WHERE\s+(\w+)\s*=\s*\?(?:\s+ORDER BY\s+(.+?))?(?:\s+LIMIT\s+(\d+))?$/i,
+      /^SELECT\s+(.+?)\s+FROM\s+(\w+)\s+WHERE\s+(.+?)(?:\s+ORDER BY\s+(.+?))?(?:\s+LIMIT\s+(\d+))?$/i,
     )
     if (whereMatch) {
-      const [, columnSection, table, field, orderSection, limitSection] = whereMatch
-      const target = Array.isArray(params) ? params[0] : params
-      const rows = [...this.ensureTable(table)].filter(entry => entry[field] === target)
+      const [, columnSection, table, whereClause, orderSection, limitSection] = whereMatch
+      const rows = [...this.ensureTable(table)]
+      const normalizedParams = Array.isArray(params) ? params : [params]
+      const conditions = whereClause
+        .split(/\s+AND\s+/i)
+        .map(part => part.trim())
+        .filter(Boolean)
+        .map((part, index) => {
+          const match = part.match(/^(\w+)\s*=\s*\?$/i)
+          if (!match) {
+            throw new Error(`Unhandled SQL where mock condition: ${part}`)
+          }
+          return { field: match[1], paramIndex: index }
+        })
+
+      const filtered = rows.filter(row =>
+        conditions.every(({ field, paramIndex }) => row[field] === normalizedParams[paramIndex]),
+      )
       if (orderSection) {
         const directives = orderSection
           .split(',')
           .map(part => part.trim())
           .filter(Boolean)
-        rows.sort((a, b) => {
+        filtered.sort((a, b) => {
           for (const directive of directives) {
             const [columnName, rawDirection] = directive.split(/\s+/)
             const dir = rawDirection && rawDirection.toUpperCase() === 'DESC' ? -1 : 1
@@ -192,7 +224,7 @@ class MockSqliteDatabase {
         })
       }
       const columns = columnSection.split(',').map(part => part.trim())
-      let results = rows.map(row => this.pickColumns(row, columns)) as T[]
+      let results = filtered.map(row => this.pickColumns(row, columns)) as T[]
       if (limitSection) {
         const limit = Number(limitSection)
         if (Number.isFinite(limit)) {

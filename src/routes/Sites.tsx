@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import Fuse from 'fuse.js'
 import { Copy, ExternalLink, Pencil } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { AppLayout } from '../components/AppLayout'
 import { DetailsDrawer } from '../components/DetailsDrawer'
 import { Empty } from '../components/Empty'
@@ -17,6 +18,8 @@ import { db, type SiteRecord } from '../stores/database'
 import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
 import { MAX_LINK_DISPLAY_LENGTH, truncateLink } from '../lib/strings'
 import { openExternal } from '../lib/external'
+import { requestSearchIndexRefresh } from '../lib/global-search'
+import { useCommandPalette } from '../providers/CommandPaletteProvider'
 
 type SiteDraft = {
   title: string
@@ -37,11 +40,13 @@ const SITE_VIEW_MODE_STORAGE_KEY = 'pms:view:sites'
 export default function Sites() {
   const email = useAuthStore(s => s.email)
   const { showToast } = useToast()
+  const navigate = useNavigate()
+  const { open: openCommandPalette, close: closeCommandPalette, isOpen: commandPaletteOpen, registerCommand } =
+    useCommandPalette()
 
   const [items, setItems] = useState<SiteRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'view' | 'edit'>('create')
   const [activeItem, setActiveItem] = useState<SiteRecord | null>(null)
@@ -54,6 +59,22 @@ export default function Sites() {
     const stored = window.localStorage.getItem(SITE_VIEW_MODE_STORAGE_KEY)
     return stored === 'list' ? 'list' : 'card'
   })
+
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false)
+    setDrawerMode('create')
+    setActiveItem(null)
+    setDraft(EMPTY_DRAFT)
+    setFormError(null)
+    setSubmitting(false)
+  }, [])
+
+  const handleCreate = useCallback(() => {
+    setDraft(EMPTY_DRAFT)
+    setDrawerMode('create')
+    setActiveItem(null)
+    setDrawerOpen(true)
+  }, [])
 
   const reloadItems = useCallback(
     async (currentEmail: string, options: { showLoading?: boolean } = {}) => {
@@ -125,6 +146,70 @@ export default function Sites() {
     setSelectedTags(prev => prev.filter(tag => availableTags.includes(tag)))
   }, [availableTags])
 
+  useEffect(() => {
+    const unregister = registerCommand({
+      id: 'navigate:sites',
+      title: '前往网站管理',
+      description: '切换到网站管理页面',
+      keywords: ['网站', '站点', 'sites'],
+      section: '导航',
+      run: () => {
+        navigate('/dashboard/sites')
+      },
+    })
+    return unregister
+  }, [navigate, registerCommand])
+
+  useEffect(() => {
+    const unregister = registerCommand({
+      id: 'sites:clear-tags',
+      title: '清除网站标签筛选',
+      description: '显示所有网站条目',
+      keywords: ['网站', '标签', '清除'],
+      section: '筛选',
+      run: () => {
+        navigate('/dashboard/sites')
+        setSelectedTags([])
+      },
+    })
+    return unregister
+  }, [navigate, registerCommand])
+
+  useEffect(() => {
+    if (availableTags.length === 0) return undefined
+    const unregisters = availableTags.map(tag =>
+      registerCommand({
+        id: `sites:tag:${tag}`,
+        title: `筛选网站标签：${tag}`,
+        description: '按此标签筛选网站列表',
+        keywords: ['网站', '标签', tag, `#${tag}`],
+        section: '筛选',
+        run: () => {
+          navigate('/dashboard/sites')
+          setSelectedTags([tag])
+        },
+      }),
+    )
+    return () => {
+      unregisters.forEach(unregister => unregister())
+    }
+  }, [availableTags, navigate, registerCommand])
+
+  useEffect(() => {
+    const unregister = registerCommand({
+      id: 'sites:create',
+      title: '新增网站',
+      description: '创建新的网站条目',
+      keywords: ['网站', '新增', '创建'],
+      section: '操作',
+      run: () => {
+        navigate('/dashboard/sites')
+        handleCreate()
+      },
+    })
+    return unregister
+  }, [handleCreate, navigate, registerCommand])
+
   function toggleTag(tag: string) {
     setSelectedTags(prev => {
       if (prev.includes(tag)) {
@@ -159,55 +244,6 @@ export default function Sites() {
     }
     return base.filter(item => matchesAllTags(item.tags, selectedTags))
   }, [fuse, items, searchTerm, selectedTags])
-
-  const itemCommandItems = useMemo(
-    () =>
-      items
-        .filter(item => typeof item.id === 'number')
-        .map(item => {
-          const tags = ensureTagsArray(item.tags)
-          const subtitleParts = [item.url, ...tags.map(tag => `#${tag}`)].filter(Boolean)
-          const keywords = [item.url, item.description, ...tags, ...tags.map(tag => `#${tag}`)]
-            .filter(Boolean)
-            .map(entry => String(entry))
-          return {
-            id: `site-${item.id}`,
-            title: item.title,
-            subtitle: subtitleParts.join(' · '),
-            keywords,
-          }
-        }),
-    [items],
-  )
-
-  const tagCommandItems = useMemo(
-    () =>
-      availableTags.map(tag => ({
-        id: `site-tag-${encodeURIComponent(tag)}`,
-        title: `筛选标签：${tag}`,
-        subtitle: selectedTags.includes(tag) ? '当前已选，点击取消筛选' : '按此标签筛选列表',
-        keywords: [tag, `#${tag}`],
-      })),
-    [availableTags, selectedTags],
-  )
-
-  const commandItems = useMemo(() => [...tagCommandItems, ...itemCommandItems], [itemCommandItems, tagCommandItems])
-
-  function closeDrawer() {
-    setDrawerOpen(false)
-    setDrawerMode('create')
-    setActiveItem(null)
-    setDraft(EMPTY_DRAFT)
-    setFormError(null)
-    setSubmitting(false)
-  }
-
-  function handleCreate() {
-    setDraft(EMPTY_DRAFT)
-    setDrawerMode('create')
-    setActiveItem(null)
-    setDrawerOpen(true)
-  }
 
   function handleView(item: SiteRecord) {
     setActiveItem(item)
@@ -285,6 +321,7 @@ export default function Sites() {
         rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
         setItems(rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) })))
       }
+      requestSearchIndexRefresh()
       closeDrawer()
     } catch (error) {
       console.error('Failed to delete site', error)
@@ -346,6 +383,7 @@ export default function Sites() {
         setItems(rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) })))
       }
 
+      requestSearchIndexRefresh()
       closeDrawer()
     } catch (error) {
       console.error('Failed to save site', error)
@@ -354,30 +392,12 @@ export default function Sites() {
     }
   }
 
-  function handleCommandSelect(commandId: string) {
-    if (commandId.startsWith('site-tag-')) {
-      const encoded = commandId.replace('site-tag-', '')
-      try {
-        const tag = decodeURIComponent(encoded)
-        toggleTag(tag)
-      } catch {
-        // ignore malformed tag ids
-      }
-      return
-    }
-    const id = Number(commandId.replace('site-', ''))
-    const target = items.find(item => item.id === id)
-    if (target) {
-      handleView(target)
-    }
-  }
-
   useGlobalShortcuts({
     onCreate: handleCreate,
-    onSearch: () => setCommandPaletteOpen(true),
+    onSearch: openCommandPalette,
     onEscape: () => {
       if (commandPaletteOpen) {
-        setCommandPaletteOpen(false)
+        closeCommandPalette()
         return
       }
       if (drawerOpen) {
@@ -407,14 +427,6 @@ export default function Sites() {
       searchPlaceholder="搜索名称、链接、备注或标签"
       createLabel="新增网站"
       onCreate={handleCreate}
-      commandPalette={{
-        items: commandItems,
-        isOpen: commandPaletteOpen,
-        onOpen: () => setCommandPaletteOpen(true),
-        onClose: () => setCommandPaletteOpen(false),
-        onSelect: item => handleCommandSelect(item.id),
-        placeholder: '搜索网站收藏',
-      }}
       viewMode={viewMode}
       onViewModeChange={setViewMode}
       filters={

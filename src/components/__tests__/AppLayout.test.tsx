@@ -1,8 +1,14 @@
-import { render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppLayout } from '../AppLayout'
+
+const openCommandPaletteMock = vi.fn()
+
+vi.mock('../../providers/CommandPaletteProvider', () => ({
+  useCommandPalette: () => ({ open: openCommandPaletteMock }),
+}))
 
 function LayoutWithState() {
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card')
@@ -22,6 +28,15 @@ function LayoutWithState() {
 }
 
 describe('AppLayout', () => {
+  beforeEach(() => {
+    cleanup()
+    openCommandPaletteMock.mockClear()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
   it('does not render view switch when no handler provided', () => {
     render(
       <AppLayout title="无切换" searchValue="" onSearchChange={() => {}}>
@@ -64,40 +79,21 @@ describe('AppLayout', () => {
     expect(screen.getByTestId('filters')).toBeInTheDocument()
   })
 
-  it('adjusts search input padding based on command palette availability', () => {
-    const baseProps = {
-      title: '搜索布局',
-      searchValue: '',
-      onSearchChange: (_value: string) => {},
-    }
+  it('renders command palette shortcut button and triggers open when clicked', async () => {
+    const user = userEvent.setup()
 
-    const { rerender, container } = render(
-      <AppLayout {...baseProps}>
+    const { getByPlaceholderText, getByRole } = render(
+      <AppLayout title="搜索布局" searchValue="" onSearchChange={() => {}}>
         <div>内容</div>
       </AppLayout>,
     )
 
-    const searchInput = within(container).getByPlaceholderText('搜索')
-    expect(searchInput).toHaveClass('pr-4', 'sm:pr-6')
-    expect(searchInput).not.toHaveClass('pr-28')
+    const searchInput = getByPlaceholderText('搜索')
+    expect(searchInput).toHaveClass('pr-28')
 
-    rerender(
-      <AppLayout
-        {...baseProps}
-        commandPalette={{
-          items: [],
-          isOpen: false,
-          onOpen: () => {},
-          onClose: () => {},
-          onSelect: (_item) => {},
-        }}
-      >
-        <div>内容</div>
-      </AppLayout>,
-    )
+    const paletteButton = getByRole('button', { name: 'Ctrl / Cmd + K' })
+    await user.click(paletteButton)
 
-    const searchInputWithPalette = within(container).getByPlaceholderText('搜索')
-    expect(searchInputWithPalette).toHaveClass('pr-28')
-    expect(searchInputWithPalette).not.toHaveClass('pr-4', 'sm:pr-6')
+    expect(openCommandPaletteMock).toHaveBeenCalled()
   })
 })

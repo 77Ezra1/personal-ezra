@@ -1,4 +1,5 @@
 import React, { FormEvent, useCallback, useEffect, useMemo, useState, ChangeEvent, ReactNode, useId } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   importFileToVault,
   openDocument,
@@ -25,6 +26,8 @@ import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 import { Copy, ExternalLink, FileText, Pencil } from 'lucide-react'
 import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
 import { MAX_LINK_DISPLAY_LENGTH, truncateLink } from '../lib/strings'
+import { requestSearchIndexRefresh } from '../lib/global-search'
+import { useCommandPalette } from '../providers/CommandPaletteProvider'
 
 /* --------------------------------- 类型 --------------------------------- */
 
@@ -80,11 +83,13 @@ function extractLinkMeta(document?: StoredDocument) {
 export default function Docs() {
   const email = useAuthStore(s => s.email)
   const { showToast } = useToast()
+  const navigate = useNavigate()
+  const { open: openCommandPalette, close: closeCommandPalette, isOpen: commandPaletteOpen, registerCommand } =
+    useCommandPalette()
 
   const [items, setItems] = useState<DocRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'view' | 'edit'>('create')
@@ -100,6 +105,21 @@ export default function Docs() {
     const stored = window.localStorage.getItem(DOC_VIEW_MODE_STORAGE_KEY)
     return stored === 'list' ? 'list' : 'card'
   })
+
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false)
+    setActiveItem(null)
+    setDraft(EMPTY_DRAFT)
+    setFormError(null)
+    setSubmitting(false)
+  }, [])
+
+  const handleCreate = useCallback(() => {
+    setActiveItem(null)
+    setDraft(EMPTY_DRAFT)
+    setDrawerMode('create')
+    setDrawerOpen(true)
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -165,6 +185,70 @@ export default function Docs() {
     setSelectedTags(prev => prev.filter(tag => availableTags.includes(tag)))
   }, [availableTags])
 
+  useEffect(() => {
+    const unregister = registerCommand({
+      id: 'navigate:docs',
+      title: '前往文档管理',
+      description: '切换到文档管理页面',
+      keywords: ['文档', '资料', 'docs'],
+      section: '导航',
+      run: () => {
+        navigate('/dashboard/docs')
+      },
+    })
+    return unregister
+  }, [navigate, registerCommand])
+
+  useEffect(() => {
+    const unregister = registerCommand({
+      id: 'docs:clear-tags',
+      title: '清除文档标签筛选',
+      description: '显示所有文档条目',
+      keywords: ['文档', '标签', '清除'],
+      section: '筛选',
+      run: () => {
+        navigate('/dashboard/docs')
+        setSelectedTags([])
+      },
+    })
+    return unregister
+  }, [navigate, registerCommand])
+
+  useEffect(() => {
+    if (availableTags.length === 0) return undefined
+    const unregisters = availableTags.map(tag =>
+      registerCommand({
+        id: `docs:tag:${tag}`,
+        title: `筛选文档标签：${tag}`,
+        description: '按此标签筛选文档列表',
+        keywords: ['文档', '标签', tag, `#${tag}`],
+        section: '筛选',
+        run: () => {
+          navigate('/dashboard/docs')
+          setSelectedTags([tag])
+        },
+      }),
+    )
+    return () => {
+      unregisters.forEach(unregister => unregister())
+    }
+  }, [availableTags, navigate, registerCommand])
+
+  useEffect(() => {
+    const unregister = registerCommand({
+      id: 'docs:create',
+      title: '新增文档',
+      description: '创建新的文档记录',
+      keywords: ['文档', '新增', '创建'],
+      section: '操作',
+      run: () => {
+        navigate('/dashboard/docs')
+        handleCreate()
+      },
+    })
+    return unregister
+  }, [handleCreate, navigate, registerCommand])
+
   function toggleTag(tag: string) {
     setSelectedTags(prev => {
       if (prev.includes(tag)) {
@@ -198,56 +282,9 @@ export default function Docs() {
     return base.filter(item => matchesAllTags(item.tags, selectedTags))
   }, [items, searchTerm, selectedTags])
 
-  const itemCommandItems = useMemo(
-    () =>
-      items.map(it => {
-        const linkMeta = extractLinkMeta(it.document)
-        const tags = ensureTagsArray(it.tags)
-        const subtitleParts = [linkMeta?.url, ...tags.map(tag => `#${tag}`)].filter(Boolean)
-        const keywords = [it.description, linkMeta?.url, ...tags, ...tags.map(tag => `#${tag}`)]
-          .filter(Boolean)
-          .map(entry => String(entry))
-        return {
-          id: `doc-${it.id ?? it.title}`,
-          title: it.title,
-          subtitle: subtitleParts.join(' · '),
-          keywords,
-        }
-      }),
-    [items],
-  )
-
-  const tagCommandItems = useMemo(
-    () =>
-      availableTags.map(tag => ({
-        id: `doc-tag-${encodeURIComponent(tag)}`,
-        title: `筛选标签：${tag}`,
-        subtitle: selectedTags.includes(tag) ? '当前已选，点击取消筛选' : '按此标签筛选列表',
-        keywords: [tag, `#${tag}`],
-      })),
-    [availableTags, selectedTags],
-  )
-
-  const commandItems = useMemo(() => [...tagCommandItems, ...itemCommandItems], [itemCommandItems, tagCommandItems])
-
   const existingFileMeta = extractFileMeta(activeItem?.document)
 
   /* ------------------------------ 基础动作 ------------------------------ */
-
-  function closeDrawer() {
-    setDrawerOpen(false)
-    setActiveItem(null)
-    setDraft(EMPTY_DRAFT)
-    setFormError(null)
-    setSubmitting(false)
-  }
-
-  function handleCreate() {
-    setActiveItem(null)
-    setDraft(EMPTY_DRAFT)
-    setDrawerMode('create')
-    setDrawerOpen(true)
-  }
 
   function handleView(item: DocRecord) {
     setActiveItem(item)
@@ -349,6 +386,7 @@ export default function Docs() {
       }
       showToast({ title: '文档已删除', variant: 'success' })
       if (email) await reloadItems(email, { showLoading: false })
+      requestSearchIndexRefresh()
       closeDrawer()
     } catch (error) {
       console.error('Failed to delete document', error)
@@ -464,6 +502,7 @@ export default function Docs() {
       }
 
       if (email) await reloadItems(email, { showLoading: false })
+      requestSearchIndexRefresh()
       closeDrawer()
     } catch (error) {
       console.error('Failed to save or update document', error)
@@ -477,10 +516,10 @@ export default function Docs() {
 
   useGlobalShortcuts({
     onCreate: handleCreate,
-    onSearch: () => setCommandPaletteOpen(true),
+    onSearch: openCommandPalette,
     onEscape: () => {
       if (commandPaletteOpen) {
-        setCommandPaletteOpen(false)
+        closeCommandPalette()
         return
       }
       if (drawerOpen) {
@@ -500,23 +539,6 @@ export default function Docs() {
     },
   })
 
-  function handleCommandSelect(commandId: string) {
-    if (commandId.startsWith('doc-tag-')) {
-      const encoded = commandId.replace('doc-tag-', '')
-      try {
-        const tag = decodeURIComponent(encoded)
-        toggleTag(tag)
-      } catch {
-        // ignore malformed tag ids
-      }
-      return
-    }
-    const idStr = commandId.replace('doc-', '')
-    const id = Number(idStr)
-    const target = items.find(item => (typeof item.id === 'number' ? item.id === id : item.title === idStr))
-    if (target) handleView(target)
-  }
-
   /* --------------------------------- 渲染 -------------------------------- */
 
   const editingTitle = draft.title.trim() || activeItem?.title || ''
@@ -530,14 +552,6 @@ export default function Docs() {
       searchPlaceholder="搜索标题、描述、链接或标签"
       createLabel="新增文档"
       onCreate={handleCreate}
-      commandPalette={{
-        items: commandItems,
-        isOpen: commandPaletteOpen,
-        onOpen: () => setCommandPaletteOpen(true),
-        onClose: () => setCommandPaletteOpen(false),
-        onSelect: item => handleCommandSelect(item.id),
-        placeholder: '搜索文档条目',
-      }}
       viewMode={viewMode}
       onViewModeChange={setViewMode}
       filters={

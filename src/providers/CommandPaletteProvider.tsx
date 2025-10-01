@@ -8,6 +8,10 @@ import {
   useState,
 } from 'react'
 import type { ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { CommandPalette, type CommandItem } from '../components/CommandPalette'
+import { useAuthStore } from '../stores/auth'
+import { searchAll, setSearchOwner, type SearchResult } from '../lib/global-search'
 
 type Command = {
   id: string
@@ -57,7 +61,35 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
   const [commands, setCommands] = useState<Command[]>([])
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const shortcuts = useRef<Map<string, RegisteredShortcut>>(new Map())
+  const navigate = useNavigate()
+  const email = useAuthStore(s => s.email)
+
+  useEffect(() => {
+    void setSearchOwner(email ?? null)
+  }, [email])
+
+  useEffect(() => {
+    if (!isOpen) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const results = await searchAll(query)
+        if (!cancelled) {
+          setSearchResults(results)
+        }
+      } catch (error) {
+        console.warn('Failed to load global search results', error)
+        if (!cancelled) {
+          setSearchResults([])
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, query])
 
   const open = useCallback(() => {
     setIsOpen(true)
@@ -206,6 +238,67 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
     return [...commands].sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
   }, [commands])
 
+  const registeredCommandItems = useMemo<CommandItem[]>(
+    () =>
+      sortedCommands.map(command => ({
+        id: `command:${command.id}`,
+        title: command.title,
+        subtitle: command.description,
+        keywords: command.keywords,
+      })),
+    [sortedCommands],
+  )
+
+  const searchResultMap = useMemo(() => {
+    const map = new Map<string, SearchResult>()
+    searchResults.forEach(result => {
+      map.set(`search:${result.id}`, result)
+    })
+    return map
+  }, [searchResults])
+
+  const searchCommandItems = useMemo<CommandItem[]>(() => {
+    const labels: Record<SearchResult['kind'], string> = {
+      password: '密码',
+      site: '网站',
+      doc: '文档',
+      note: '灵感妙记',
+    }
+    return searchResults.map(result => {
+      const label = labels[result.kind] ?? '搜索结果'
+      const subtitle = result.subtitle ? `${label} · ${result.subtitle}` : label
+      return {
+        id: `search:${result.id}`,
+        title: result.title,
+        subtitle,
+        keywords: result.keywords,
+      }
+    })
+  }, [searchResults])
+
+  const paletteItems = useMemo(
+    () => [...searchCommandItems, ...registeredCommandItems],
+    [registeredCommandItems, searchCommandItems],
+  )
+
+  const handlePaletteSelect = useCallback(
+    (item: CommandItem) => {
+      if (item.id.startsWith('command:')) {
+        const id = item.id.replace('command:', '')
+        runCommand(id)
+        return
+      }
+      if (item.id.startsWith('search:')) {
+        const result = searchResultMap.get(item.id)
+        if (result) {
+          navigate(result.route)
+        }
+        close()
+      }
+    },
+    [close, navigate, runCommand, searchResultMap],
+  )
+
   const value = useMemo(
     () => ({
       commands: sortedCommands,
@@ -222,7 +315,21 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
     [sortedCommands, isOpen, query, open, close, toggle, registerCommand, runCommand, registerShortcut],
   )
 
-  return <CommandPaletteContext.Provider value={value}>{children}</CommandPaletteContext.Provider>
+  return (
+    <CommandPaletteContext.Provider value={value}>
+      {children}
+      <CommandPalette
+        open={isOpen}
+        onClose={close}
+        items={paletteItems}
+        onSelect={handlePaletteSelect}
+        placeholder="搜索密码、网站、文档或灵感"
+        query={query}
+        onQueryChange={setQuery}
+        externallyFiltered
+      />
+    </CommandPaletteContext.Provider>
+  )
 }
 
 export function useCommandPalette() {

@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Fuse from 'fuse.js'
 import { Copy, ExternalLink, Eye, EyeOff, Pencil } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { AppLayout } from '../components/AppLayout'
 import { DetailsDrawer } from '../components/DetailsDrawer'
 import { Empty } from '../components/Empty'
@@ -26,6 +27,8 @@ import { db, type PasswordRecord } from '../stores/database'
 import { ensureTagsArray, matchesAllTags, parseTagsInput } from '../lib/tags'
 import { MAX_LINK_DISPLAY_LENGTH, truncateLink } from '../lib/strings'
 import { openExternal } from '../lib/external'
+import { requestSearchIndexRefresh } from '../lib/global-search'
+import { useCommandPalette } from '../providers/CommandPaletteProvider'
 
 const CLIPBOARD_CLEAR_DELAY_SECONDS = Math.round(DEFAULT_CLIPBOARD_CLEAR_DELAY / 1_000)
 const PASSWORD_VIEW_MODE_STORAGE_KEY = 'pms:view:passwords'
@@ -59,11 +62,13 @@ export default function Passwords() {
   const email = useAuthStore(s => s.email)
   const encryptionKey = useAuthStore(s => s.encryptionKey)
   const { showToast } = useToast()
+  const navigate = useNavigate()
+  const { open: openCommandPalette, close: closeCommandPalette, isOpen: commandPaletteOpen, registerCommand } =
+    useCommandPalette()
 
   const [items, setItems] = useState<PasswordRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'view' | 'edit'>('create')
   const [activeItem, setActiveItem] = useState<PasswordRecord | null>(null)
@@ -83,6 +88,24 @@ export default function Passwords() {
   const totpEntriesRef = useRef<Record<number, TotpEntryState>>({})
   const [clockNow, setClockNow] = useState(() => Date.now())
   const hasTotpEntries = useMemo(() => Object.keys(totpEntries).length > 0, [totpEntries])
+
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false)
+    setDrawerMode('create')
+    setActiveItem(null)
+    setDraft(EMPTY_DRAFT)
+    setFormError(null)
+    setSubmitting(false)
+    setPasswordVisible(false)
+  }, [])
+
+  const handleCreate = useCallback(() => {
+    setDraft(EMPTY_DRAFT)
+    setDrawerMode('create')
+    setActiveItem(null)
+    setDrawerOpen(true)
+    setPasswordVisible(false)
+  }, [])
 
   useEffect(() => {
     totpEntriesRef.current = totpEntries
@@ -167,6 +190,118 @@ export default function Passwords() {
   useEffect(() => {
     setSelectedTags(prev => prev.filter(tag => availableTags.includes(tag)))
   }, [availableTags])
+
+  useEffect(() => {
+    const unregister = registerCommand({
+      id: 'navigate:passwords',
+      title: '前往密码管理',
+      description: '切换到密码管理页面',
+      keywords: ['密码', 'password'],
+      section: '导航',
+      run: () => {
+        navigate('/dashboard/passwords')
+      },
+    })
+    return unregister
+  }, [navigate, registerCommand])
+
+  useEffect(() => {
+    const unregister = registerCommand({
+      id: 'passwords:clear-tags',
+      title: '清除密码标签筛选',
+      description: '显示所有密码条目',
+      keywords: ['密码', '标签', '清除'],
+      section: '筛选',
+      run: () => {
+        navigate('/dashboard/passwords')
+        setSelectedTags([])
+      },
+    })
+    return unregister
+  }, [navigate, registerCommand])
+
+  useEffect(() => {
+    if (availableTags.length === 0) return undefined
+    const unregisters = availableTags.map(tag =>
+      registerCommand({
+        id: `passwords:tag:${tag}`,
+        title: `筛选密码标签：${tag}`,
+        description: '按此标签筛选密码列表',
+        keywords: ['密码', '标签', tag, `#${tag}`],
+        section: '筛选',
+        run: () => {
+          navigate('/dashboard/passwords')
+          setSelectedTags([tag])
+        },
+      }),
+    )
+    return () => {
+      unregisters.forEach(unregister => unregister())
+    }
+  }, [availableTags, navigate, registerCommand])
+
+  useEffect(() => {
+    const unregister = registerCommand({
+      id: 'passwords:create',
+      title: '新增密码',
+      description: '创建新的密码条目',
+      keywords: ['密码', '新增', '创建'],
+      section: '操作',
+      run: () => {
+        navigate('/dashboard/passwords')
+        handleCreate()
+      },
+    })
+    return unregister
+  }, [handleCreate, navigate, registerCommand])
+
+  useEffect(() => {
+    const definitions: Array<{ id: string; label: string; filter: PasswordHealthFilter; description: string }> = [
+      {
+        id: 'passwords:health:all',
+        label: '查看全部密码',
+        filter: 'all',
+        description: `共 ${healthStats.total} 条记录`,
+      },
+      {
+        id: 'passwords:health:weak',
+        label: '查看弱密码',
+        filter: 'weak',
+        description: healthStats.weak > 0 ? `共有 ${healthStats.weak} 条弱密码` : '未发现弱密码',
+      },
+      {
+        id: 'passwords:health:reused',
+        label: '查看重复使用的密码',
+        filter: 'reused',
+        description: healthStats.reused > 0 ? `共有 ${healthStats.reused} 条重复使用` : '未检测到重复使用',
+      },
+      {
+        id: 'passwords:health:stale',
+        label: '查看需更新的密码',
+        filter: 'stale',
+        description:
+          healthStats.stale > 0 ? `共有 ${healthStats.stale} 条超过 180 天未更新` : '暂无超过 180 天未更新的密码',
+      },
+    ]
+
+    const unregisters = definitions.map(entry =>
+      registerCommand({
+        id: entry.id,
+        title: entry.label,
+        description: entry.description,
+        keywords: ['密码', '健康', entry.filter],
+        section: '密码健康',
+        run: () => {
+          navigate('/dashboard/passwords')
+          setHealthFilter(entry.filter)
+        },
+      }),
+    )
+
+    return () => {
+      unregisters.forEach(unregister => unregister())
+    }
+  }, [healthStats.reused, healthStats.stale, healthStats.total, healthStats.weak, navigate, registerCommand])
 
   useEffect(() => {
     if (!encryptionKey) {
@@ -387,133 +522,6 @@ export default function Passwords() {
     return map
   }, [healthCategories.reused, healthCategories.stale, healthCategories.weak, healthEntries])
 
-  const itemCommandItems = useMemo(
-    () =>
-      items
-        .filter(item => typeof item.id === 'number')
-        .map(item => {
-          const tags = ensureTagsArray(item.tags)
-          const subtitleParts = [item.username, item.url, ...tags.map(tag => `#${tag}`)].filter(Boolean)
-          const keywords = [item.username, item.url, ...tags, ...tags.map(tag => `#${tag}`)]
-            .filter(Boolean)
-            .map(entry => String(entry))
-          return {
-            id: `password-${item.id}`,
-            title: item.title,
-            subtitle: subtitleParts.join(' · '),
-            keywords,
-          }
-        }),
-    [items],
-  )
-
-  const tagCommandItems = useMemo(
-    () =>
-      availableTags.map(tag => ({
-        id: `password-tag-${encodeURIComponent(tag)}`,
-        title: `筛选标签：${tag}`,
-        subtitle: selectedTags.includes(tag) ? '当前已选，点击取消筛选' : '按此标签筛选列表',
-        keywords: [tag, `#${tag}`],
-      })),
-    [availableTags, selectedTags],
-  )
-
-  const totpCommandItems = useMemo(() => {
-    return items
-      .filter(item => typeof item.id === 'number' && typeof item.totpCipher === 'string' && item.totpCipher)
-      .map(item => {
-        const id = item.id as number
-        const tags = ensureTagsArray(item.tags)
-        const entry = totpEntries[id]
-        const error = totpErrors[id]
-        const subtitleParts: string[] = []
-        if (entry) {
-          subtitleParts.push(`当前验证码：${entry.code}`)
-        } else if (error) {
-          subtitleParts.push(error)
-        } else {
-          subtitleParts.push('正在生成验证码…')
-        }
-        if (item.username) {
-          subtitleParts.push(`用户名：${item.username}`)
-        }
-        if (item.url) {
-          subtitleParts.push(item.url)
-        }
-        const keywords = [
-          item.title,
-          item.username,
-          item.url,
-          ...tags,
-          ...tags.map(tag => `#${tag}`),
-          'otp',
-          'totp',
-          '验证码',
-        ]
-          .filter(Boolean)
-          .map(entry => String(entry))
-
-        return {
-          id: `password-otp-${id}`,
-          title: `复制 OTP：${item.title}`,
-          subtitle: subtitleParts.filter(Boolean).join(' · ') || undefined,
-          keywords,
-        }
-      })
-  }, [items, totpEntries, totpErrors])
-
-  const healthCommandItems = useMemo(() => {
-    return [
-      {
-        id: 'password-health-all',
-        title: '查看全部密码',
-        subtitle: `共 ${healthStats.total} 条记录`,
-        keywords: ['全部', '全部密码', '健康'],
-      },
-      {
-        id: 'password-health-weak',
-        title: '查看弱密码',
-        subtitle: healthStats.weak > 0 ? `共有 ${healthStats.weak} 条弱密码` : '未发现弱密码',
-        keywords: ['弱密码', '安全', 'strong', 'weak'],
-      },
-      {
-        id: 'password-health-reused',
-        title: '查看重复使用的密码',
-        subtitle: healthStats.reused > 0 ? `共有 ${healthStats.reused} 条重复使用` : '未检测到重复使用',
-        keywords: ['重复', '重复使用', 'reuse'],
-      },
-      {
-        id: 'password-health-stale',
-        title: '查看需更新的密码',
-        subtitle: healthStats.stale > 0 ? `共有 ${healthStats.stale} 条超过 180 天未更新` : '暂无超过 180 天未更新的密码',
-        keywords: ['过期', '需更新', 'stale'],
-      },
-    ]
-  }, [healthStats.reused, healthStats.stale, healthStats.total, healthStats.weak])
-
-  const commandItems = useMemo(
-    () => [...healthCommandItems, ...tagCommandItems, ...totpCommandItems, ...itemCommandItems],
-    [healthCommandItems, itemCommandItems, tagCommandItems, totpCommandItems],
-  )
-
-  function closeDrawer() {
-    setDrawerOpen(false)
-    setDrawerMode('create')
-    setActiveItem(null)
-    setDraft(EMPTY_DRAFT)
-    setFormError(null)
-    setSubmitting(false)
-    setPasswordVisible(false)
-  }
-
-  function handleCreate() {
-    setDraft(EMPTY_DRAFT)
-    setDrawerMode('create')
-    setActiveItem(null)
-    setDrawerOpen(true)
-    setPasswordVisible(false)
-  }
-
   function handleView(item: PasswordRecord) {
     setActiveItem(item)
     setDrawerMode('view')
@@ -704,6 +712,7 @@ export default function Passwords() {
         rows.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
         setItems(rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) })))
       }
+      requestSearchIndexRefresh()
       closeDrawer()
     } catch (error) {
       console.error('Failed to delete password record', error)
@@ -806,6 +815,7 @@ export default function Passwords() {
         setItems(rows.map(row => ({ ...row, tags: ensureTagsArray(row.tags) })))
       }
 
+      requestSearchIndexRefresh()
       closeDrawer()
     } catch (error) {
       console.error('Failed to save password', error)
@@ -851,10 +861,10 @@ export default function Passwords() {
 
   useGlobalShortcuts({
     onCreate: handleCreate,
-    onSearch: () => setCommandPaletteOpen(true),
+    onSearch: openCommandPalette,
     onEscape: () => {
       if (commandPaletteOpen) {
-        setCommandPaletteOpen(false)
+        closeCommandPalette()
         return
       }
       if (drawerOpen) {
@@ -891,14 +901,6 @@ export default function Passwords() {
       searchPlaceholder="搜索名称、用户名、网址或标签"
       createLabel="新增密码"
       onCreate={handleCreate}
-      commandPalette={{
-        items: commandItems,
-        isOpen: commandPaletteOpen,
-        onOpen: () => setCommandPaletteOpen(true),
-        onClose: () => setCommandPaletteOpen(false),
-        onSelect: item => handleCommandSelect(item.id),
-        placeholder: '搜索密码条目',
-      }}
       viewMode={viewMode}
       onViewModeChange={setViewMode}
       filters={
