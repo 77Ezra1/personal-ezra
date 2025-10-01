@@ -15,6 +15,9 @@ type CommandPaletteProps = {
   items: CommandItem[]
   onSelect: (item: CommandItem) => void
   placeholder?: string
+  query?: string
+  onQueryChange?: (value: string) => void
+  externallyFiltered?: boolean
 }
 
 const fuseOptions: IFuseOptions<CommandItem> = {
@@ -29,32 +32,54 @@ const fuseOptions: IFuseOptions<CommandItem> = {
   minMatchCharLength: 1,
 }
 
-export function CommandPalette({ open, onClose, items, onSelect, placeholder }: CommandPaletteProps) {
+export function CommandPalette({
+  open,
+  onClose,
+  items,
+  onSelect,
+  placeholder,
+  query,
+  onQueryChange,
+  externallyFiltered = false,
+}: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [query, setQuery] = useState('')
+  const [internalQuery, setInternalQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
 
-  const fuse = useMemo(() => new Fuse(items, fuseOptions), [items])
+  const fuse = useMemo(() => (externallyFiltered ? null : new Fuse(items, fuseOptions)), [items, externallyFiltered])
 
   const results = useMemo(() => {
-    if (!query.trim()) {
+    if (externallyFiltered) {
       return items.slice(0, 10)
     }
-    return fuse
-      .search(query.trim())
+    if (!internalQuery.trim()) {
+      return items.slice(0, 10)
+    }
+    return fuse!
+      .search(internalQuery.trim())
       .slice(0, 10)
       .map(result => result.item)
-  }, [fuse, items, query])
+  }, [externallyFiltered, fuse, internalQuery, items])
 
   useEffect(() => {
     if (open) {
-      setQuery('')
+      if (externallyFiltered) {
+        onQueryChange?.('')
+      } else {
+        setInternalQuery('')
+      }
       setActiveIndex(0)
       requestAnimationFrame(() => {
         inputRef.current?.focus()
       })
     }
-  }, [open])
+  }, [externallyFiltered, onQueryChange, open])
+
+  useEffect(() => {
+    if (activeIndex >= results.length) {
+      setActiveIndex(results.length > 0 ? results.length - 1 : 0)
+    }
+  }, [activeIndex, results.length])
 
   useEffect(() => {
     if (!open) return undefined
@@ -93,9 +118,13 @@ export function CommandPalette({ open, onClose, items, onSelect, placeholder }: 
         <div className="border-b border-border/60 px-6 py-4">
           <input
             ref={inputRef}
-            value={query}
+            value={externallyFiltered ? query ?? '' : internalQuery}
             onChange={event => {
-              setQuery(event.target.value)
+              if (externallyFiltered) {
+                onQueryChange?.(event.target.value)
+              } else {
+                setInternalQuery(event.target.value)
+              }
               setActiveIndex(0)
             }}
             placeholder={placeholder ?? '搜索条目或执行操作'}

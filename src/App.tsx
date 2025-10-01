@@ -14,6 +14,7 @@ import Inspiration from './routes/Inspiration'
 import { useLock } from './features/lock/LockProvider'
 import ConfirmDialog from './components/ConfirmDialog'
 import { isTauriRuntime } from './env'
+import { CommandPaletteProvider } from './providers/CommandPaletteProvider'
 
 function GuestLayout({ children }: { children: ReactNode }) {
   return (
@@ -258,7 +259,15 @@ export default function App() {
         />
         <Route
           path="/dashboard/*"
-          element={email ? <AuthenticatedLayout /> : <Navigate to="/login" replace />}
+          element={
+            email ? (
+              <CommandPaletteProvider>
+                <AuthenticatedLayout />
+              </CommandPaletteProvider>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
         >
           <Route index element={<Dashboard />} />
           <Route path="passwords" element={<Passwords />} />

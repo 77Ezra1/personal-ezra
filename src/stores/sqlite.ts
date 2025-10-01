@@ -14,6 +14,10 @@ import type {
   DocRecord,
   OwnedCollection,
   PasswordRecord,
+  SearchEntryKind,
+  SearchIndexCollection,
+  SearchIndexQuery,
+  SearchIndexRecord,
   SiteRecord,
   UserAvatarMeta,
   UserGithubConnection,
@@ -114,6 +118,37 @@ function parseTags(value: unknown): string[] {
     return ensureTagsArray(Array.isArray(parsed) ? (parsed as string[]) : [])
   } catch (error) {
     console.warn('Failed to parse stored tags from SQLite', error)
+    return []
+  }
+}
+
+function serializeKeywords(keywords: SearchIndexRecord['keywords']): string {
+  const normalized = Array.from(
+    new Set(
+      (keywords ?? []).map(keyword => {
+        if (typeof keyword !== 'string') return ''
+        return keyword.trim()
+      }),
+    ),
+  ).filter(Boolean)
+  try {
+    return JSON.stringify(normalized)
+  } catch (error) {
+    console.warn('Failed to serialize search keywords for SQLite storage', error)
+    return '[]'
+  }
+}
+
+function parseKeywords(value: unknown): string[] {
+  if (typeof value !== 'string' || !value.trim()) return []
+  try {
+    const parsed = JSON.parse(value)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map(entry => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter((entry): entry is string => Boolean(entry))
+  } catch (error) {
+    console.warn('Failed to parse stored search keywords from SQLite', error)
     return []
   }
 }
@@ -392,6 +427,31 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 8,
+    async run(connection) {
+      await connection.execute(`
+        CREATE TABLE IF NOT EXISTS search_index (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ownerEmail TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          refId TEXT NOT NULL,
+          title TEXT NOT NULL,
+          subtitle TEXT,
+          keywords TEXT NOT NULL,
+          updatedAt INTEGER NOT NULL
+        )
+      `)
+      await connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_search_index_owner ON search_index(ownerEmail)')
+      await connection.execute(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_search_index_owner_kind_ref ON search_index(ownerEmail, kind, refId)',
+      )
+      await connection.execute(
+        'CREATE INDEX IF NOT EXISTS idx_search_index_owner_updated ON search_index(ownerEmail, updatedAt DESC)',
+      )
+    },
+  },
 ]
 
 async function runMigrations(connection: Database) {
@@ -505,6 +565,120 @@ function createOwnedCollection<T extends { id?: number; ownerEmail: string; crea
     put,
     async delete(key) {
       await connection.execute(`DELETE FROM ${options.table} WHERE id = ?`, [key])
+    },
+  }
+}
+
+function mapSearchIndexRow(row: SqliteRow): SearchIndexRecord {
+  const updatedAt = toNumber(row.updatedAt)
+  const subtitleRaw = typeof row.subtitle === 'string' ? row.subtitle.trim() : ''
+  const kind = String(row.kind ?? '') as SearchEntryKind
+  return {
+    id: toOptionalNumber(row.id),
+    ownerEmail: String(row.ownerEmail ?? ''),
+    kind,
+    refId: String(row.refId ?? ''),
+    title: String(row.title ?? ''),
+    subtitle: subtitleRaw || undefined,
+    keywords: parseKeywords(row.keywords),
+    updatedAt,
+  }
+}
+
+function createSearchIndexQuery(
+  connection: Database,
+  predicate: { ownerEmail: string; kind?: SearchEntryKind; refId?: string },
+): SearchIndexQuery {
+  const conditions: string[] = ['ownerEmail = ?']
+  const params: unknown[] = [predicate.ownerEmail]
+  if (predicate.kind) {
+    conditions.push('kind = ?')
+    params.push(predicate.kind)
+  }
+  if (predicate.refId) {
+    conditions.push('refId = ?')
+    params.push(predicate.refId)
+  }
+  const whereClause = conditions.join(' AND ')
+
+  return {
+    async toArray() {
+      const rows = await connection.select<SqliteRow[]>(
+        `SELECT id, ownerEmail, kind, refId, title, subtitle, keywords, updatedAt FROM search_index WHERE ${whereClause} ORDER BY updatedAt DESC, id DESC`,
+        params,
+      )
+      return rows.map(mapSearchIndexRow)
+    },
+    async delete() {
+      const rows = await connection.select<{ id?: number }[]>(
+        `SELECT id FROM search_index WHERE ${whereClause}`,
+        params,
+      )
+      if (rows.length === 0) {
+        return 0
+      }
+      await connection.execute(`DELETE FROM search_index WHERE ${whereClause}`, params)
+      return rows.length
+    },
+  }
+}
+
+function createSearchIndexCollection(connection: Database): SearchIndexCollection {
+  async function put(record: SearchIndexRecord) {
+    await connection.execute(
+      `INSERT INTO search_index (ownerEmail, kind, refId, title, subtitle, keywords, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(ownerEmail, kind, refId) DO UPDATE SET
+         title = excluded.title,
+         subtitle = excluded.subtitle,
+         keywords = excluded.keywords,
+         updatedAt = excluded.updatedAt`,
+      normalizeParams([
+        record.ownerEmail,
+        record.kind,
+        record.refId,
+        record.title,
+        record.subtitle ?? null,
+        serializeKeywords(record.keywords),
+        record.updatedAt,
+      ]),
+    )
+    const rows = await connection.select<{ id?: number }[]>(
+      'SELECT id FROM search_index WHERE ownerEmail = ? AND kind = ? AND refId = ? LIMIT 1',
+      [record.ownerEmail, record.kind, record.refId],
+    )
+    return toNumber(rows[0]?.id)
+  }
+
+  async function bulkPut(records: SearchIndexRecord[]) {
+    for (const record of records) {
+      await put(record)
+    }
+  }
+
+  return {
+    where: index => ({
+      equals: value => {
+        switch (index) {
+          case 'ownerEmail':
+            return createSearchIndexQuery(connection, { ownerEmail: value as string })
+          case '[ownerEmail+kind]': {
+            const [ownerEmail, kind] = value as [string, SearchEntryKind]
+            return createSearchIndexQuery(connection, { ownerEmail, kind })
+          }
+          case '[ownerEmail+kind+refId]': {
+            const [ownerEmail, kind, refId] = value as [string, SearchEntryKind, string]
+            return createSearchIndexQuery(connection, { ownerEmail, kind, refId })
+          }
+          default:
+            throw new Error(`Unsupported index: ${String(index)}`)
+        }
+      },
+    }),
+    bulkPut,
+    put,
+    async delete(key) {
+      await connection.execute('DELETE FROM search_index WHERE id = ?', [key])
     },
   }
 }
@@ -685,5 +859,6 @@ export async function createSqliteDatabase(): Promise<DatabaseClient> {
       prepareInsert: prepareDocInsert,
       prepareUpdate: prepareDocUpdate,
     }),
+    searchIndex: createSearchIndexCollection(connection),
   }
 }
