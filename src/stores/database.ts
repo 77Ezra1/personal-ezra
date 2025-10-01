@@ -512,7 +512,9 @@ function createDexieSearchIndex(table: Table<SearchIndexRecord, number>): Search
         delete: () => table.where(index as any).equals(value as any).delete(),
       }),
     }),
-    bulkPut: records => table.bulkPut(records),
+    bulkPut: async records => {
+      await table.bulkPut(records)
+    },
     put: record => table.put(record),
     delete: key => table.delete(key),
   }
