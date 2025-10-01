@@ -2,8 +2,11 @@
 
 mod notes;
 
+#[cfg(target_os = "windows")]
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+#[cfg(target_os = "windows")]
+use std::path::Path;
 
 use notes::{set_notes_root, NotesWatcherState};
 use tauri::Manager;
@@ -79,11 +82,6 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_shell::init());
-
-    #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
-    #[cfg(not(desktop))]
-    let builder = builder;
 
     builder
         .manage(NotesWatcherState::default())
