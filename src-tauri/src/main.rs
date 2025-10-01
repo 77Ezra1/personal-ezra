@@ -2,6 +2,7 @@
 
 mod notes;
 
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use notes::{set_notes_root, NotesWatcherState};
@@ -10,26 +11,53 @@ use tauri_plugin_dialog::DialogExt;
 
 #[cfg(target_os = "windows")]
 fn ensure_webview2_installed() -> Result<(), String> {
-    const WEBVIEW_RELATIVE_PATH: &str = "Microsoft\\EdgeWebView\\Application\\msedgewebview2.exe";
-    const WEBVIEW_ENV_VARS: &[&str] = &["ProgramFiles", "ProgramFiles(x86)", "ProgramFiles(Arm)", "LOCALAPPDATA"];
+    const WEBVIEW_ENV_VARS: &[&str] = &[
+        "ProgramFiles",
+        "ProgramFiles(x86)",
+        "ProgramFiles(Arm)",
+        "LOCALAPPDATA",
+    ];
 
-    fn webview_runtime_exists(env_vars: &[&str], relative_path: &str) -> bool {
-        env_vars
-            .iter()
-            .filter_map(|var| {
-                std::env::var(var).ok().and_then(|dir| {
+    fn append_runtime_base(path: &Path) -> PathBuf {
+        path.join("Microsoft")
+            .join("EdgeWebView")
+            .join("Application")
+    }
+
+    fn runtime_version_directories(path: &Path) -> impl Iterator<Item = PathBuf> {
+        match fs::read_dir(path) {
+            Ok(entries) => entries
+                .filter_map(|entry| entry.ok().map(|e| e.path()))
+                .filter(|p| p.is_dir()),
+            Err(_) => Vec::new().into_iter(),
+        }
+    }
+
+    fn webview_runtime_exists(env_vars: &[&str]) -> bool {
+        env_vars.iter().any(|var| {
+            std::env::var(var)
+                .ok()
+                .and_then(|dir| {
                     let trimmed = dir.trim();
                     if trimmed.is_empty() {
                         None
                     } else {
-                        Some(Path::new(trimmed).join(relative_path))
+                        let base = append_runtime_base(Path::new(trimmed));
+                        if base.join("msedgewebview2.exe").exists() {
+                            return Some(true);
+                        }
+
+                        let found = runtime_version_directories(&base)
+                            .any(|candidate| candidate.join("msedgewebview2.exe").exists());
+
+                        Some(found)
                     }
                 })
-            })
-            .any(|candidate| candidate.exists())
+                .unwrap_or(false)
+        })
     }
 
-    if webview_runtime_exists(WEBVIEW_ENV_VARS, WEBVIEW_RELATIVE_PATH) {
+    if webview_runtime_exists(WEBVIEW_ENV_VARS) {
         return Ok(());
     }
 
