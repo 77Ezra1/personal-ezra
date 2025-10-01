@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use notes::{set_notes_root, NotesWatcherState};
 use tauri::Manager;
+use tauri_plugin_dialog::DialogExt;
 
 #[cfg(target_os = "windows")]
 fn ensure_webview2_installed() -> Result<(), String> {
@@ -58,14 +59,14 @@ fn main() {
         .invoke_handler(tauri::generate_handler![set_notes_root])
         .setup(|app| {
             if let Err(err) = ensure_webview2_installed() {
-                tauri::api::dialog::blocking::message::<tauri::Wry, _>(
-                    None,
-                    "WebView2 Runtime Required",
-                    format!(
-                        "{}\n\nPlease install the WebView2 runtime from https://go.microsoft.com/fwlink/p/?LinkId=2124703 and restart the application.",
-                        err
-                    ),
+                let message = format!(
+                    "{}\n\nPlease install the WebView2 runtime from https://go.microsoft.com/fwlink/p/?LinkId=2124703 and restart the application.",
+                    err
                 );
+                app.dialog()
+                    .message(message)
+                    .title("WebView2 Runtime Required")
+                    .blocking_show();
                 return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, err)));
             }
             if let Ok(root) = std::env::var("NOTES_ROOT") {
