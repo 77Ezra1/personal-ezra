@@ -219,6 +219,10 @@ describe('InspirationPanel runtime detection', () => {
     delete globalForTauri.isTauri
     listNoteFoldersMock.mockResolvedValue(['Ideas'])
 
+    renderPanel()
+
+    expect(await screen.findByText('仅在桌面端可用')).toBeInTheDocument()
+
     ensureTauriRuntimeDetection()
     await waitFor(() => {
       expect(listenForTauriEventMock).toHaveBeenCalled()
@@ -228,12 +232,10 @@ describe('InspirationPanel runtime detection', () => {
     expect(readyListener).toBeInstanceOf(Function)
     readyListener?.()
 
-    renderPanel()
-
-    expect(await screen.findByRole('button', { name: 'Ideas' })).toBeInTheDocument()
     await waitFor(() => {
       expect(screen.queryByText('仅在桌面端可用')).not.toBeInTheDocument()
     })
+    expect(await screen.findByRole('button', { name: 'Ideas' })).toBeInTheDocument()
   })
 
   it('shows the desktop-only message when the global Tauri flag is missing', async () => {

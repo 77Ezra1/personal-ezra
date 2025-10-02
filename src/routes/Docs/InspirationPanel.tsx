@@ -31,7 +31,7 @@ import {
   type MutableRefObject,
 } from 'react'
 
-import { isTauriRuntime } from '../../env'
+import { TAURI_RUNTIME_DETECTED_EVENT, isTauriRuntime } from '../../env'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { useToast } from '../../components/ToastProvider'
 import { TagFilter } from '../../components/TagFilter'
@@ -880,7 +880,24 @@ function InspirationDisabledNotice({ className }: { className?: string }) {
 }
 
 export function InspirationPanel({ className }: InspirationPanelProps) {
-  const isDesktop = isTauriRuntime()
+  const [isDesktop, setIsDesktop] = useState(() => isTauriRuntime())
+  useEffect(() => {
+    if (isDesktop || typeof window === 'undefined') return
+
+    const updateIfDetected = () => {
+      setIsDesktop(prev => {
+        if (prev) return prev
+        return isTauriRuntime() ? true : prev
+      })
+    }
+
+    window.addEventListener(TAURI_RUNTIME_DETECTED_EVENT, updateIfDetected)
+    updateIfDetected()
+
+    return () => {
+      window.removeEventListener(TAURI_RUNTIME_DETECTED_EVENT, updateIfDetected)
+    }
+  }, [isDesktop])
   const { showToast } = useToast()
   const [notes, setNotes] = useState<NoteSummary[]>([])
   const [draft, setDraft] = useState<NoteDraft>(createEmptyDraft)

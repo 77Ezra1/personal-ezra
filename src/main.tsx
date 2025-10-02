@@ -1,5 +1,9 @@
 import { installPanicOverlay } from './lib/error-overlay'
-import { ensureTauriRuntimeDetection, isTauriRuntime } from './env'
+import {
+  TAURI_RUNTIME_DETECTED_EVENT,
+  ensureTauriRuntimeDetection,
+  isTauriRuntime,
+} from './env'
 import { swCleanup } from './lib/sw-clean'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
@@ -14,11 +18,30 @@ import { initializeTheme, useTheme } from './stores/theme'
 
 const globalWithFlag = globalThis as typeof globalThis & { isTauri?: unknown }
 
-if (typeof window !== 'undefined') {
-  const possibleTauriWindow = window as unknown as { __TAURI_INTERNALS__?: unknown }
-  if ('__TAURI_INTERNALS__' in possibleTauriWindow && possibleTauriWindow.__TAURI_INTERNALS__) {
-    if (typeof globalWithFlag.isTauri === 'undefined') {
-      globalWithFlag.isTauri = true
+let runtimeDetected = isTauriRuntime()
+
+if (!runtimeDetected && typeof window !== 'undefined') {
+  const possibleTauriWindow = window as unknown as {
+    navigator?: Navigator & { userAgent?: string }
+    __TAURI_INTERNALS__?: unknown
+  }
+
+  const hasInternals =
+    '__TAURI_INTERNALS__' in possibleTauriWindow && Boolean(possibleTauriWindow.__TAURI_INTERNALS__)
+  const ua = possibleTauriWindow.navigator?.userAgent
+  const hasTauriUserAgent = typeof ua === 'string' && ua.includes('Tauri')
+  const hasTauriEnvFlag = Boolean(import.meta.env.TAURI_PLATFORM ?? import.meta.env.TAURI_ENV_PLATFORM)
+
+  if (hasInternals || hasTauriUserAgent || hasTauriEnvFlag) {
+    const previousFlag = globalWithFlag.isTauri
+    globalWithFlag.isTauri = true
+    runtimeDetected = true
+    if (previousFlag !== true) {
+      try {
+        window.dispatchEvent(new Event(TAURI_RUNTIME_DETECTED_EVENT))
+      } catch {
+        // ignore environments without Event constructor support
+      }
     }
   }
 }
@@ -27,7 +50,7 @@ ensureTauriRuntimeDetection()
 
 installPanicOverlay()
 
-if (isTauriRuntime()) {
+if (runtimeDetected || isTauriRuntime()) {
   void swCleanup()
 }
 
