@@ -31,7 +31,7 @@ import {
   type MutableRefObject,
 } from 'react'
 import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import remarkGfm from 'remark-gfm/index.js'
 
 import { TAURI_RUNTIME_DETECTED_EVENT, isTauriRuntime } from '../../env'
 import ConfirmDialog from '../../components/ConfirmDialog'
