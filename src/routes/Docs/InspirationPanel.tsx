@@ -60,6 +60,8 @@ import {
   type VaultFileMeta,
 } from '../../lib/vault'
 
+const EXPANDED_FOLDERS_STORAGE_KEY = 'inspiration-panel:expanded-folders'
+
 function createEmptyDraft(): NoteDraft {
   return { title: '', content: '', tags: [], attachments: [] }
 }
@@ -983,7 +985,66 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const lastAttemptedSnapshotRef = useRef<string | null>(null)
   const knownFoldersRef = useRef<Set<string>>(new Set())
   const foldersInitializedRef = useRef(false)
+  const expandedFoldersRef = useRef<string[]>([])
+  const storageHydratedRef = useRef(false)
   const pendingAttachmentsRef = useRef<Set<string>>(new Set())
+
+  const persistExpandedState = useCallback(
+    (expanded: string[]) => {
+      if (!storageHydratedRef.current) return
+      if (typeof window === 'undefined') return
+      try {
+        const uniqueExpanded: string[] = []
+        const seenExpanded = new Set<string>()
+        for (const rawPath of expanded) {
+          if (typeof rawPath !== 'string') continue
+          const normalized = rawPath.trim()
+          if (!normalized || seenExpanded.has(normalized)) continue
+          seenExpanded.add(normalized)
+          uniqueExpanded.push(normalized)
+        }
+
+        const uniqueKnown: string[] = []
+        const seenKnown = new Set<string>()
+        for (const rawPath of knownFoldersRef.current) {
+          if (typeof rawPath !== 'string') continue
+          const normalized = rawPath.trim()
+          if (!normalized || seenKnown.has(normalized)) continue
+          seenKnown.add(normalized)
+          uniqueKnown.push(normalized)
+        }
+
+        const payload = JSON.stringify({ expanded: uniqueExpanded, known: uniqueKnown })
+        window.localStorage.setItem(EXPANDED_FOLDERS_STORAGE_KEY, payload)
+      } catch (error) {
+        console.warn('Failed to persist inspiration folder state', error)
+      }
+    },
+    [],
+  )
+
+  const persistKnownFolders = useCallback(() => {
+    if (!storageHydratedRef.current) return
+    persistExpandedState(expandedFoldersRef.current)
+  }, [persistExpandedState])
+
+  const updateExpandedFolders = useCallback(
+    (updater: (prev: string[]) => string[]) => {
+      setExpandedFolders(prev => {
+        const next = updater(prev)
+        expandedFoldersRef.current = next
+        if (storageHydratedRef.current) {
+          persistExpandedState(next)
+        }
+        return next
+      })
+    },
+    [persistExpandedState],
+  )
+
+  useEffect(() => {
+    expandedFoldersRef.current = expandedFolders
+  }, [expandedFolders])
 
   const cleanupPendingAttachments = useCallback(async () => {
     const pending = Array.from(pendingAttachmentsRef.current)
@@ -996,6 +1057,67 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         }),
       ),
     )
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      storageHydratedRef.current = true
+      return
+    }
+
+    try {
+      const raw = window.localStorage.getItem(EXPANDED_FOLDERS_STORAGE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as unknown
+        if (!parsed || typeof parsed !== 'object') {
+          return
+        }
+
+        const data = parsed as {
+          expanded?: unknown
+          known?: unknown
+        }
+
+        const storedExpanded = Array.isArray(data.expanded)
+          ? data.expanded
+              .map(item => (typeof item === 'string' ? item.trim() : ''))
+              .filter((item): item is string => item.length > 0)
+          : []
+
+        const storedKnown = Array.isArray(data.known)
+          ? data.known
+              .map(item => (typeof item === 'string' ? item.trim() : ''))
+              .filter((item): item is string => item.length > 0)
+          : []
+
+        const initialKnown = new Set<string>()
+        for (const path of storedKnown) {
+          initialKnown.add(path)
+        }
+        for (const path of storedExpanded) {
+          initialKnown.add(path)
+        }
+
+        if (initialKnown.size > 0) {
+          knownFoldersRef.current = initialKnown
+        }
+
+        const hasExpandedField = Object.prototype.hasOwnProperty.call(data, 'expanded')
+        if (storedExpanded.length > 0 || hasExpandedField) {
+          setExpandedFolders(storedExpanded)
+          expandedFoldersRef.current = storedExpanded
+        }
+
+        const hasKnownField = Object.prototype.hasOwnProperty.call(data, 'known')
+        if (initialKnown.size > 0 || storedExpanded.length > 0 || hasExpandedField || hasKnownField) {
+          foldersInitializedRef.current = true
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load inspiration folder state', error)
+    } finally {
+      storageHydratedRef.current = true
+    }
   }, [])
 
   const availableTags = useMemo(() => {
@@ -1143,7 +1265,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         targets.push(current)
         knownFoldersRef.current.add(current)
       }
-      setExpandedFolders(prev => {
+      updateExpandedFolders(prev => {
         const set = new Set(prev)
         const initialSize = set.size
         for (const target of targets) {
@@ -1155,22 +1277,25 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         return Array.from(set)
       })
     },
-    [],
+    [updateExpandedFolders],
   )
 
-  const handleFolderToggle = useCallback((path: string) => {
-    if (!path) return
-    setExpandedFolders(prev => {
-      const set = new Set(prev)
-      if (set.has(path)) {
-        set.delete(path)
-      } else {
-        set.add(path)
-        knownFoldersRef.current.add(path)
-      }
-      return Array.from(set)
-    })
-  }, [])
+  const handleFolderToggle = useCallback(
+    (path: string) => {
+      if (!path) return
+      updateExpandedFolders(prev => {
+        const set = new Set(prev)
+        if (set.has(path)) {
+          set.delete(path)
+        } else {
+          set.add(path)
+          knownFoldersRef.current.add(path)
+        }
+        return Array.from(set)
+      })
+    },
+    [updateExpandedFolders],
+  )
 
   const handleSelectFolder = useCallback(
     (path: string) => {
@@ -1185,14 +1310,15 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const hasExpandedFolders = expandedFolders.length > 0
 
   useEffect(() => {
+    if (!storageHydratedRef.current) return
     if (hasExpandedFolders) return
     if (foldersInitializedRef.current) return
     const allPaths = collectAllFolderPaths()
     if (allPaths.size === 0) return
     knownFoldersRef.current = new Set(allPaths)
     foldersInitializedRef.current = true
-    setExpandedFolders(Array.from(allPaths))
-  }, [collectAllFolderPaths, hasExpandedFolders])
+    updateExpandedFolders(() => Array.from(allPaths))
+  }, [collectAllFolderPaths, hasExpandedFolders, updateExpandedFolders])
 
   useEffect(() => {
     if (!activeFolderPath) return
@@ -1203,13 +1329,17 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   }, [activeFolderPath, collectAllFolderPaths])
 
   useEffect(() => {
+    if (!storageHydratedRef.current) return
+
     const allPaths = collectAllFolderPaths()
 
     if (allPaths.size === 0) {
       knownFoldersRef.current = new Set()
       foldersInitializedRef.current = false
       if (hasExpandedFolders) {
-        setExpandedFolders([])
+        updateExpandedFolders(() => [])
+      } else {
+        persistKnownFolders()
       }
       return
     }
@@ -1218,10 +1348,12 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       knownFoldersRef.current = new Set(allPaths)
       foldersInitializedRef.current = true
       if (!hasExpandedFolders) {
+        persistKnownFolders()
         return
       }
     } else if (!hasExpandedFolders) {
       knownFoldersRef.current = new Set(allPaths)
+      persistKnownFolders()
       return
     }
 
@@ -1235,7 +1367,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     }
 
     if (newlyDiscovered.length > 0) {
-      setExpandedFolders(prev => {
+      updateExpandedFolders(prev => {
         const set = new Set(prev)
         for (const path of newlyDiscovered) {
           set.add(path)
@@ -1243,16 +1375,17 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         return Array.from(set)
       })
     }
-  }, [collectAllFolderPaths, hasExpandedFolders])
+  }, [collectAllFolderPaths, hasExpandedFolders, persistKnownFolders, updateExpandedFolders])
 
   useEffect(() => {
+    if (!storageHydratedRef.current) return
     const allPaths = collectAllFolderPaths()
-    setExpandedFolders(prev => {
+    updateExpandedFolders(prev => {
       if (prev.length === 0) return prev
       const filtered = prev.filter(path => allPaths.has(path))
       return filtered.length === prev.length ? prev : filtered
     })
-  }, [collectAllFolderPaths])
+  }, [collectAllFolderPaths, updateExpandedFolders])
 
   useEffect(() => {
     if (!selectedId) return
