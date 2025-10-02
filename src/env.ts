@@ -40,14 +40,79 @@ const registerAsyncDetection = () => {
 
   void import('@tauri-apps/api/event')
     .then(async ({ listen }) => {
+      const attemptSynchronousDetection = (): boolean => {
+        if (detectTauriSynchronously()) {
+          return true
+        }
+
+        try {
+          if (coreIsTauri()) {
+            markAsTauri()
+            return true
+          }
+        } catch {
+          // ignore errors from the core detection helper
+        }
+
+        return false
+      }
+
+      if (attemptSynchronousDetection()) {
+        return
+      }
+
+      let cancelled = false
       let unlisten: (() => void) | undefined
+
+      const stopListening = () => {
+        const current = unlisten
+        unlisten = undefined
+        cancelled = true
+        if (!current) return
+        try {
+          current()
+        } catch {
+          // ignore errors when unlistening
+        }
+      }
+
+      const scheduleSecondaryCheck = () => {
+        const runCheck = () => {
+          if (cancelled) return
+          if (attemptSynchronousDetection()) {
+            stopListening()
+          }
+        }
+
+        if (typeof queueMicrotask === 'function') {
+          queueMicrotask(runCheck)
+          return
+        }
+
+        if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(() => runCheck())
+          return
+        }
+
+        void Promise.resolve().then(runCheck).catch(() => {
+          // ignore errors from rejected promises
+        })
+      }
+
+      scheduleSecondaryCheck()
+
       try {
         unlisten = await listen('tauri://ready', () => {
+          if (cancelled) return
           markAsTauri()
-          unlisten?.()
+          stopListening()
         })
+        if (cancelled) {
+          stopListening()
+        }
       } catch (error) {
         asyncDetectionRegistered = false
+        stopListening()
         throw error
       }
     })
