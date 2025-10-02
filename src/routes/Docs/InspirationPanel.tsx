@@ -30,6 +30,8 @@ import {
   type KeyboardEvent,
   type MutableRefObject,
 } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 import { TAURI_RUNTIME_DETECTED_EVENT, isTauriRuntime } from '../../env'
 import ConfirmDialog from '../../components/ConfirmDialog'
@@ -591,6 +593,9 @@ function InspirationEditor({
   const editorDisabled = saving || deleting || loadingNote
   const tagActionsDisabled = editorDisabled
   const attachmentActionsDisabled = editorDisabled || attachmentUploading
+  const [previewMode, setPreviewMode] = useState<'edit' | 'preview' | 'split'>('split')
+  const showEditor = previewMode !== 'preview'
+  const showPreview = previewMode !== 'edit'
   const handleTagInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
       event.preventDefault()
@@ -796,40 +801,93 @@ function InspirationEditor({
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <label htmlFor="note-content" className="text-sm font-medium text-text">
             Markdown 文
           </label>
-          <button
-            type="button"
-            onClick={onInsertLink}
-            className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text transition hover:border-border/70 hover:bg-surface-hover"
-            disabled={editorDisabled}
-          >
-            <LinkIcon className="h-3.5 w-3.5" aria-hidden />
-            插入链接
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-1 rounded-full border border-border bg-surface p-1 text-xs font-medium text-muted">
+              {(
+                [
+                  { value: 'edit' as const, label: '仅编辑' },
+                  { value: 'preview' as const, label: '仅预览' },
+                  { value: 'split' as const, label: '分屏模式' },
+                ]
+              ).map(option => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setPreviewMode(option.value)}
+                  className={clsx(
+                    'inline-flex items-center rounded-full px-3 py-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+                    previewMode === option.value
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted hover:bg-surface-hover hover:text-text',
+                    editorDisabled && 'cursor-not-allowed opacity-60 hover:bg-surface hover:text-muted',
+                  )}
+                  disabled={editorDisabled}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={onInsertLink}
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text transition hover:border-border/70 hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={editorDisabled}
+            >
+              <LinkIcon className="h-3.5 w-3.5" aria-hidden />
+              插入链接
+            </button>
+          </div>
         </div>
         <div
           className={clsx(
-            'relative h-64 w-full overflow-hidden rounded-2xl border border-border bg-surface text-sm text-text transition focus-within:border-primary/60 focus-within:bg-surface-hover',
+            'relative flex min-h-[18rem] w-full overflow-hidden rounded-2xl border border-border bg-surface text-sm text-text transition focus-within:border-primary/60 focus-within:bg-surface-hover',
+            showEditor && showPreview ? 'flex-col lg:flex-row' : 'flex-col',
             editorDisabled && 'pointer-events-none opacity-60',
           )}
-          onKeyDown={handleContentKeyDown}
         >
-          {!draft.content.trim() && (
-            <p className="pointer-events-none select-none px-4 py-3 text-sm text-muted absolute inset-x-0 top-0 z-10">
-              使用 Markdown 语法编写内容，支持标题、列表、引用等格式。
-            </p>
+          {showEditor && (
+            <div
+              className={clsx(
+                'relative flex-1',
+                showEditor && showPreview && 'border-b border-border/60 lg:border-b-0 lg:border-r lg:border-border/60',
+              )}
+              onKeyDown={handleContentKeyDown}
+            >
+              {!draft.content.trim() && (
+                <p className="pointer-events-none select-none px-4 py-3 text-sm text-muted absolute inset-x-0 top-0 z-10">
+                  使用 Markdown 语法编写内容，支持标题、列表、引用等格式。
+                </p>
+              )}
+              <MdEditor
+                ref={editorRef}
+                value={draft.content}
+                onChange={onContentChange}
+                editable={!editorDisabled}
+                className="relative h-full w-full overflow-y-auto px-4 py-3 text-sm leading-relaxed text-text"
+                id="note-content"
+              />
+            </div>
           )}
-          <MdEditor
-            ref={editorRef}
-            value={draft.content}
-            onChange={onContentChange}
-            editable={!editorDisabled}
-            className="relative h-full w-full overflow-y-auto px-4 py-3 text-sm leading-relaxed text-text"
-            id="note-content"
-          />
+          {showPreview && (
+            <div className="relative flex-1">
+              <div className="absolute inset-0 overflow-y-auto px-4 py-3 text-sm leading-relaxed text-text">
+                {draft.content.trim() ? (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    className="space-y-4 [&_*]:break-words [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:pl-4 [&_blockquote]:text-muted [&_code]:rounded [&_code]:bg-surface-hover [&_code]:px-1.5 [&_code]:py-0.5 [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-lg [&_h3]:font-semibold [&_hr]:my-6 [&_hr]:border-border/60 [&_li]:pl-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:leading-relaxed [&_pre]:overflow-auto [&_pre]:rounded-2xl [&_pre]:bg-surface-hover [&_pre]:p-4 [&_strong]:font-semibold [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-border/60 [&_td]:px-3 [&_td]:py-2 [&_th]:border [&_th]:border-border/60 [&_th]:bg-surface-hover [&_th]:px-3 [&_th]:py-2 [&_ul]:list-disc [&_ul]:pl-5"
+                  >
+                    {draft.content}
+                  </ReactMarkdown>
+                ) : (
+                  <p className="text-sm text-muted">暂无内容，预览将在这里实时呈现。</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
