@@ -5,9 +5,25 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import InspirationPanel from '../src/routes/Docs/InspirationPanel'
 import { ToastProvider } from '../src/components/ToastProvider'
 import type { VaultFileMeta } from '../src/lib/vault'
+import { ensureTauriRuntimeDetection } from '../src/env'
 
 const globalForTauri = globalThis as typeof globalThis & { isTauri?: boolean }
 const originalGlobalIsTauri = globalForTauri.isTauri
+
+const tauriEventListeners = new Map<string, () => void>()
+const listenForTauriEventMock = vi.fn(
+  async (eventName: string, handler: () => void): Promise<() => void> => {
+    tauriEventListeners.set(eventName, handler)
+    return () => {
+      tauriEventListeners.delete(eventName)
+    }
+  },
+)
+
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: (...args: Parameters<typeof listenForTauriEventMock>) =>
+    listenForTauriEventMock(...args),
+}))
 
 const listNotesMock = vi.fn<[], Promise<unknown[]>>()
 const listNoteFoldersMock = vi.fn<[], Promise<string[]>>()
@@ -129,6 +145,8 @@ beforeEach(() => {
   removeVaultFileMock.mockResolvedValue(undefined)
   clipboardWriteTextMock.mockReset()
   clipboardWriteTextMock.mockResolvedValue(undefined)
+  tauriEventListeners.clear()
+  listenForTauriEventMock.mockClear()
   if (navigator.clipboard && 'writeText' in navigator.clipboard) {
     vi.spyOn(navigator.clipboard, 'writeText').mockImplementation(text =>
       clipboardWriteTextMock(text),
@@ -188,6 +206,27 @@ afterAll(() => {
 describe('InspirationPanel runtime detection', () => {
   it('renders the editor when the global Tauri flag is set', async () => {
     listNoteFoldersMock.mockResolvedValue(['Ideas'])
+
+    renderPanel()
+
+    expect(await screen.findByRole('button', { name: 'Ideas' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('仅在桌面端可用')).not.toBeInTheDocument()
+    })
+  })
+
+  it('detects the desktop runtime after receiving the tauri ready event', async () => {
+    delete globalForTauri.isTauri
+    listNoteFoldersMock.mockResolvedValue(['Ideas'])
+
+    ensureTauriRuntimeDetection()
+    await waitFor(() => {
+      expect(listenForTauriEventMock).toHaveBeenCalled()
+    })
+
+    const readyListener = tauriEventListeners.get('tauri://ready')
+    expect(readyListener).toBeInstanceOf(Function)
+    readyListener?.()
 
     renderPanel()
 
