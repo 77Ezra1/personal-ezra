@@ -193,6 +193,7 @@ afterEach(() => {
   } else {
     globalForTauri.isTauri = originalGlobalIsTauri
   }
+  delete (window as typeof window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
 })
 
 afterAll(() => {
