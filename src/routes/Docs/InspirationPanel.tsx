@@ -29,14 +29,13 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type MutableRefObject,
-  type ComponentPropsWithoutRef,
 } from 'react'
-import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown'
 
 import { isTauriRuntime } from '../../env'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { useToast } from '../../components/ToastProvider'
 import { TagFilter } from '../../components/TagFilter'
+import { MdEditor, type MdEditorHandle } from '../../components/MdEditor'
 import {
   NOTE_FEATURE_DISABLED_MESSAGE,
   createNoteFile,
@@ -535,11 +534,11 @@ function InspirationNoteList({
 type InspirationEditorProps = {
   draft: NoteDraft
   onTitleChange: (event: ChangeEvent<HTMLInputElement>) => void
-  onContentChange: (event: ChangeEvent<HTMLTextAreaElement>) => void
+  onContentChange: (value: string) => void
   onInsertLink: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onDelete: () => void
-  textareaRef: MutableRefObject<HTMLTextAreaElement | null>
+  editorRef: MutableRefObject<MdEditorHandle | null>
   tagInputRef: MutableRefObject<HTMLInputElement | null>
   tagInput: string
   onTagInputChange: (event: ChangeEvent<HTMLInputElement>) => void
@@ -561,82 +560,6 @@ type InspirationEditorProps = {
   attachmentUploading: boolean
 }
 
-type MarkdownCodeProps = ComponentPropsWithoutRef<'code'> & ExtraProps & {
-  inline?: boolean
-}
-
-const markdownComponents: Components = {
-  h1: ({ node: _node, ...props }) => (
-    <h1 className="mt-6 text-2xl font-semibold text-text first:mt-0" {...props} />
-  ),
-  h2: ({ node: _node, ...props }) => (
-    <h2 className="mt-6 text-xl font-semibold text-text first:mt-0" {...props} />
-  ),
-  h3: ({ node: _node, ...props }) => (
-    <h3 className="mt-5 text-lg font-semibold text-text first:mt-0" {...props} />
-  ),
-  h4: ({ node: _node, ...props }) => (
-    <h4 className="mt-4 text-base font-semibold text-text first:mt-0" {...props} />
-  ),
-  h5: ({ node: _node, ...props }) => (
-    <h5 className="mt-4 text-sm font-semibold text-text first:mt-0" {...props} />
-  ),
-  h6: ({ node: _node, ...props }) => (
-    <h6 className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted first:mt-0" {...props} />
-  ),
-  p: ({ node: _node, ...props }) => (
-    <p className="text-sm leading-relaxed text-text" {...props} />
-  ),
-  ul: ({ node: _node, ...props }) => (
-    <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-text" {...props} />
-  ),
-  ol: ({ node: _node, ...props }) => (
-    <ol className="list-decimal space-y-1 pl-5 text-sm leading-relaxed text-text" {...props} />
-  ),
-  li: ({ node: _node, ...props }) => <li className="text-sm leading-relaxed text-text" {...props} />,
-  blockquote: ({ node: _node, ...props }) => (
-    <blockquote className="border-l-2 border-primary/40 pl-4 text-sm italic text-muted" {...props} />
-  ),
-  a: ({ node: _node, ...props }) => (
-    <a className="font-medium text-primary underline-offset-4 hover:underline" {...props} />
-  ),
-  hr: ({ node: _node, ...props }) => (
-    <hr className="my-4 border-border/60" {...props} />
-  ),
-  pre: ({ node: _node, ...props }) => (
-    <pre className="overflow-x-auto rounded-2xl bg-surface-hover p-4 text-xs leading-relaxed text-text" {...props} />
-  ),
-  code: ({ node: _node, inline, className, children, ...props }: MarkdownCodeProps) => {
-    if (inline) {
-      return (
-        <code
-          className={clsx('rounded bg-surface-hover px-1.5 py-0.5 font-mono text-xs text-text', className)}
-          {...props}
-        >
-          {children}
-        </code>
-      )
-    }
-    return (
-      <code className={clsx('font-mono text-xs text-text', className)} {...props}>
-        {children}
-      </code>
-    )
-  },
-  table: ({ node: _node, ...props }) => (
-    <table className="w-full border-collapse text-sm text-text" {...props} />
-  ),
-  thead: ({ node: _node, ...props }) => (
-    <thead className="bg-surface-hover text-left text-xs uppercase tracking-wide text-muted" {...props} />
-  ),
-  tbody: ({ node: _node, ...props }) => <tbody className="divide-y divide-border/60" {...props} />,
-  tr: ({ node: _node, ...props }) => <tr className="align-top" {...props} />,
-  th: ({ node: _node, ...props }) => (
-    <th className="border border-border/60 px-3 py-2 font-semibold text-text" {...props} />
-  ),
-  td: ({ node: _node, ...props }) => <td className="border border-border/60 px-3 py-2" {...props} />,
-}
-
 function InspirationEditor({
   draft,
   onTitleChange,
@@ -644,7 +567,7 @@ function InspirationEditor({
   onInsertLink,
   onSubmit,
   onDelete,
-  textareaRef,
+  editorRef,
   tagInputRef,
   tagInput,
   onTagInputChange,
@@ -665,9 +588,9 @@ function InspirationEditor({
   onAttachmentCopyPath,
   attachmentUploading,
 }: InspirationEditorProps) {
-  const tagActionsDisabled = saving || deleting || loadingNote
-  const attachmentActionsDisabled = saving || deleting || loadingNote || attachmentUploading
-  const hasContent = draft.content.trim().length > 0
+  const editorDisabled = saving || deleting || loadingNote
+  const tagActionsDisabled = editorDisabled
+  const attachmentActionsDisabled = editorDisabled || attachmentUploading
   const handleTagInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
       event.preventDefault()
@@ -679,26 +602,15 @@ function InspirationEditor({
       onTagEditCancel()
     }
   }
-  const handleContentKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleContentKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Tab') return
 
     event.preventDefault()
-
-    const textarea = event.currentTarget
-    const { selectionStart, selectionEnd, value } = textarea
     const indentation = '\t'
-    const selectedText = value.slice(selectionStart, selectionEnd)
-    const replacement = `${indentation}${selectedText}`
-
-    textarea.setRangeText(replacement, selectionStart, selectionEnd, 'end')
-
-    const cursorPosition = selectionStart + indentation.length + selectedText.length
-    textarea.setSelectionRange(cursorPosition, cursorPosition)
-
-    onContentChange({
-      currentTarget: textarea,
-      target: textarea,
-    } as unknown as ChangeEvent<HTMLTextAreaElement>)
+    if (editorDisabled) return
+    const selection = editorRef.current?.getSelection()
+    const selectedText = selection?.text ?? ''
+    editorRef.current?.replaceSelection(`${indentation}${selectedText}`)
   }
 
   return (
@@ -892,35 +804,32 @@ function InspirationEditor({
             type="button"
             onClick={onInsertLink}
             className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text transition hover:border-border/70 hover:bg-surface-hover"
-            disabled={saving || deleting || loadingNote}
+            disabled={editorDisabled}
           >
             <LinkIcon className="h-3.5 w-3.5" aria-hidden />
             插入链接
           </button>
         </div>
-        <div className="grid gap-3 lg:grid-cols-2">
-          <textarea
-            id="note-content"
-            ref={textareaRef}
+        <div
+          className={clsx(
+            'relative h-64 w-full overflow-hidden rounded-2xl border border-border bg-surface text-sm text-text transition focus-within:border-primary/60 focus-within:bg-surface-hover',
+            editorDisabled && 'pointer-events-none opacity-60',
+          )}
+          onKeyDown={handleContentKeyDown}
+        >
+          {!draft.content.trim() && (
+            <p className="pointer-events-none select-none px-4 py-3 text-sm text-muted absolute inset-x-0 top-0 z-10">
+              使用 Markdown 语法编写内容，支持标题、列表、引用等格式。
+            </p>
+          )}
+          <MdEditor
+            ref={editorRef}
             value={draft.content}
             onChange={onContentChange}
-            onKeyDown={handleContentKeyDown}
-            placeholder="使用 Markdown 语法编写内容，支持标题、列表、引用等格式。"
-            className="h-64 w-full resize-none overflow-y-auto rounded-2xl border border-border bg-surface px-4 py-3 text-sm leading-relaxed text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
-            disabled={saving || deleting || loadingNote}
+            editable={!editorDisabled}
+            className="relative h-full w-full overflow-y-auto px-4 py-3 text-sm leading-relaxed text-text"
+            id="note-content"
           />
-          <div
-            className="h-64 overflow-y-auto rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text"
-            aria-live="polite"
-          >
-            {hasContent ? (
-              <div className="flex flex-col gap-3 text-sm leading-relaxed text-text">
-                <ReactMarkdown components={markdownComponents}>{draft.content}</ReactMarkdown>
-              </div>
-            ) : (
-              <p className="text-sm text-muted">Markdown 预览将在此显示。</p>
-            )}
-          </div>
         </div>
       </div>
 
@@ -1000,7 +909,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const [createFolderInput, setCreateFolderInput] = useState('')
   const [createFolderError, setCreateFolderError] = useState<string | null>(null)
   const [createFolderSubmitting, setCreateFolderSubmitting] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const editorRef = useRef<MdEditorHandle | null>(null)
   const tagInputRef = useRef<HTMLInputElement | null>(null)
   const draftSnapshotRef = useRef<string>(createDraftSnapshot(createEmptyDraft()))
   const skipNextAutoSaveRef = useRef(false)
@@ -1859,8 +1768,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     setDraft(prev => ({ ...prev, title: value }))
   }, [])
 
-  const handleContentChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
-    const { value } = event.currentTarget
+  const handleContentChange = useCallback((value: string) => {
     setDraft(prev => ({ ...prev, content: value }))
   }, [])
 
@@ -1984,20 +1892,13 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   )
 
   const handleInsertLink = useCallback(() => {
-    const textarea = textareaRef.current
-    if (!textarea) return
     const url = window.prompt('请输入要插入的链接地址')
     if (!url) return
-    const { selectionStart, selectionEnd, value } = textarea
-    const label = selectionStart !== selectionEnd ? value.slice(selectionStart, selectionEnd) : '链接标题'
+    const selection = editorRef.current?.getSelection()
+    const selectedText = selection?.text ?? ''
+    const label = selectedText.length > 0 ? selectedText : '链接标题'
     const markdown = `[${label}](${url})`
-    const nextValue = `${value.slice(0, selectionStart)}${markdown}${value.slice(selectionEnd)}`
-    setDraft(prev => ({ ...prev, content: nextValue }))
-    window.requestAnimationFrame(() => {
-      textarea.focus()
-      const caret = selectionStart + markdown.length
-      textarea.setSelectionRange(caret, caret)
-    })
+    editorRef.current?.replaceSelection(markdown)
   }, [])
 
   const handleAttachmentUpload = useCallback(
@@ -2268,7 +2169,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
             onDelete={() => {
               void handleDelete()
             }}
-            textareaRef={textareaRef}
+            editorRef={editorRef}
             tagInputRef={tagInputRef}
             tagInput={tagInput}
             onTagInputChange={handleTagInputChange}
