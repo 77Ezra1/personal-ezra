@@ -677,6 +677,27 @@ function InspirationEditor({
       onTagEditCancel()
     }
   }
+  const handleContentKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Tab') return
+
+    event.preventDefault()
+
+    const textarea = event.currentTarget
+    const { selectionStart, selectionEnd, value } = textarea
+    const indentation = '\t'
+    const selectedText = value.slice(selectionStart, selectionEnd)
+    const replacement = `${indentation}${selectedText}`
+
+    textarea.setRangeText(replacement, selectionStart, selectionEnd, 'end')
+
+    const cursorPosition = selectionStart + indentation.length + selectedText.length
+    textarea.setSelectionRange(cursorPosition, cursorPosition)
+
+    onContentChange({
+      currentTarget: textarea,
+      target: textarea,
+    } as unknown as ChangeEvent<HTMLTextAreaElement>)
+  }
 
   return (
     <form
@@ -881,6 +902,7 @@ function InspirationEditor({
             ref={textareaRef}
             value={draft.content}
             onChange={onContentChange}
+            onKeyDown={handleContentKeyDown}
             placeholder="使用 Markdown 语法编写内容，支持标题、列表、引用等格式。"
             className="h-64 w-full resize-none overflow-y-auto rounded-2xl border border-border bg-surface px-4 py-3 text-sm leading-relaxed text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
             disabled={saving || autoSaving || deleting || loadingNote}
