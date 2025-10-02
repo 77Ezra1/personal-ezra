@@ -665,8 +665,8 @@ function InspirationEditor({
   onAttachmentCopyPath,
   attachmentUploading,
 }: InspirationEditorProps) {
-  const tagActionsDisabled = saving || autoSaving || deleting || loadingNote
-  const attachmentActionsDisabled = saving || autoSaving || deleting || loadingNote || attachmentUploading
+  const tagActionsDisabled = saving || deleting || loadingNote
+  const attachmentActionsDisabled = saving || deleting || loadingNote || attachmentUploading
   const hasContent = draft.content.trim().length > 0
   const handleTagInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
@@ -808,7 +808,7 @@ function InspirationEditor({
           onChange={onTitleChange}
           placeholder="例如：季度复盘、产品灵感、会议纪要……"
           className="h-11 w-full rounded-2xl border border-border bg-surface px-4 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
-          disabled={saving || autoSaving || deleting || loadingNote}
+          disabled={saving || deleting || loadingNote}
           autoComplete="off"
         />
       </div>
@@ -892,7 +892,7 @@ function InspirationEditor({
             type="button"
             onClick={onInsertLink}
             className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text transition hover:border-border/70 hover:bg-surface-hover"
-            disabled={saving || autoSaving || deleting || loadingNote}
+            disabled={saving || deleting || loadingNote}
           >
             <LinkIcon className="h-3.5 w-3.5" aria-hidden />
             插入链接
@@ -907,7 +907,7 @@ function InspirationEditor({
             onKeyDown={handleContentKeyDown}
             placeholder="使用 Markdown 语法编写内容，支持标题、列表、引用等格式。"
             className="h-64 w-full resize-none overflow-y-auto rounded-2xl border border-border bg-surface px-4 py-3 text-sm leading-relaxed text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
-            disabled={saving || autoSaving || deleting || loadingNote}
+            disabled={saving || deleting || loadingNote}
           />
           <div
             className="h-64 overflow-y-auto rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text"
@@ -928,7 +928,7 @@ function InspirationEditor({
         <button
           type="submit"
           className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 text-sm font-semibold text-background transition hover:bg-primary/90 disabled:opacity-70"
-          disabled={saving || autoSaving || deleting}
+          disabled={saving || deleting}
         >
           {saving ? <LoaderIcon className="h-4 w-4 animate-spin" aria-hidden /> : <SaveIcon className="h-4 w-4" aria-hidden />}
           保存笔记
@@ -938,7 +938,7 @@ function InspirationEditor({
             type="button"
             onClick={onDelete}
             className="inline-flex items-center gap-2 rounded-full border border-border px-5 py-2 text-sm font-semibold text-text transition hover:border-border/70 hover:bg-surface-hover disabled:opacity-60"
-            disabled={deleting || saving || autoSaving}
+            disabled={deleting || saving}
           >
             {deleting ? <LoaderIcon className="h-4 w-4 animate-spin" aria-hidden /> : <TrashIcon className="h-4 w-4" aria-hidden />}
             删除
