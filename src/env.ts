@@ -2,17 +2,52 @@ import { isTauri as coreIsTauri } from '@tauri-apps/api/core'
 
 type TauriFlag = boolean | (() => boolean)
 
+type GlobalWithTauriFlag = typeof globalThis & {
+  isTauri?: TauriFlag
+}
+
+const getGlobalWithFlag = (): GlobalWithTauriFlag =>
+  globalThis as GlobalWithTauriFlag
+
+const markAsTauri = (): true => {
+  const globalWithFlag = getGlobalWithFlag()
+  if (globalWithFlag.isTauri !== true) {
+    globalWithFlag.isTauri = true
+  }
+  return true
+}
+
+let asyncDetectionRegistered = false
+
+const registerAsyncDetection = () => {
+  if (asyncDetectionRegistered || typeof window === 'undefined') {
+    return
+  }
+
+  asyncDetectionRegistered = true
+
+  void import('@tauri-apps/api/event')
+    .then(async ({ listen }) => {
+      let unlisten: (() => void) | undefined
+      try {
+        unlisten = await listen('tauri://ready', () => {
+          markAsTauri()
+          unlisten?.()
+        })
+      } catch (error) {
+        asyncDetectionRegistered = false
+        throw error
+      }
+    })
+    .catch(() => {
+      // Allow retrying registration if the module import fails (e.g. in web builds)
+      asyncDetectionRegistered = false
+    })
+}
+
 // 在渲染进程判断是否运行在 Tauri
 export const isTauriRuntime = (): boolean => {
-  const globalWithFlag = globalThis as typeof globalThis & {
-    isTauri?: TauriFlag
-  }
-
-  const markAsTauri = () => {
-    globalWithFlag.isTauri = true
-    return true
-  }
-
+  const globalWithFlag = getGlobalWithFlag()
   const globalFlag = globalWithFlag.isTauri
 
   if (typeof globalFlag === 'boolean') {
@@ -64,5 +99,13 @@ export const isTauriRuntime = (): boolean => {
     // ignore errors from the core detection helper
   }
 
+  registerAsyncDetection()
+
   return false
+}
+
+export const ensureTauriRuntimeDetection = () => {
+  if (!isTauriRuntime()) {
+    registerAsyncDetection()
+  }
 }

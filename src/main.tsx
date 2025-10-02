@@ -1,5 +1,5 @@
 import { installPanicOverlay } from './lib/error-overlay'
-import { isTauriRuntime } from './env'
+import { ensureTauriRuntimeDetection, isTauriRuntime } from './env'
 import { swCleanup } from './lib/sw-clean'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
@@ -22,6 +22,8 @@ if (typeof window !== 'undefined') {
     }
   }
 }
+
+ensureTauriRuntimeDetection()
 
 installPanicOverlay()
 
