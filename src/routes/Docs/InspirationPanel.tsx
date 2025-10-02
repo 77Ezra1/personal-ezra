@@ -876,12 +876,11 @@ function InspirationEditor({
             <div className="relative flex-1">
               <div className="absolute inset-0 overflow-y-auto px-4 py-3 text-sm leading-relaxed text-text">
                 {draft.content.trim() ? (
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    className="space-y-4 [&_*]:break-words [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:pl-4 [&_blockquote]:text-muted [&_code]:rounded [&_code]:bg-surface-hover [&_code]:px-1.5 [&_code]:py-0.5 [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-lg [&_h3]:font-semibold [&_hr]:my-6 [&_hr]:border-border/60 [&_li]:pl-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:leading-relaxed [&_pre]:overflow-auto [&_pre]:rounded-2xl [&_pre]:bg-surface-hover [&_pre]:p-4 [&_strong]:font-semibold [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-border/60 [&_td]:px-3 [&_td]:py-2 [&_th]:border [&_th]:border-border/60 [&_th]:bg-surface-hover [&_th]:px-3 [&_th]:py-2 [&_ul]:list-disc [&_ul]:pl-5"
-                  >
-                    {draft.content}
-                  </ReactMarkdown>
+                  <div className="space-y-4 [&_*]:break-words [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:pl-4 [&_blockquote]:text-muted [&_code]:rounded [&_code]:bg-surface-hover [&_code]:px-1.5 [&_code]:py-0.5 [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-lg [&_h3]:font-semibold [&_hr]:my-6 [&_hr]:border-border/60 [&_li]:pl-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:leading-relaxed [&_pre]:overflow-auto [&_pre]:rounded-2xl [&_pre]:bg-surface-hover [&_pre]:p-4 [&_strong]:font-semibold [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-border/60 [&_td]:px-3 [&_td]:py-2 [&_th]:border [&_th]:border-border/60 [&_th]:bg-surface-hover [&_th]:px-3 [&_th]:py-2 [&_ul]:list-disc [&_ul]:pl-5">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {draft.content}
+                    </ReactMarkdown>
+                  </div>
                 ) : (
                   <p className="text-sm text-muted">暂无内容，预览将在这里实时呈现。</p>
                 )}
