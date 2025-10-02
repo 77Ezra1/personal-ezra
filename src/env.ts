@@ -6,13 +6,25 @@ type GlobalWithTauriFlag = typeof globalThis & {
   isTauri?: TauriFlag
 }
 
+export const TAURI_RUNTIME_DETECTED_EVENT = 'tauri-runtime-detected'
+
 const getGlobalWithFlag = (): GlobalWithTauriFlag =>
   globalThis as GlobalWithTauriFlag
+
+const dispatchTauriDetectedEvent = () => {
+  if (typeof window === 'undefined') return
+  try {
+    window.dispatchEvent(new Event(TAURI_RUNTIME_DETECTED_EVENT))
+  } catch {
+    // ignore environments without Event constructor support
+  }
+}
 
 const markAsTauri = (): true => {
   const globalWithFlag = getGlobalWithFlag()
   if (globalWithFlag.isTauri !== true) {
     globalWithFlag.isTauri = true
+    dispatchTauriDetectedEvent()
   }
   return true
 }
@@ -45,6 +57,41 @@ const registerAsyncDetection = () => {
     })
 }
 
+const detectTauriFromWindow = (
+  tauriWindow: {
+    navigator?: Navigator & { userAgent?: string }
+    __TAURI__?: unknown
+    __TAURI_METADATA__?: unknown
+    __TAURI_IPC__?: unknown
+    __TAURI_INTERNALS__?: unknown
+  },
+): boolean => {
+  if ('__TAURI_INTERNALS__' in tauriWindow && tauriWindow.__TAURI_INTERNALS__) {
+    return markAsTauri()
+  }
+
+  const ua = tauriWindow.navigator?.userAgent
+  if (typeof ua === 'string' && ua.includes('Tauri')) {
+    return markAsTauri()
+  }
+
+  if (
+    typeof tauriWindow.__TAURI__ !== 'undefined' ||
+    typeof tauriWindow.__TAURI_METADATA__ !== 'undefined' ||
+    typeof tauriWindow.__TAURI_IPC__ !== 'undefined'
+  ) {
+    return markAsTauri()
+  }
+
+  return false
+}
+
+const detectTauriSynchronously = (): boolean => {
+  if (typeof window === 'undefined') return false
+  const tauriWindow = window as unknown as Parameters<typeof detectTauriFromWindow>[0]
+  return detectTauriFromWindow(tauriWindow)
+}
+
 // 在渲染进程判断是否运行在 Tauri
 export const isTauriRuntime = (): boolean => {
   const globalWithFlag = getGlobalWithFlag()
@@ -64,31 +111,8 @@ export const isTauriRuntime = (): boolean => {
     }
   }
 
-  if (typeof window !== 'undefined') {
-    const tauriWindow = window as unknown as {
-      navigator?: Navigator & { userAgent?: string }
-      __TAURI__?: unknown
-      __TAURI_METADATA__?: unknown
-      __TAURI_IPC__?: unknown
-      __TAURI_INTERNALS__?: unknown
-    }
-
-    if ('__TAURI_INTERNALS__' in tauriWindow && tauriWindow.__TAURI_INTERNALS__) {
-      return markAsTauri()
-    }
-
-    const ua = tauriWindow.navigator?.userAgent
-    if (typeof ua === 'string' && ua.includes('Tauri')) {
-      return markAsTauri()
-    }
-
-    if (
-      typeof tauriWindow.__TAURI__ !== 'undefined' ||
-      typeof tauriWindow.__TAURI_METADATA__ !== 'undefined' ||
-      typeof tauriWindow.__TAURI_IPC__ !== 'undefined'
-    ) {
-      return markAsTauri()
-    }
+  if (detectTauriSynchronously()) {
+    return true
   }
 
   try {
@@ -109,3 +133,6 @@ export const ensureTauriRuntimeDetection = () => {
     registerAsyncDetection()
   }
 }
+
+// 立即尝试一次同步检测，以便在模块加载时抢占首帧
+void detectTauriSynchronously()
