@@ -12,6 +12,17 @@ import { LockProvider } from './features/lock/LockProvider'
 import { LockScreen } from './features/lock/LockScreen'
 import { initializeTheme, useTheme } from './stores/theme'
 
+const globalWithFlag = globalThis as typeof globalThis & { isTauri?: unknown }
+
+if (typeof window !== 'undefined') {
+  const possibleTauriWindow = window as unknown as { __TAURI_INTERNALS__?: unknown }
+  if ('__TAURI_INTERNALS__' in possibleTauriWindow && possibleTauriWindow.__TAURI_INTERNALS__) {
+    if (typeof globalWithFlag.isTauri === 'undefined') {
+      globalWithFlag.isTauri = true
+    }
+  }
+}
+
 installPanicOverlay()
 
 if (isTauriRuntime()) {
