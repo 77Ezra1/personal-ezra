@@ -1,14 +1,13 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import InspirationPanel from '../src/routes/Docs/InspirationPanel'
 import { ToastProvider } from '../src/components/ToastProvider'
 import type { VaultFileMeta } from '../src/lib/vault'
 
-vi.mock('../src/env', () => ({
-  isTauriRuntime: () => true,
-}))
+const globalForTauri = globalThis as typeof globalThis & { isTauri?: boolean }
+const originalGlobalIsTauri = globalForTauri.isTauri
 
 const listNotesMock = vi.fn<[], Promise<unknown[]>>()
 const listNoteFoldersMock = vi.fn<[], Promise<string[]>>()
@@ -98,6 +97,7 @@ function renderPanel() {
 }
 
 beforeEach(() => {
+  globalForTauri.isTauri = true
   listNotesMock.mockReset()
   listNotesMock.mockResolvedValue([])
   listNoteFoldersMock.mockReset()
@@ -170,6 +170,40 @@ afterEach(() => {
       }
     ).clipboard
   }
+  if (typeof originalGlobalIsTauri === 'undefined') {
+    delete globalForTauri.isTauri
+  } else {
+    globalForTauri.isTauri = originalGlobalIsTauri
+  }
+})
+
+afterAll(() => {
+  if (typeof originalGlobalIsTauri === 'undefined') {
+    delete globalForTauri.isTauri
+  } else {
+    globalForTauri.isTauri = originalGlobalIsTauri
+  }
+})
+
+describe('InspirationPanel runtime detection', () => {
+  it('renders the editor when the global Tauri flag is set', async () => {
+    listNoteFoldersMock.mockResolvedValue(['Ideas'])
+
+    renderPanel()
+
+    expect(await screen.findByRole('button', { name: 'Ideas' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('仅在桌面端可用')).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows the desktop-only message when the global Tauri flag is missing', async () => {
+    delete globalForTauri.isTauri
+
+    renderPanel()
+
+    expect(await screen.findByText('仅在桌面端可用')).toBeInTheDocument()
+  })
 })
 
 describe('InspirationPanel folder listing', () => {
