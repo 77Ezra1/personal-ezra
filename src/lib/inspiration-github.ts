@@ -1,7 +1,7 @@
 import { useAuthStore } from '../stores/auth'
 import { db } from '../stores/database'
 import { decryptString } from './crypto'
-import { uploadGithubBackup } from './github-backup'
+import { deleteGithubBackup, uploadGithubBackup } from './github-backup'
 import { NOTES_DIR_NAME } from './inspiration-constants'
 
 interface GithubSyncContext {
@@ -164,6 +164,41 @@ export async function ensureGithubNoteFolder(relativePath: string): Promise<bool
     return true
   } catch (error) {
     const message = readErrorMessage(error) || '上传 GitHub 文件失败，请稍后再试。'
+    throw createGithubSyncError(message, error)
+  }
+}
+
+export async function deleteGithubNoteFile(
+  relativePath: string,
+  options: { commitMessage?: string } = {},
+): Promise<boolean> {
+  const context = await resolveGithubSyncContext()
+  if (!context) {
+    return false
+  }
+
+  const normalizedRelative = normalizeRelativePath(relativePath)
+  if (!normalizedRelative) {
+    return false
+  }
+
+  const remotePath = buildFileRemotePath(normalizedRelative)
+  const commitMessage = options.commitMessage ?? `Delete inspiration note: ${normalizedRelative}`
+
+  try {
+    await deleteGithubBackup(
+      {
+        token: context.token,
+        owner: context.owner,
+        repo: context.repo,
+        branch: context.branch,
+        path: remotePath,
+      },
+      { commitMessage, maxRetries: 1 },
+    )
+    return true
+  } catch (error) {
+    const message = readErrorMessage(error) || '删除 GitHub 文件失败，请稍后再试。'
     throw createGithubSyncError(message, error)
   }
 }

@@ -11,7 +11,7 @@ import {
 } from './storage-path'
 import { removeVaultFile, type VaultFileMeta } from './vault'
 import { NOTES_DIR_NAME } from './inspiration-constants'
-import { ensureGithubNoteFolder, syncGithubNoteFile } from './inspiration-github'
+import { deleteGithubNoteFile, ensureGithubNoteFolder, syncGithubNoteFile } from './inspiration-github'
 
 export { NOTES_DIR_NAME } from './inspiration-constants'
 export const NOTE_FILE_EXTENSION = '.md'
@@ -1251,8 +1251,10 @@ export async function deleteNote(id: string): Promise<void> {
   const targetDir = directories.length > 0 ? await join(dir, ...directories) : dir
   const filePath = await join(targetDir, fileName)
   let attachments: VaultFileMeta[] = []
+  let originalContent: string | null = null
   try {
     const fileText = await readTextFile(filePath)
+    originalContent = fileText
     const parsed = parseFrontMatter(fileText)
     attachments = parsed.metadata.attachments ?? []
   } catch (error) {
@@ -1260,6 +1262,18 @@ export async function deleteNote(id: string): Promise<void> {
       console.warn('Failed to read inspiration note before deletion', error)
     }
   }
+
+  try {
+    await deleteGithubNoteFile(normalizedId)
+  } catch (error) {
+    if (originalContent !== null) {
+      await writeTextFile(filePath, originalContent).catch(restoreError => {
+        console.warn('Failed to restore inspiration note after GitHub delete failure', restoreError)
+      })
+    }
+    throw toGithubSyncError(error)
+  }
+
   for (const attachment of attachments) {
     await removeVaultFile(attachment.relPath).catch(error => {
       console.warn('Failed to remove inspiration note attachment during delete', error)
