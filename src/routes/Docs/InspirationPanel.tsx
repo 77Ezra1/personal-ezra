@@ -1191,7 +1191,6 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     if (allPaths.size === 0) return
     knownFoldersRef.current = new Set(allPaths)
     foldersInitializedRef.current = true
-    setExpandedFolders(Array.from(allPaths))
   }, [collectAllFolderPaths, hasExpandedFolders])
 
   useEffect(() => {
@@ -1217,11 +1216,9 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     if (!foldersInitializedRef.current) {
       knownFoldersRef.current = new Set(allPaths)
       foldersInitializedRef.current = true
-      if (!hasExpandedFolders) {
-        setExpandedFolders(Array.from(allPaths))
-        return
-      }
-    } else if (!hasExpandedFolders) {
+    }
+
+    if (!hasExpandedFolders) {
       knownFoldersRef.current = new Set(allPaths)
       return
     }
@@ -1235,7 +1232,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       }
     }
 
-    if (newlyDiscovered.length > 0) {
+    if (newlyDiscovered.length > 0 && hasExpandedFolders) {
       setExpandedFolders(prev => {
         const set = new Set(prev)
         for (const path of newlyDiscovered) {
