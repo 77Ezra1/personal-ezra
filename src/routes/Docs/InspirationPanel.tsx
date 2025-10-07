@@ -994,6 +994,8 @@ type InspirationLinkViewerProps = {
 }
 
 function InspirationLinkViewer({ url, onClose }: InspirationLinkViewerProps) {
+  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading')
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1008,6 +1010,25 @@ function InspirationLinkViewer({ url, onClose }: InspirationLinkViewerProps) {
     }
   }, [onClose])
 
+  useEffect(() => {
+    setLoadState('loading')
+  }, [url])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (loadState !== 'loading') return
+    const timer = window.setTimeout(() => {
+      setLoadState(current => (current === 'loading' ? 'error' : current))
+    }, 4000)
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [loadState])
+
+  const handleOpenExternal = useCallback(() => {
+    void openExternal(url)
+  }, [url])
+
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col bg-black/70 backdrop-blur-sm"
@@ -1015,7 +1036,7 @@ function InspirationLinkViewer({ url, onClose }: InspirationLinkViewerProps) {
       aria-modal="true"
       aria-label="链接预览"
     >
-      <div className="flex justify-end p-4">
+      <div className="flex items-center justify-between gap-3 p-4">
         <button
           type="button"
           onClick={onClose}
@@ -1023,13 +1044,46 @@ function InspirationLinkViewer({ url, onClose }: InspirationLinkViewerProps) {
         >
           返回主页面
         </button>
+        <button
+          type="button"
+          onClick={handleOpenExternal}
+          className="inline-flex items-center rounded-full bg-surface px-4 py-2 text-sm font-semibold text-text shadow-lg shadow-black/20 transition hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+        >
+          在系统浏览器中打开
+        </button>
       </div>
-      <div className="flex-1 px-4 pb-4">
+      <div className="relative flex-1 px-4 pb-4">
         <iframe
           src={url}
           title="链接预览"
           className="h-full w-full rounded-3xl border border-border bg-background"
+          onLoad={() => {
+            setLoadState('loaded')
+          }}
+          onError={() => {
+            setLoadState('error')
+          }}
         />
+        {loadState === 'error' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-border bg-surface/90 p-6 text-center text-sm text-muted">
+            <div className="space-y-2">
+              <p>
+                链接无法在应用内预览，常见原因是目标站点设置了 <code>X-Frame-Options</code> 或
+                <code> Content-Security-Policy (frame-ancestors)</code> 来禁止第三方 iframe。
+              </p>
+              <p>
+                如果确实需要在应用内部展示此内容，可考虑：自建一个代理服务去除相关响应头（需注意目标站点的使用条款），或改用截图/摘要等间接形式呈现。否则请直接在系统浏览器中打开。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenExternal}
+              className="inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-black/20 transition hover:bg-primary/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            >
+              在系统浏览器中打开
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
