@@ -137,6 +137,11 @@ type InspirationPanelProps = {
   className?: string
 }
 
+type PendingNoteRemoval = {
+  id: string
+  title: string
+}
+
 type InspirationHeaderProps = {
   onCreateFile: () => void
   onCreateFolder: () => void
@@ -976,6 +981,9 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const [createFolderInput, setCreateFolderInput] = useState('')
   const [createFolderError, setCreateFolderError] = useState<string | null>(null)
   const [createFolderSubmitting, setCreateFolderSubmitting] = useState(false)
+  const [pendingFolderRemoval, setPendingFolderRemoval] = useState<string | null>(null)
+  const [folderDeletionLoading, setFolderDeletionLoading] = useState(false)
+  const [pendingNoteRemoval, setPendingNoteRemoval] = useState<PendingNoteRemoval | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const tagInputRef = useRef<HTMLInputElement | null>(null)
   const draftSnapshotRef = useRef<string>(createDraftSnapshot(createEmptyDraft()))
@@ -1667,35 +1675,49 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     [expandFolderPath, queueInspirationBackupSync, refreshNotes, showToast],
   )
 
-  const handleDeleteFolder = useCallback(
-    async (path: string) => {
-      if (typeof window === 'undefined') return
-      const confirmed = window.confirm('确定要删除该文件夹吗？文件夹中的笔记也会被一并删除。')
-      if (!confirmed) return
-      try {
-        await deleteNoteFolder(path)
-        await refreshNotes()
-        setActiveFolderPath(prev => {
-          if (!prev) return prev
-          if (prev === path || prev.startsWith(`${path}/`)) {
-            return ''
-          }
-          return prev
-        })
-        showToast({
-          title: '文件夹已删除',
-          description: `已从本地数据目录中移除：${path}`,
-          variant: 'success',
-        })
-        queueInspirationBackupSync(showToast)
-      } catch (err) {
-        console.error('Failed to delete inspiration note folder', err)
-        const message = err instanceof Error ? err.message : '删除文件夹失败，请稍后再试。'
-        showToast({ title: '删除失败', description: message, variant: 'error' })
-      }
-    },
-    [queueInspirationBackupSync, refreshNotes, showToast],
-  )
+  const handleDeleteFolder = useCallback((path: string) => {
+    if (typeof window === 'undefined') return
+    setPendingFolderRemoval(path)
+  }, [])
+
+  const handleConfirmDeleteFolder = useCallback(async () => {
+    if (!pendingFolderRemoval) return
+    try {
+      setFolderDeletionLoading(true)
+      await deleteNoteFolder(pendingFolderRemoval)
+      await refreshNotes()
+      setActiveFolderPath(prev => {
+        if (!prev) return prev
+        if (prev === pendingFolderRemoval || prev.startsWith(`${pendingFolderRemoval}/`)) {
+          return ''
+        }
+        return prev
+      })
+      showToast({
+        title: '文件夹已删除',
+        description: `已从本地数据目录中移除：${pendingFolderRemoval}`,
+        variant: 'success',
+      })
+      queueInspirationBackupSync(showToast)
+      setPendingFolderRemoval(null)
+    } catch (err) {
+      console.error('Failed to delete inspiration note folder', err)
+      const message = err instanceof Error ? err.message : '删除文件夹失败，请稍后再试。'
+      showToast({ title: '删除失败', description: message, variant: 'error' })
+    } finally {
+      setFolderDeletionLoading(false)
+    }
+  }, [
+    pendingFolderRemoval,
+    queueInspirationBackupSync,
+    refreshNotes,
+    showToast,
+  ])
+
+  const handleCancelDeleteFolder = useCallback(() => {
+    if (folderDeletionLoading) return
+    setPendingFolderRemoval(null)
+  }, [folderDeletionLoading])
 
   const handleTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const { value } = event.currentTarget
@@ -2014,25 +2036,32 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     [draft, isDesktop, performSave],
   )
 
-  const handleDelete = useCallback(async () => {
+  const handleDelete = useCallback(() => {
     if (!isDesktop || !draft.id) return
-    const confirmed = window.confirm('确定要删除当前笔记吗？此操作无法撤销。')
-    if (!confirmed) return
+    setPendingNoteRemoval({ id: draft.id, title: draft.title })
+  }, [draft.id, draft.title, isDesktop])
+
+  const handleConfirmDeleteNote = useCallback(async () => {
+    if (!pendingNoteRemoval) return
     try {
       setDeleting(true)
-      await deleteNote(draft.id)
-      await cleanupPendingAttachments()
+      const targetId = pendingNoteRemoval.id
+      await deleteNote(targetId)
+      if (draft.id === targetId) {
+        await cleanupPendingAttachments()
+        const empty = createEmptyDraft()
+        setDraft(empty)
+        setLastSavedAt(undefined)
+        draftSnapshotRef.current = createDraftSnapshot(empty)
+        skipNextAutoSaveRef.current = true
+        lastAttemptedSnapshotRef.current = null
+        resetTagEditor()
+        setSelectedId(null)
+      }
+      await refreshNotes()
       showToast({ title: '已删除', description: '笔记已从本地移除。', variant: 'success' })
       queueInspirationBackupSync(showToast)
-      const empty = createEmptyDraft()
-      setDraft(empty)
-      setLastSavedAt(undefined)
-      draftSnapshotRef.current = createDraftSnapshot(empty)
-      skipNextAutoSaveRef.current = true
-      lastAttemptedSnapshotRef.current = null
-      resetTagEditor()
-      setSelectedId(null)
-      await refreshNotes()
+      setPendingNoteRemoval(null)
     } catch (err) {
       console.error('Failed to delete inspiration note', err)
       const message = err instanceof Error ? err.message : '删除失败，请稍后再试。'
@@ -2043,12 +2072,19 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   }, [
     cleanupPendingAttachments,
     draft.id,
-    isDesktop,
+    pendingNoteRemoval,
     queueInspirationBackupSync,
     refreshNotes,
     resetTagEditor,
     showToast,
   ])
+
+  const handleCancelDeleteNote = useCallback(() => {
+    if (deleting) return
+    setPendingNoteRemoval(null)
+  }, [deleting])
+
+  const pendingNoteName = pendingNoteRemoval ? pendingNoteRemoval.title.trim() || '未命名笔记' : ''
 
   if (!isDesktop) {
     return <InspirationDisabledNotice className={className} />
@@ -2229,6 +2265,48 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         onCancel={handleCreateFolderDialogCancel}
         disableConfirm={!normalizedCreateFolderPath || createFolderSubmitting}
         loading={createFolderSubmitting}
+      />
+      <ConfirmDialog
+        open={pendingFolderRemoval !== null}
+        title="删除文件夹"
+        description={
+          pendingFolderRemoval ? (
+            <>
+              确定要删除文件夹{' '}
+              <span className="font-semibold text-text">{pendingFolderRemoval}</span>{' '}
+              吗？文件夹中的笔记也会被一并删除。
+            </>
+          ) : (
+            '确定要删除该文件夹吗？文件夹中的笔记也会被一并删除。'
+          )
+        }
+        tone="danger"
+        onConfirm={() => {
+          void handleConfirmDeleteFolder()
+        }}
+        onCancel={handleCancelDeleteFolder}
+        loading={folderDeletionLoading}
+      />
+      <ConfirmDialog
+        open={pendingNoteRemoval !== null}
+        title="删除笔记"
+        description={
+          pendingNoteRemoval ? (
+            <>
+              确定要删除笔记{' '}
+              <span className="font-semibold text-text">{pendingNoteName}</span>{' '}
+              吗？此操作无法撤销。
+            </>
+          ) : (
+            '确定要删除当前笔记吗？此操作无法撤销。'
+          )
+        }
+        tone="danger"
+        onConfirm={() => {
+          void handleConfirmDeleteNote()
+        }}
+        onCancel={handleCancelDeleteNote}
+        loading={deleting}
       />
     </>
   )

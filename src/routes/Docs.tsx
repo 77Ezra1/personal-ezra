@@ -13,6 +13,7 @@ import { BACKUP_IMPORTED_EVENT } from '../lib/backup'
 import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyWithAutoClear } from '../lib/clipboard'
 
 import { useToast } from '../components/ToastProvider'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 import { AppLayout } from '../components/AppLayout'
 import { Skeleton } from '../components/Skeleton'
@@ -99,12 +100,15 @@ export default function Docs() {
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [pendingDeletion, setPendingDeletion] = useState<DocRecord | null>(null)
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
   const fileInputId = useId()
   const [viewMode, setViewMode] = useState<'card' | 'list'>(() => {
     if (typeof window === 'undefined') return 'card'
     const stored = window.localStorage.getItem(DOC_VIEW_MODE_STORAGE_KEY)
     return stored === 'list' ? 'list' : 'card'
   })
+  const pendingDeleteTitle = pendingDeletion ? pendingDeletion.title.trim() || '未命名文档' : ''
 
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false)
@@ -372,27 +376,41 @@ export default function Docs() {
 
   /* -------------------------------- 删除 -------------------------------- */
 
-  async function handleDelete(item: DocRecord) {
+  function handleDelete(item: DocRecord) {
     if (typeof item.id !== 'number') return
-    const confirmed = window.confirm(`确定要删除“${item.title}”吗？相关文件也会被移除。`)
-    if (!confirmed) return
+    setPendingDeletion(item)
+  }
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pendingDeletion || typeof pendingDeletion.id !== 'number') return
     try {
-      await docsDb.docs.delete(item.id)
-      const fileMeta = extractFileMeta(item.document)
+      setDeleteSubmitting(true)
+      await docsDb.docs.delete(pendingDeletion.id)
+      const fileMeta = extractFileMeta(pendingDeletion.document)
       if (fileMeta) {
         await removeVaultFile(fileMeta.relPath).catch(error => {
           console.warn('Failed to remove vault file during delete', error)
         })
       }
       showToast({ title: '文档已删除', variant: 'success' })
-      if (email) await reloadItems(email, { showLoading: false })
+      if (email) {
+        await reloadItems(email, { showLoading: false })
+      }
       requestSearchIndexRefresh()
       closeDrawer()
+      setPendingDeletion(null)
     } catch (error) {
       console.error('Failed to delete document', error)
       showToast({ title: '删除失败', description: '请稍后再试。', variant: 'error' })
+    } finally {
+      setDeleteSubmitting(false)
     }
-  }
+  }, [closeDrawer, email, pendingDeletion, reloadItems, showToast])
+
+  const handleCancelDelete = useCallback(() => {
+    if (deleteSubmitting) return
+    setPendingDeletion(null)
+  }, [deleteSubmitting])
 
   /* -------------------------------- 表单 -------------------------------- */
 
@@ -868,6 +886,28 @@ export default function Docs() {
           </form>
         )}
       </DetailsDrawer>
+      <ConfirmDialog
+        open={pendingDeletion !== null}
+        title="删除文档"
+        description={
+          pendingDeletion ? (
+            <>
+              确定要删除“
+              <span className="font-semibold text-text">{pendingDeleteTitle}</span>
+              ”吗？相关文件也会被移除。
+            </>
+          ) : (
+            '确定要删除该文档吗？相关文件也会被移除。'
+          )
+        }
+        tone="danger"
+        confirmLabel="删除"
+        onConfirm={() => {
+          void handleConfirmDelete()
+        }}
+        onCancel={handleCancelDelete}
+        loading={deleteSubmitting}
+      />
       </>
     </AppLayout>
   )

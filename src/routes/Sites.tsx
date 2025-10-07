@@ -12,6 +12,7 @@ import { VaultItemList } from '../components/VaultItemList'
 import { DEFAULT_CLIPBOARD_CLEAR_DELAY, copyWithAutoClear } from '../lib/clipboard'
 import { BACKUP_IMPORTED_EVENT } from '../lib/backup'
 import { useToast } from '../components/ToastProvider'
+import ConfirmDialog from '../components/ConfirmDialog'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 import { useAuthStore } from '../stores/auth'
 import { db, type SiteRecord } from '../stores/database'
@@ -54,11 +55,14 @@ export default function Sites() {
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [pendingDeletion, setPendingDeletion] = useState<SiteRecord | null>(null)
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
   const [viewMode, setViewMode] = useState<'card' | 'list'>(() => {
     if (typeof window === 'undefined') return 'card'
     const stored = window.localStorage.getItem(SITE_VIEW_MODE_STORAGE_KEY)
     return stored === 'list' ? 'list' : 'card'
   })
+  const pendingDeleteTitle = pendingDeletion ? pendingDeletion.title.trim() || '未命名网站' : ''
 
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false)
@@ -309,12 +313,16 @@ export default function Sites() {
     ]
   }
 
-  async function handleDelete(item: SiteRecord) {
+  function handleDelete(item: SiteRecord) {
     if (typeof item.id !== 'number') return
-    const confirmed = window.confirm(`确定要删除“${item.title}”吗？`)
-    if (!confirmed) return
+    setPendingDeletion(item)
+  }
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pendingDeletion || typeof pendingDeletion.id !== 'number') return
     try {
-      await db.sites.delete(item.id)
+      setDeleteSubmitting(true)
+      await db.sites.delete(pendingDeletion.id)
       showToast({ title: '网站已删除', variant: 'success' })
       if (email) {
         const rows = await db.sites.where('ownerEmail').equals(email).toArray()
@@ -323,11 +331,19 @@ export default function Sites() {
       }
       requestSearchIndexRefresh()
       closeDrawer()
+      setPendingDeletion(null)
     } catch (error) {
       console.error('Failed to delete site', error)
       showToast({ title: '删除失败', description: '请稍后再试。', variant: 'error' })
+    } finally {
+      setDeleteSubmitting(false)
     }
-  }
+  }, [closeDrawer, email, pendingDeletion, setItems, showToast])
+
+  const handleCancelDelete = useCallback(() => {
+    if (deleteSubmitting) return
+    setPendingDeletion(null)
+  }, [deleteSubmitting])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -650,6 +666,28 @@ export default function Sites() {
           </form>
         )}
       </DetailsDrawer>
+      <ConfirmDialog
+        open={pendingDeletion !== null}
+        title="删除网站"
+        description={
+          pendingDeletion ? (
+            <>
+              确定要删除“
+              <span className="font-semibold text-text">{pendingDeleteTitle}</span>
+              ”吗？
+            </>
+          ) : (
+            '确定要删除该网站吗？'
+          )
+        }
+        tone="danger"
+        confirmLabel="删除"
+        onConfirm={() => {
+          void handleConfirmDelete()
+        }}
+        onCancel={handleCancelDelete}
+        loading={deleteSubmitting}
+      />
     </AppLayout>
   )
 }
