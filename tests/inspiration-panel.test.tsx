@@ -380,12 +380,21 @@ describe('InspirationPanel folder actions', () => {
     listNoteFoldersMock.mockResolvedValueOnce(['Projects'])
     listNoteFoldersMock.mockResolvedValueOnce(['Projects-Renamed'])
     renameNoteFolderMock.mockResolvedValue('Projects-Renamed')
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Projects-Renamed')
     const user = userEvent.setup()
 
     renderPanel()
 
     await user.click(await screen.findByRole('button', { name: '重命名文件夹 Projects' }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    const input = within(dialog).getByLabelText('新的文件夹路径')
+    expect(input).toHaveValue('Projects')
+    await user.clear(input)
+    await user.type(input, 'Projects-Renamed')
+    const confirmButton = within(dialog).getByRole('button', { name: '重命名' })
+    expect(confirmButton).toBeEnabled()
+
+    await user.click(confirmButton)
 
     await waitFor(() => {
       expect(renameNoteFolderMock).toHaveBeenCalledWith('Projects', 'Projects-Renamed')
@@ -401,19 +410,23 @@ describe('InspirationPanel folder actions', () => {
     await waitFor(() => {
       expect(queueInspirationBackupSyncMock).toHaveBeenCalledTimes(1)
     })
-
-    promptSpy.mockRestore()
   })
 
   it('shows an error toast when folder rename fails', async () => {
     listNoteFoldersMock.mockResolvedValue(['Projects'])
     renameNoteFolderMock.mockRejectedValue(new Error('目标已存在'))
-    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Projects-Renamed')
     const user = userEvent.setup()
 
     renderPanel()
 
     await user.click(await screen.findByRole('button', { name: '重命名文件夹 Projects' }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    const input = within(dialog).getByLabelText('新的文件夹路径')
+    await user.clear(input)
+    await user.type(input, 'Projects-Renamed')
+    const confirmButton = within(dialog).getByRole('button', { name: '重命名' })
+    await user.click(confirmButton)
 
     await waitFor(() => {
       expect(renameNoteFolderMock).toHaveBeenCalledWith('Projects', 'Projects-Renamed')
@@ -425,8 +438,25 @@ describe('InspirationPanel folder actions', () => {
       expect(listNotesMock).toHaveBeenCalledTimes(1)
     })
     expect(queueInspirationBackupSyncMock).not.toHaveBeenCalled()
+  })
 
-    promptSpy.mockRestore()
+  it('shows inline validation when rename input is empty', async () => {
+    listNoteFoldersMock.mockResolvedValue(['Projects'])
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: '重命名文件夹 Projects' }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    const input = within(dialog).getByLabelText('新的文件夹路径')
+    await user.clear(input)
+    await user.type(input, '   ')
+
+    expect(await screen.findByText('文件夹名称不能为空，请重新输入。')).toBeInTheDocument()
+    const confirmButton = within(dialog).getByRole('button', { name: '重命名' })
+    expect(confirmButton).toBeDisabled()
+    expect(renameNoteFolderMock).not.toHaveBeenCalled()
   })
 
   it('deletes a folder after confirmation and refreshes the tree', async () => {
@@ -634,6 +664,65 @@ describe('InspirationPanel handleCreateFile', () => {
     expect(createNoteFileMock).not.toHaveBeenCalled()
     expect(loadNoteMock).not.toHaveBeenCalled()
     expect(queueInspirationBackupSyncMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('InspirationPanel link insertion', () => {
+  it('inserts a markdown link using the dialog', async () => {
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    const textarea = (await screen.findByRole('textbox', { name: 'Markdown 文' })) as HTMLTextAreaElement
+    await user.clear(textarea)
+    await user.type(textarea, 'Link text')
+    textarea.setSelectionRange(0, 4)
+
+    await user.click(screen.getByRole('button', { name: '插入链接' }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    const input = within(dialog).getByLabelText('链接地址')
+    await user.type(input, 'https://example.com')
+    const confirmButton = within(dialog).getByRole('button', { name: '插入' })
+    expect(confirmButton).toBeEnabled()
+
+    await user.click(confirmButton)
+
+    const expectedMarkdown = '[Link](https://example.com) text'
+    await waitFor(() => {
+      expect(textarea).toHaveValue(expectedMarkdown)
+    })
+    await waitFor(() => {
+      expect(textarea).toHaveFocus()
+      expect(textarea.selectionStart).toBe('[Link](https://example.com)'.length)
+      expect(textarea.selectionEnd).toBe('[Link](https://example.com)'.length)
+    })
+  })
+
+  it('validates the URL input before inserting a link', async () => {
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    const textarea = (await screen.findByRole('textbox', { name: 'Markdown 文' })) as HTMLTextAreaElement
+    const initialValue = textarea.value
+
+    await user.click(screen.getByRole('button', { name: '插入链接' }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    const input = within(dialog).getByLabelText('链接地址')
+    await user.type(input, '   ')
+
+    expect(await screen.findByText('链接地址不能为空，请输入有效的 URL。')).toBeInTheDocument()
+    const confirmButton = within(dialog).getByRole('button', { name: '插入' })
+    expect(confirmButton).toBeDisabled()
+
+    await user.click(within(dialog).getByRole('button', { name: '取消' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    })
+    expect(textarea.value).toBe(initialValue)
   })
 })
 
