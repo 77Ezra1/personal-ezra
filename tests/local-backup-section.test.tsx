@@ -1,8 +1,10 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ToastProvider } from '../src/components/ToastProvider'
 import {
+  AutoBackupSection,
   BackupSettingsContext,
   LocalBackupSection,
   useBackupSettingsState,
@@ -57,6 +59,21 @@ vi.mock('../src/lib/captcha', () => ({
   generateCaptcha: vi.fn(),
 }))
 
+const backupMocks = vi.hoisted(() => ({
+  exportUserData: vi.fn(async () => ({
+    blob: new Blob(['{}'], { type: 'application/json' }),
+    summary: { passwords: 0, sites: 0, docs: 0 },
+  })),
+}))
+
+vi.mock('../src/lib/backup', () => ({
+  BACKUP_IMPORTED_EVENT: 'pms-backup-imported',
+  exportUserData: backupMocks.exportUserData,
+  importUserData: vi.fn(),
+}))
+
+const mockExportUserData = backupMocks.exportUserData
+
 vi.mock('../src/stores/database', () => {
   const tableMock = {
     where: vi.fn(() => ({ equals: vi.fn(() => ({ toArray: vi.fn(async () => []) })) })),
@@ -97,19 +114,105 @@ vi.mock('../src/stores/auth', () => {
 
 const AUTO_BACKUP_STORAGE_KEY = 'pms-auto-backup-settings'
 
-function LocalBackupSectionWithProvider() {
+function BackupSectionsWithProvider() {
   const backupState = useBackupSettingsState()
   return (
     <BackupSettingsContext.Provider value={backupState}>
-      <LocalBackupSection />
+      <>
+        <LocalBackupSection />
+        <AutoBackupSection />
+      </>
     </BackupSettingsContext.Provider>
   )
 }
 
-describe('LocalBackupSection auto backup verification persistence', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    window.localStorage.clear()
+async function enableAutoBackupThroughPrompt(user: ReturnType<typeof userEvent.setup>, password = 'Secret123!') {
+  const toggle = await screen.findByRole('checkbox', { name: /启用/ })
+  expect(toggle).not.toBeChecked()
+  await user.click(toggle)
+
+  const passwordField = await screen.findByLabelText('自动备份主密码')
+  await user.type(passwordField, password)
+
+  const confirmButton = screen.getByRole('button', { name: '确认' })
+  await user.click(confirmButton)
+
+  await waitFor(() => expect(screen.getByRole('checkbox', { name: /启用/ })).toBeChecked())
+  await waitFor(() => expect(screen.queryByLabelText('自动备份主密码')).not.toBeInTheDocument())
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  mockExportUserData.mockImplementation(async () => ({
+    blob: new Blob(['{}'], { type: 'application/json' }),
+    summary: { passwords: 0, sites: 0, docs: 0 },
+  }))
+  window.localStorage.clear()
+})
+
+afterEach(() => {
+  cleanup()
+})
+
+describe('AutoBackupSection master password verification', () => {
+  it('enables auto backup after collecting password via prompt', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <ToastProvider>
+        <BackupSectionsWithProvider />
+      </ToastProvider>,
+    )
+
+    await enableAutoBackupThroughPrompt(user)
+
+    const localPasswordField = screen.getByLabelText('主密码') as HTMLInputElement
+    expect(localPasswordField.value).toBe('')
+
+    expect(mockExportUserData).toHaveBeenCalledTimes(1)
+    expect(mockExportUserData).toHaveBeenCalledWith(
+      'user@example.com',
+      expect.any(Uint8Array),
+      { masterPassword: 'Secret123!' },
+    )
+  })
+
+  it('requires password verification again after disabling auto backup', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <ToastProvider>
+        <BackupSectionsWithProvider />
+      </ToastProvider>,
+    )
+
+    await enableAutoBackupThroughPrompt(user, 'InitialPass!')
+    expect(mockExportUserData).toHaveBeenCalledTimes(1)
+
+    const enabledToggle = screen.getByRole('checkbox', { name: /启用/ })
+    await user.click(enabledToggle)
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: /启用/ })).not.toBeChecked())
+
+    await user.click(screen.getByRole('checkbox', { name: /启用/ }))
+    const promptField = await screen.findByLabelText('自动备份主密码') as HTMLInputElement
+    expect(promptField.value).toBe('')
+    expect(mockExportUserData).toHaveBeenCalledTimes(1)
+
+    await user.type(promptField, 'SecondPass!')
+    await user.click(screen.getByRole('button', { name: '确认' }))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: /启用/ })).toBeChecked())
+
+    expect(mockExportUserData).toHaveBeenCalledTimes(2)
+    expect(mockExportUserData).toHaveBeenLastCalledWith(
+      'user@example.com',
+      expect.any(Uint8Array),
+      { masterPassword: 'SecondPass!' },
+    )
+  })
+})
+
+describe('Auto backup verification persistence', () => {
+  it('keeps auto backup enabled when verification marker exists', async () => {
     window.localStorage.setItem(
       AUTO_BACKUP_STORAGE_KEY,
       JSON.stringify({
@@ -119,28 +222,17 @@ describe('LocalBackupSection auto backup verification persistence', () => {
         intervalMinutes: 60,
       }),
     )
-  })
 
-  afterEach(() => {
-    cleanup()
-  })
-
-  it('keeps auto backup enabled without requiring master password when verification marker exists', async () => {
     render(
       <ToastProvider>
-        <LocalBackupSectionWithProvider />
+        <BackupSectionsWithProvider />
       </ToastProvider>,
     )
 
     const toggle = await screen.findByRole('checkbox', { name: /启用/ })
-
     await waitFor(() => expect(toggle).toBeChecked())
 
-    const passwordField = screen.getByLabelText('主密码') as HTMLInputElement
-    expect(passwordField.value).toBe('')
-
-    expect(
-      screen.queryByText('自动备份需要主密码，请在上方输入。'),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByText('自动备份需要先验证主密码。')).not.toBeInTheDocument()
+    expect(mockExportUserData).not.toHaveBeenCalled()
   })
 })

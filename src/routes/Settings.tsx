@@ -989,7 +989,14 @@ function ThemeModeSection() {
   )
 }
 
-export { LocalBackupSection, AutoBackupSection, GithubBackupSection, BackupHistorySection }
+export {
+  LocalBackupSection,
+  AutoBackupSection,
+  GithubBackupSection,
+  BackupHistorySection,
+  useBackupSettingsState,
+  BackupSettingsContext,
+}
 
 type BackupSettingsState = ReturnType<typeof useBackupSettingsState>
 
@@ -1035,6 +1042,11 @@ function useBackupSettingsState() {
   const [autoBackupRunning, setAutoBackupRunning] = useState(false)
   const [autoBackupMasterPasswordVerified, setAutoBackupMasterPasswordVerified] = useState(false)
   const [autoBackupMasterPasswordVerifiedAt, setAutoBackupMasterPasswordVerifiedAt] = useState<number | null>(null)
+  const [autoBackupPasswordPromptOpen, setAutoBackupPasswordPromptOpen] = useState(false)
+  const [autoBackupPendingPassword, setAutoBackupPendingPassword] = useState('')
+  const [autoBackupPasswordError, setAutoBackupPasswordError] = useState<string | null>(null)
+  const [autoBackupVerifyingPassword, setAutoBackupVerifyingPassword] = useState(false)
+  const [autoBackupPendingAction, setAutoBackupPendingAction] = useState<'enable' | 'test' | null>(null)
   const [githubOwner, setGithubOwner] = useState('')
   const [githubRepo, setGithubRepo] = useState('')
   const [githubBranch, setGithubBranch] = useState('main')
@@ -1332,13 +1344,12 @@ function useBackupSettingsState() {
 
       const allowSessionKey = autoBackupMasterPasswordVerified
 
-      if (!masterPassword && !allowSessionKey) {
-        const message = '自动备份需要主密码，请在上方输入。'
+      if (!allowSessionKey) {
+        const message = '自动备份需要先验证主密码。'
         setAutoBackupLastError(message)
         setAutoBackupStatusMessage(message)
         if (trigger === 'manual') {
-          setPasswordError('请先输入主密码再导出备份。')
-          showToast({ title: '缺少主密码', description: message, variant: 'error' })
+          showToast({ title: '缺少验证', description: message, variant: 'error' })
         }
         return
       }
@@ -1379,8 +1390,8 @@ function useBackupSettingsState() {
           auth: {
             email,
             encryptionKey,
-            masterPassword,
-            useSessionKey: allowSessionKey,
+            masterPassword: null,
+            useSessionKey: true,
           },
           backupPath,
           isTauri,
@@ -1483,7 +1494,6 @@ function useBackupSettingsState() {
       encryptionKey,
       isTauri,
       jsonFilters,
-      masterPassword,
       scheduleNextAutoBackup,
       githubConfigured,
       autoBackupMasterPasswordVerified,
@@ -1517,8 +1527,8 @@ function useBackupSettingsState() {
       return
     }
 
-    if (!masterPassword && !autoBackupMasterPasswordVerified) {
-      const message = '自动备份需要主密码，请在上方输入。'
+    if (!autoBackupMasterPasswordVerified) {
+      const message = '自动备份需要先验证主密码。'
       setAutoBackupLastError(message)
       setAutoBackupStatusMessage(message)
       if (autoBackupTimerRef.current !== null) {
@@ -1549,7 +1559,6 @@ function useBackupSettingsState() {
     backupDisabled,
     backupPath,
     isTauri,
-    masterPassword,
     scheduleNextAutoBackup,
   ])
 
@@ -1872,7 +1881,100 @@ function useBackupSettingsState() {
     }
   }
 
-  const handleToggleAutoBackup = async (event: ChangeEvent<HTMLInputElement>) => {
+  const resetAutoBackupPasswordPrompt = useCallback(() => {
+    setAutoBackupPasswordPromptOpen(false)
+    setAutoBackupPendingPassword('')
+    setAutoBackupPasswordError(null)
+    setAutoBackupPendingAction(null)
+  }, [])
+
+  const requestAutoBackupPassword = useCallback((action: 'enable' | 'test') => {
+    setAutoBackupPendingAction(action)
+    setAutoBackupPasswordPromptOpen(true)
+    setAutoBackupPasswordError(null)
+    setAutoBackupPendingPassword('')
+  }, [])
+
+  const handleAutoBackupPasswordChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setAutoBackupPendingPassword(event.currentTarget.value)
+    setAutoBackupPasswordError(null)
+  }, [])
+
+  const handleCancelAutoBackupPasswordPrompt = useCallback(() => {
+    setAutoBackupVerifyingPassword(false)
+    resetAutoBackupPasswordPrompt()
+  }, [resetAutoBackupPasswordPrompt])
+
+  const activateAutoBackup = useCallback(() => {
+    setAutoBackupFailureCount(0)
+    setAutoBackupLastError(null)
+    setAutoBackupStatusMessage('自动备份已启用，等待下一次计划任务。')
+    setAutoBackupEnabled(true)
+  }, [])
+
+  const handleAutoBackupPasswordSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+
+      if (!autoBackupPendingPassword.trim()) {
+        setAutoBackupPasswordError('请输入当前主密码。')
+        return
+      }
+
+      if (!email || !encryptionKey) {
+        const message = '请先登录并解锁账号后再试。'
+        setAutoBackupPasswordError(message)
+        showToast({ title: '无法验证主密码', description: message, variant: 'error' })
+        return
+      }
+
+      try {
+        setAutoBackupVerifyingPassword(true)
+        setAutoBackupPasswordError(null)
+        setAutoBackupStatusMessage('正在验证主密码…')
+        setAutoBackupLastError(null)
+        await exportUserData(email, encryptionKey, { masterPassword: autoBackupPendingPassword })
+        const verifiedAt = Date.now()
+        setAutoBackupMasterPasswordVerified(true)
+        setAutoBackupMasterPasswordVerifiedAt(verifiedAt)
+        setAutoBackupLastError(null)
+
+        const pendingAction = autoBackupPendingAction
+        resetAutoBackupPasswordPrompt()
+
+        if (pendingAction === 'enable') {
+          activateAutoBackup()
+        } else if (pendingAction === 'test') {
+          setAutoBackupStatusMessage('主密码验证成功，准备执行备份…')
+          void runAutoBackup('manual')
+        } else {
+          setAutoBackupStatusMessage('主密码验证成功。')
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '主密码验证失败，请确认后再试。'
+        setAutoBackupMasterPasswordVerified(false)
+        setAutoBackupMasterPasswordVerifiedAt(null)
+        setAutoBackupLastError(message)
+        setAutoBackupStatusMessage(message)
+        setAutoBackupPasswordError(message)
+        showToast({ title: '主密码验证失败', description: message, variant: 'error' })
+      } finally {
+        setAutoBackupVerifyingPassword(false)
+      }
+    },
+    [
+      activateAutoBackup,
+      autoBackupPendingAction,
+      autoBackupPendingPassword,
+      email,
+      encryptionKey,
+      resetAutoBackupPasswordPrompt,
+      runAutoBackup,
+      showToast,
+    ],
+  )
+
+  const handleToggleAutoBackup = (event: ChangeEvent<HTMLInputElement>) => {
     const nextEnabled = event.currentTarget.checked
     if (nextEnabled) {
       if (backupDisabled) {
@@ -1890,40 +1992,11 @@ function useBackupSettingsState() {
       }
 
       if (!autoBackupMasterPasswordVerified) {
-        if (!masterPassword) {
-          const message = '启用自动备份前请输入当前主密码。'
-          setPasswordError(message)
-          showToast({ title: '缺少主密码', description: message, variant: 'error' })
-          return
-        }
-
-        try {
-          setAutoBackupStatusMessage('正在验证主密码…')
-          setAutoBackupLastError(null)
-          await exportUserData(email, encryptionKey, { masterPassword })
-          const verifiedAt = Date.now()
-          setAutoBackupMasterPasswordVerified(true)
-          setAutoBackupMasterPasswordVerifiedAt(verifiedAt)
-          setPasswordError(null)
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : '主密码验证失败，请确认后再试。'
-          setAutoBackupMasterPasswordVerified(false)
-          setAutoBackupMasterPasswordVerifiedAt(null)
-          setAutoBackupLastError(message)
-          setAutoBackupStatusMessage(message)
-          if (message.includes('密码')) {
-            setPasswordError(message)
-          }
-          showToast({ title: '无法启用自动备份', description: message, variant: 'error' })
-          return
-        }
+        requestAutoBackupPassword('enable')
+        return
       }
 
-      setAutoBackupFailureCount(0)
-      setAutoBackupLastError(null)
-      setAutoBackupStatusMessage('自动备份已启用，等待下一次计划任务。')
-      setAutoBackupEnabled(true)
+      activateAutoBackup()
       return
     }
 
@@ -1932,6 +2005,7 @@ function useBackupSettingsState() {
     setAutoBackupStatusMessage('自动备份已停用。')
     setAutoBackupMasterPasswordVerified(false)
     setAutoBackupMasterPasswordVerifiedAt(null)
+    resetAutoBackupPasswordPrompt()
   }
 
   const handleAutoBackupIntervalChange = (event: ChangeEvent<HTMLSelectElement>) => {
@@ -1945,6 +2019,11 @@ function useBackupSettingsState() {
   }
 
   const handleTestAutoBackup = () => {
+    if (!autoBackupMasterPasswordVerified) {
+      requestAutoBackupPassword('test')
+      return
+    }
+
     void runAutoBackup('manual')
   }
 
@@ -2116,6 +2195,13 @@ function useBackupSettingsState() {
     autoBackupStatusMessage,
     autoBackupStatusClass,
     autoBackupFailureCount,
+    autoBackupPasswordPromptOpen,
+    autoBackupPendingPassword,
+    autoBackupPasswordError,
+    autoBackupVerifyingPassword,
+    handleAutoBackupPasswordChange,
+    handleAutoBackupPasswordSubmit,
+    handleCancelAutoBackupPasswordPrompt,
     handleExport,
     handleImportClick,
     handleFileChange,
@@ -2356,6 +2442,13 @@ function AutoBackupSection() {
     autoBackupStatusMessage,
     autoBackupStatusClass,
     autoBackupFailureCount,
+    autoBackupPasswordPromptOpen,
+    autoBackupPendingPassword,
+    autoBackupPasswordError,
+    autoBackupVerifyingPassword,
+    handleAutoBackupPasswordChange,
+    handleAutoBackupPasswordSubmit,
+    handleCancelAutoBackupPasswordPrompt,
     backupDisabled,
   } = useBackupSettings()
 
@@ -2400,6 +2493,64 @@ function AutoBackupSection() {
             </span>
           </label>
         </div>
+
+        {autoBackupPasswordPromptOpen ? (
+          <form
+            className="space-y-3 rounded-2xl border border-primary/40 bg-primary/5 p-4"
+            onSubmit={handleAutoBackupPasswordSubmit}
+          >
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-text">验证主密码</h3>
+              <p className="text-xs leading-relaxed text-muted">
+                为确保安全，启用或测试自动备份前需要验证当前主密码。
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="auto-backup-master-password" className="text-xs font-medium text-muted">
+                自动备份主密码
+              </label>
+              <input
+                id="auto-backup-master-password"
+                type="password"
+                value={autoBackupPendingPassword}
+                onChange={handleAutoBackupPasswordChange}
+                placeholder="请输入当前主密码"
+                autoComplete="current-password"
+                disabled={autoBackupVerifyingPassword}
+                className={clsx(
+                  'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover',
+                  autoBackupVerifyingPassword && 'disabled:cursor-not-allowed disabled:opacity-60',
+                )}
+              />
+              {autoBackupPasswordError ? (
+                <p className="text-xs text-red-500">{autoBackupPasswordError}</p>
+              ) : null}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={handleCancelAutoBackupPasswordPrompt}
+                className={clsx(
+                  'inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-sm transition',
+                  'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+                )}
+                disabled={autoBackupVerifyingPassword}
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                className={clsx(
+                  'inline-flex items-center justify-center rounded-xl border border-primary/60 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary shadow-sm transition',
+                  'hover:border-primary hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60',
+                )}
+                disabled={autoBackupVerifyingPassword || !autoBackupPendingPassword.trim()}
+              >
+                {autoBackupVerifyingPassword ? '验证中…' : '确认' }
+              </button>
+            </div>
+          </form>
+        ) : null}
 
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
           <div className="space-y-2">
