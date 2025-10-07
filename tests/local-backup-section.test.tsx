@@ -16,10 +16,12 @@ vi.mock('../src/env', () => ({
   isTauriRuntime: () => mockIsTauriRuntime(),
 }))
 
-vi.mock('@tauri-apps/api/path', () => ({
+const pathMocks = vi.hoisted(() => ({
   appDataDir: vi.fn(),
   join: vi.fn(),
 }))
+
+vi.mock('@tauri-apps/api/path', () => pathMocks)
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
   copyFile: vi.fn(),
@@ -35,10 +37,12 @@ vi.mock('@tauri-apps/plugin-shell', () => ({
   open: vi.fn(),
 }))
 
-vi.mock('../src/lib/tauri-dialog', () => ({
+const dialogMocks = vi.hoisted(() => ({
   openDialog: vi.fn(),
   saveDialog: vi.fn(),
 }))
+
+vi.mock('../src/lib/tauri-dialog', () => dialogMocks)
 
 vi.mock('../src/lib/inspiration-notes', () => ({
   syncNotesRoot: vi.fn(),
@@ -113,6 +117,8 @@ vi.mock('../src/stores/auth', () => {
 })
 
 const AUTO_BACKUP_STORAGE_KEY = 'pms-auto-backup-settings'
+const AUTO_BACKUP_PATH_STORAGE_KEY = 'pms-auto-backup-path'
+const BACKUP_PATH_STORAGE_KEY = 'pms-backup-path'
 
 function BackupSectionsWithProvider() {
   const backupState = useBackupSettingsState()
@@ -147,6 +153,10 @@ beforeEach(() => {
     blob: new Blob(['{}'], { type: 'application/json' }),
     summary: { passwords: 0, sites: 0, docs: 0 },
   }))
+  mockIsTauriRuntime.mockReturnValue(false)
+  pathMocks.appDataDir.mockReset()
+  pathMocks.join.mockReset()
+  dialogMocks.openDialog.mockReset()
   window.localStorage.clear()
 })
 
@@ -208,6 +218,53 @@ describe('AutoBackupSection master password verification', () => {
       expect.any(Uint8Array),
       { masterPassword: 'SecondPass!' },
     )
+  })
+})
+
+describe('Auto backup directories', () => {
+  it('updates auto backup path without changing manual backup path', async () => {
+    mockIsTauriRuntime.mockReturnValue(true)
+    pathMocks.appDataDir.mockResolvedValue('/app')
+    pathMocks.join.mockImplementation(async (...parts: string[]) => parts.join('/'))
+
+    const user = userEvent.setup()
+    dialogMocks.openDialog.mockResolvedValue('/custom/auto')
+
+    render(
+      <ToastProvider>
+        <BackupSectionsWithProvider />
+      </ToastProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByDisplayValue('/app/vault/backups')).toBeInTheDocument())
+
+    const autoPathField = (await screen.findByLabelText('自动备份目录')) as HTMLInputElement
+    expect(autoPathField.value).toBe('/app/vault/auto-backups')
+
+    const selectAutoPathButton = screen.getByRole('button', { name: '选择自动备份目录' })
+    await user.click(selectAutoPathButton)
+
+    await waitFor(() => expect(autoPathField.value).toBe('/custom/auto'))
+
+    const manualBackupField = screen.getByDisplayValue('/app/vault/backups') as HTMLInputElement
+    expect(manualBackupField.value).toBe('/app/vault/backups')
+  })
+
+  it('restores saved auto backup path even without manual backup path', async () => {
+    mockIsTauriRuntime.mockReturnValue(true)
+    pathMocks.appDataDir.mockResolvedValue('/app')
+    pathMocks.join.mockImplementation(async (...parts: string[]) => parts.join('/'))
+    window.localStorage.setItem(AUTO_BACKUP_PATH_STORAGE_KEY, '/persisted/auto')
+    window.localStorage.removeItem(BACKUP_PATH_STORAGE_KEY)
+
+    render(
+      <ToastProvider>
+        <BackupSectionsWithProvider />
+      </ToastProvider>,
+    )
+
+    const autoPathField = (await screen.findByLabelText('自动备份目录')) as HTMLInputElement
+    expect(autoPathField.value).toBe('/persisted/auto')
   })
 })
 

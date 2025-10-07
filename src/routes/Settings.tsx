@@ -122,6 +122,8 @@ type AboutMetaCard = {
 const FORM_MESSAGE_DISPLAY_DURATION = 5000
 const BACKUP_PATH_STORAGE_KEY = 'pms-backup-path'
 const DEFAULT_BACKUP_DIR = ['vault', 'backups']
+const AUTO_BACKUP_PATH_STORAGE_KEY = 'pms-auto-backup-path'
+const DEFAULT_AUTO_BACKUP_DIR = ['vault', 'auto-backups']
 const AUTO_BACKUP_STORAGE_KEY = 'pms-auto-backup-settings'
 const AUTO_BACKUP_FAILURE_LIMIT = 3
 const AUTO_BACKUP_DEFAULT_INTERVAL = 60 // minutes
@@ -152,6 +154,7 @@ type StoredAutoBackupState = {
   githubLastSuccessAt?: number | null
   githubLastAttemptAt?: number | null
   githubLastError?: string | null
+  autoBackupPath?: string | null
 }
 
 function useAutoDismissFormMessage(
@@ -1030,6 +1033,10 @@ function useBackupSettingsState() {
   const [defaultBackupPath, setDefaultBackupPath] = useState('')
   const [selectingBackupPath, setSelectingBackupPath] = useState(false)
   const [resettingBackupPath, setResettingBackupPath] = useState(false)
+  const [autoBackupPath, setAutoBackupPath] = useState('')
+  const [defaultAutoBackupPath, setDefaultAutoBackupPath] = useState('')
+  const [selectingAutoBackupPath, setSelectingAutoBackupPath] = useState(false)
+  const [resettingAutoBackupPath, setResettingAutoBackupPath] = useState(false)
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(false)
   const [autoBackupInterval, setAutoBackupInterval] = useState<number>(AUTO_BACKUP_DEFAULT_INTERVAL)
   const [autoBackupLastSuccess, setAutoBackupLastSuccess] = useState<number | null>(null)
@@ -1091,6 +1098,19 @@ function useBackupSettingsState() {
       }
     } catch (error) {
       console.warn('Failed to persist backup path', error)
+    }
+  }, [])
+
+  const persistAutoBackupPath = useCallback((value: string) => {
+    if (typeof window === 'undefined') return
+    try {
+      if (value) {
+        window.localStorage.setItem(AUTO_BACKUP_PATH_STORAGE_KEY, value)
+      } else {
+        window.localStorage.removeItem(AUTO_BACKUP_PATH_STORAGE_KEY)
+      }
+    } catch (error) {
+      console.warn('Failed to persist auto backup path', error)
     }
   }, [])
 
@@ -1160,6 +1180,11 @@ function useBackupSettingsState() {
         setGithubBackupLastError(null)
         setGithubBackupStatusMessage(null)
       }
+      if (typeof state.autoBackupPath === 'string') {
+        setAutoBackupPath(state.autoBackupPath)
+      } else if (state.autoBackupPath === null) {
+        setAutoBackupPath('')
+      }
     } catch (error) {
       console.warn('Failed to restore auto backup state', error)
     }
@@ -1205,6 +1230,66 @@ function useBackupSettingsState() {
   }, [isTauri])
 
   useEffect(() => {
+    if (!isTauri) return
+    let mounted = true
+
+    const loadInitialAutoBackupPath = async () => {
+      try {
+        const baseDir = await appDataDir()
+        const defaultDir = await join(baseDir, ...DEFAULT_AUTO_BACKUP_DIR)
+        await mkdir(defaultDir, { recursive: true })
+        if (!mounted) return
+        setDefaultAutoBackupPath(defaultDir)
+
+        let storedPath: string | null = null
+        let fallbackPath: string | null = null
+        if (typeof window !== 'undefined') {
+          try {
+            storedPath = window.localStorage.getItem(AUTO_BACKUP_PATH_STORAGE_KEY)
+            if (!storedPath) {
+              const rawState = window.localStorage.getItem(AUTO_BACKUP_STORAGE_KEY)
+              if (rawState) {
+                const parsed: unknown = JSON.parse(rawState)
+                if (parsed && typeof parsed === 'object' && 'autoBackupPath' in parsed) {
+                  const candidate = (parsed as { autoBackupPath?: unknown }).autoBackupPath
+                  fallbackPath = typeof candidate === 'string' ? candidate : null
+                }
+              }
+            }
+          } catch (error) {
+            console.warn('Failed to read persisted auto backup path', error)
+          }
+        }
+
+        const target = storedPath || fallbackPath || autoBackupPath || defaultDir
+
+        if (target) {
+          try {
+            await mkdir(target, { recursive: true })
+          } catch (error) {
+            console.warn('Failed to ensure auto backup directory exists', error)
+          }
+        }
+
+        if (!mounted) return
+
+        setAutoBackupPath(current => current || target || '')
+        if (!storedPath && target) {
+          persistAutoBackupPath(target)
+        }
+      } catch (error) {
+        console.error('Failed to initialize auto backup directory', error)
+      }
+    }
+
+    void loadInitialAutoBackupPath()
+
+    return () => {
+      mounted = false
+    }
+  }, [autoBackupPath, isTauri, persistAutoBackupPath])
+
+  useEffect(() => {
     if (typeof window === 'undefined') return
     const payload: StoredAutoBackupState = {
       enabled: autoBackupEnabled,
@@ -1220,6 +1305,7 @@ function useBackupSettingsState() {
       githubLastSuccessAt: githubBackupLastSuccess ?? null,
       githubLastAttemptAt: githubBackupLastAttempt ?? null,
       githubLastError: githubBackupLastError ?? null,
+      autoBackupPath: autoBackupPath || null,
     }
     try {
       window.localStorage.setItem(AUTO_BACKUP_STORAGE_KEY, JSON.stringify(payload))
@@ -1240,6 +1326,7 @@ function useBackupSettingsState() {
     githubBackupLastSuccess,
     autoBackupMasterPasswordVerified,
     autoBackupMasterPasswordVerifiedAt,
+    autoBackupPath,
   ])
 
   useEffect(() => {
@@ -1354,8 +1441,8 @@ function useBackupSettingsState() {
         return
       }
 
-      if (isTauri && !backupPath) {
-        const message = '未配置自动备份目录，请先设置备份路径。'
+      if (isTauri && !autoBackupPath) {
+        const message = '未配置自动备份目录，请先设置自动备份目录。'
         setAutoBackupLastError(message)
         setAutoBackupStatusMessage(message)
         if (trigger === 'manual') {
@@ -1393,7 +1480,7 @@ function useBackupSettingsState() {
             masterPassword: null,
             useSessionKey: true,
           },
-          backupPath,
+          backupPath: autoBackupPath,
           isTauri,
           jsonFilters,
           allowDialogFallback: false,
@@ -1489,7 +1576,7 @@ function useBackupSettingsState() {
     [
       autoBackupInterval,
       backupDisabled,
-      backupPath,
+      autoBackupPath,
       email,
       encryptionKey,
       isTauri,
@@ -1539,8 +1626,8 @@ function useBackupSettingsState() {
       return
     }
 
-    if (isTauri && !backupPath) {
-      const message = '未配置自动备份目录，请先设置备份路径。'
+    if (isTauri && !autoBackupPath) {
+      const message = '未配置自动备份目录，请先设置自动备份目录。'
       setAutoBackupLastError(message)
       setAutoBackupStatusMessage(message)
       if (autoBackupTimerRef.current !== null) {
@@ -1557,7 +1644,7 @@ function useBackupSettingsState() {
     autoBackupEnabled,
     autoBackupMasterPasswordVerified,
     backupDisabled,
-    backupPath,
+    autoBackupPath,
     isTauri,
     scheduleNextAutoBackup,
   ])
@@ -1777,6 +1864,61 @@ function useBackupSettingsState() {
     }
   }
 
+  const handleSelectAutoBackupPath = async () => {
+    if (!isTauri) return
+    try {
+      setSelectingAutoBackupPath(true)
+      const selection = await openDialog({ directory: true })
+      const selectedPath = Array.isArray(selection) ? selection[0] : selection
+      if (!selectedPath) {
+        return
+      }
+      await mkdir(selectedPath, { recursive: true })
+      setAutoBackupPath(selectedPath)
+      persistAutoBackupPath(selectedPath)
+      setAutoBackupStatusMessage('自动备份目录已更新。')
+      showToast({
+        title: '已更新自动备份目录',
+        description: selectedPath,
+        variant: 'success',
+      })
+    } catch (error) {
+      console.error('Failed to select auto backup directory', error)
+      const message = error instanceof Error ? error.message : '选择自动备份目录失败，请稍后再试。'
+      showToast({ title: '选择失败', description: message, variant: 'error' })
+    } finally {
+      setSelectingAutoBackupPath(false)
+    }
+  }
+
+  const handleResetAutoBackupPath = async () => {
+    if (!isTauri) return
+    try {
+      setResettingAutoBackupPath(true)
+      let target = defaultAutoBackupPath
+      if (!target) {
+        const baseDir = await appDataDir()
+        target = await join(baseDir, ...DEFAULT_AUTO_BACKUP_DIR)
+      }
+      await mkdir(target, { recursive: true })
+      setDefaultAutoBackupPath(target)
+      setAutoBackupPath(target)
+      persistAutoBackupPath(target)
+      setAutoBackupStatusMessage('自动备份目录已恢复默认。')
+      showToast({
+        title: '已恢复默认目录',
+        description: target,
+        variant: 'success',
+      })
+    } catch (error) {
+      console.error('Failed to reset auto backup directory', error)
+      const message = error instanceof Error ? error.message : '恢复默认自动备份目录失败，请稍后再试。'
+      showToast({ title: '恢复失败', description: message, variant: 'error' })
+    } finally {
+      setResettingAutoBackupPath(false)
+    }
+  }
+
   const dateFormatter = useMemo(
     () => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }),
     [],
@@ -1985,8 +2127,8 @@ function useBackupSettingsState() {
         })
         return
       }
-      if (isTauri && !backupPath) {
-        const message = '请先选择一个有效的备份导出路径。'
+      if (isTauri && !autoBackupPath) {
+        const message = '请先选择一个有效的自动备份目录。'
         showToast({ title: '备份目录缺失', description: message, variant: 'error' })
         return
       }
@@ -2180,6 +2322,12 @@ function useBackupSettingsState() {
     resettingBackupPath,
     handleSelectBackupPath,
     handleResetBackupPath,
+    autoBackupPath,
+    defaultAutoBackupPath,
+    selectingAutoBackupPath,
+    resettingAutoBackupPath,
+    handleSelectAutoBackupPath,
+    handleResetAutoBackupPath,
     isTauri,
     autoBackupEnabled,
     autoBackupRunning,
@@ -2450,7 +2598,16 @@ function AutoBackupSection() {
     handleAutoBackupPasswordSubmit,
     handleCancelAutoBackupPasswordPrompt,
     backupDisabled,
+    isTauri,
+    autoBackupPath,
+    defaultAutoBackupPath,
+    selectingAutoBackupPath,
+    resettingAutoBackupPath,
+    handleSelectAutoBackupPath,
+    handleResetAutoBackupPath,
   } = useBackupSettings()
+
+  const autoBackupPathFieldId = useId()
 
   return (
     <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
@@ -2493,6 +2650,60 @@ function AutoBackupSection() {
             </span>
           </label>
         </div>
+
+        {isTauri ? (
+          <div className="space-y-2 rounded-2xl border border-border/40 bg-surface/40 p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <label htmlFor={autoBackupPathFieldId} className="text-sm font-medium text-text">
+                自动备份目录
+              </label>
+              <button
+                type="button"
+                onClick={handleResetAutoBackupPath}
+                disabled={
+                  resettingAutoBackupPath || !defaultAutoBackupPath || autoBackupPath === defaultAutoBackupPath
+                }
+                className={clsx(
+                  'inline-flex items-center rounded-lg border border-border px-3 py-1 text-xs font-medium transition',
+                  'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+                )}
+              >
+                {resettingAutoBackupPath ? '恢复中…' : '恢复默认'}
+              </button>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+              <input
+                id={autoBackupPathFieldId}
+                type="text"
+                value={autoBackupPath || '尚未选择自动备份目录'}
+                readOnly
+                className={clsx(
+                  'w-full min-w-0 truncate rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition sm:flex-1',
+                  autoBackupPath ? 'focus:border-primary/60 focus:bg-surface-hover' : 'text-muted',
+                )}
+              />
+              <button
+                type="button"
+                onClick={handleSelectAutoBackupPath}
+                disabled={selectingAutoBackupPath || resettingAutoBackupPath}
+                aria-label="选择自动备份目录"
+                className={clsx(
+                  'inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-sm transition',
+                  'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+                )}
+              >
+                {selectingAutoBackupPath ? '选择中…' : '选择目录'}
+              </button>
+            </div>
+            <p className="text-xs leading-relaxed text-muted">
+              自动备份生成的 JSON 文件会写入该目录，可独立于手动备份路径保存。
+            </p>
+          </div>
+        ) : (
+          <p className="rounded-2xl border border-border/40 bg-surface/40 p-3 text-xs leading-relaxed text-muted">
+            浏览器环境会将自动备份文件保存到系统默认的下载目录。
+          </p>
+        )}
 
         {autoBackupPasswordPromptOpen ? (
           <form
