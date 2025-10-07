@@ -798,6 +798,15 @@ export default function Settings() {
             ),
           },
           {
+            key: 'auto-backup',
+            label: '自动备份',
+            render: () => (
+              <BackupSettingsContext.Provider value={backupState}>
+                <AutoBackupSection />
+              </BackupSettingsContext.Provider>
+            ),
+          },
+          {
             key: 'github-backup',
             label: 'GitHub 备份',
             render: () => (
@@ -978,7 +987,7 @@ function ThemeModeSection() {
   )
 }
 
-export { LocalBackupSection, GithubBackupSection, BackupHistorySection }
+export { LocalBackupSection, AutoBackupSection, GithubBackupSection, BackupHistorySection }
 
 type BackupSettingsState = ReturnType<typeof useBackupSettingsState>
 
@@ -2105,20 +2114,6 @@ function LocalBackupSection() {
     resettingBackupPath,
     handleSelectBackupPath,
     handleResetBackupPath,
-    autoBackupEnabled,
-    autoBackupRunning,
-    autoBackupTesting,
-    handleToggleAutoBackup,
-    autoBackupInterval,
-    handleAutoBackupIntervalChange,
-    handleTestAutoBackup,
-    formattedAutoBackupLastSuccess,
-    formattedAutoBackupNextRun,
-    autoBackupSupportMessage,
-    autoBackupSwitchLabel,
-    autoBackupStatusMessage,
-    autoBackupStatusClass,
-    autoBackupFailureCount,
     handleExport,
     handleImportClick,
     handleFileChange,
@@ -2133,7 +2128,7 @@ function LocalBackupSection() {
       <div className="space-y-1">
         <h2 className="text-lg font-medium text-text">本地备份</h2>
         <p className="text-sm text-muted">
-          管理数据存储路径、自动备份计划，以及手动导入或导出当前账号的加密数据文件。
+          管理数据存储路径，并手动导入或导出当前账号的加密数据文件。
         </p>
       </div>
 
@@ -2250,10 +2245,80 @@ function LocalBackupSection() {
         )}
       </div>
 
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={backupDisabled || exporting}
+          className={clsx(
+            'inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-background shadow-sm transition',
+            'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50',
+          )}
+        >
+          {exporting ? '导出中…' : '导出备份'}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleImportClick}
+          disabled={backupDisabled || importing}
+          className={clsx(
+            'inline-flex items-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-sm transition',
+            'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+          )}
+        >
+          {importing ? '导入中…' : '导入备份'}
+        </button>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+      </div>
+
+      <p className="text-xs leading-relaxed text-muted">
+        {'备份文件会使用当前主密码派生的密钥进行加密，并包含当前的用户资料信息。' +
+          '导入时会覆盖本地的密码、网站、文档与资料数据，请妥善保管文件并避免在不受信任的设备上操作。'}
+      </p>
+    </section>
+  )
+}
+
+function AutoBackupSection() {
+  const {
+    autoBackupEnabled,
+    autoBackupRunning,
+    autoBackupTesting,
+    handleToggleAutoBackup,
+    autoBackupInterval,
+    handleAutoBackupIntervalChange,
+    handleTestAutoBackup,
+    formattedAutoBackupLastSuccess,
+    formattedAutoBackupNextRun,
+    autoBackupSupportMessage,
+    autoBackupSwitchLabel,
+    autoBackupStatusMessage,
+    autoBackupStatusClass,
+    autoBackupFailureCount,
+    backupDisabled,
+  } = useBackupSettings()
+
+  return (
+    <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
+      <div className="space-y-1">
+        <h2 className="text-lg font-medium text-text">自动备份</h2>
+        <p className="text-sm text-muted">
+          配置计划任务与备份频率，定期生成加密数据文件并追踪最近的运行状态。
+        </p>
+      </div>
+
       <div className="space-y-3 rounded-2xl border border-border/50 bg-surface/60 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
-            <h3 className="text-sm font-semibold text-text">自动备份</h3>
+            <h3 className="text-sm font-semibold text-text">运行设置</h3>
             <p className="text-xs leading-relaxed text-muted">{autoBackupSupportMessage}</p>
           </div>
           <label className="inline-flex items-center gap-2">
@@ -2339,45 +2404,6 @@ function LocalBackupSection() {
           </p>
         ) : null}
       </div>
-
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={backupDisabled || exporting}
-          className={clsx(
-            'inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-background shadow-sm transition',
-            'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50',
-          )}
-        >
-          {exporting ? '导出中…' : '导出备份'}
-        </button>
-
-        <button
-          type="button"
-          onClick={handleImportClick}
-          disabled={backupDisabled || importing}
-          className={clsx(
-            'inline-flex items-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-sm transition',
-            'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
-          )}
-        >
-          {importing ? '导入中…' : '导入备份'}
-        </button>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/json"
-          className="hidden"
-          onChange={handleFileChange}
-        />
-      </div>
-
-      <p className="text-xs leading-relaxed text-muted">
-        {'备份文件会使用当前主密码派生的密钥进行加密，并包含当前的用户资料信息。' +
-          '导入时会覆盖本地的密码、网站、文档与资料数据，请妥善保管文件并避免在不受信任的设备上操作。'}
-      </p>
     </section>
   )
 }
