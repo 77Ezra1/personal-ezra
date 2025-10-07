@@ -1,6 +1,16 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { nanoid } from 'nanoid'
 import clsx from 'clsx'
+import { GLOBAL_TOAST_EVENT, type GlobalToastPayload } from '../lib/global-toast'
 
 type ToastVariant = 'info' | 'success' | 'error'
 
@@ -50,6 +60,28 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       timers.current.set(id, timer)
     }
   }, [dismissToast])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<GlobalToastPayload>).detail
+      if (!detail) return
+      showToast({
+        title: detail.title ?? '提示',
+        description: detail.description,
+        variant: detail.variant,
+        duration: detail.duration,
+      })
+    }
+
+    window.addEventListener(GLOBAL_TOAST_EVENT, handler as EventListener)
+    return () => {
+      window.removeEventListener(GLOBAL_TOAST_EVENT, handler as EventListener)
+    }
+  }, [showToast])
 
   const value = useMemo<ToastContextValue>(() => ({ showToast, dismissToast }), [showToast, dismissToast])
 
