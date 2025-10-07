@@ -1218,6 +1218,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       knownFoldersRef.current = new Set(allPaths)
       foldersInitializedRef.current = true
       if (!hasExpandedFolders) {
+        setExpandedFolders(Array.from(allPaths))
         return
       }
     } else if (!hasExpandedFolders) {
