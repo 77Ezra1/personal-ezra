@@ -15,6 +15,7 @@ import { BACKUP_IMPORTED_EVENT } from '../lib/backup'
 import { decryptString, encryptString } from '../lib/crypto'
 import { generateTotp, normalizeTotpSecret } from '../lib/totp'
 import { useToast } from '../components/ToastProvider'
+import ConfirmDialog from '../components/ConfirmDialog'
 import CopyButton from '../components/CopyButton'
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts'
 import {
@@ -77,6 +78,8 @@ export default function Passwords() {
   const [submitting, setSubmitting] = useState(false)
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [pendingDeletion, setPendingDeletion] = useState<PasswordRecord | null>(null)
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
   const [healthFilter, setHealthFilter] = useState<PasswordHealthFilter>('all')
   const [viewMode, setViewMode] = useState<'card' | 'list'>(() => {
     if (typeof window === 'undefined') return 'card'
@@ -88,6 +91,7 @@ export default function Passwords() {
   const totpEntriesRef = useRef<Record<number, TotpEntryState>>({})
   const [clockNow, setClockNow] = useState(() => Date.now())
   const hasTotpEntries = useMemo(() => Object.keys(totpEntries).length > 0, [totpEntries])
+  const pendingDeleteTitle = pendingDeletion ? pendingDeletion.title.trim() || '未命名密码' : ''
 
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false)
@@ -700,12 +704,16 @@ export default function Passwords() {
     }
   }
 
-  async function handleDelete(item: PasswordRecord) {
+  function handleDelete(item: PasswordRecord) {
     if (typeof item.id !== 'number') return
-    const confirmed = window.confirm(`确定要删除“${item.title}”吗？此操作不可恢复。`)
-    if (!confirmed) return
+    setPendingDeletion(item)
+  }
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pendingDeletion || typeof pendingDeletion.id !== 'number') return
     try {
-        await db.passwords.delete(item.id)
+      setDeleteSubmitting(true)
+      await db.passwords.delete(pendingDeletion.id)
       showToast({ title: '密码已删除', variant: 'success' })
       if (email) {
         const rows = await db.passwords.where('ownerEmail').equals(email).toArray()
@@ -714,11 +722,19 @@ export default function Passwords() {
       }
       requestSearchIndexRefresh()
       closeDrawer()
+      setPendingDeletion(null)
     } catch (error) {
       console.error('Failed to delete password record', error)
       showToast({ title: '删除失败', description: '请稍后再试。', variant: 'error' })
+    } finally {
+      setDeleteSubmitting(false)
     }
-  }
+  }, [closeDrawer, email, pendingDeletion, setItems, showToast])
+
+  const handleCancelDelete = useCallback(() => {
+    if (deleteSubmitting) return
+    setPendingDeletion(null)
+  }, [deleteSubmitting])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -1260,6 +1276,28 @@ export default function Passwords() {
           </form>
         )}
       </DetailsDrawer>
+      <ConfirmDialog
+        open={pendingDeletion !== null}
+        title="删除密码"
+        description={
+          pendingDeletion ? (
+            <>
+              确定要删除“
+              <span className="font-semibold text-text">{pendingDeleteTitle}</span>
+              ”吗？此操作不可恢复。
+            </>
+          ) : (
+            '确定要删除该密码吗？此操作不可恢复。'
+          )
+        }
+        tone="danger"
+        confirmLabel="删除"
+        onConfirm={() => {
+          void handleConfirmDelete()
+        }}
+        onCancel={handleCancelDelete}
+        loading={deleteSubmitting}
+      />
     </AppLayout>
   )
 }

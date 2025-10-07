@@ -137,6 +137,11 @@ type InspirationPanelProps = {
   className?: string
 }
 
+type PendingNoteRemoval = {
+  id: string
+  title: string
+}
+
 type InspirationHeaderProps = {
   onCreateFile: () => void
   onCreateFolder: () => void
@@ -976,19 +981,9 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const [createFolderInput, setCreateFolderInput] = useState('')
   const [createFolderError, setCreateFolderError] = useState<string | null>(null)
   const [createFolderSubmitting, setCreateFolderSubmitting] = useState(false)
-  const [renameFolderDialogOpen, setRenameFolderDialogOpen] = useState(false)
-  const [renameFolderInput, setRenameFolderInput] = useState('')
-  const [renameFolderError, setRenameFolderError] = useState<string | null>(null)
-  const [renameFolderSubmitting, setRenameFolderSubmitting] = useState(false)
-  const [renameFolderTargetPath, setRenameFolderTargetPath] = useState<string | null>(null)
-  const [insertLinkDialogOpen, setInsertLinkDialogOpen] = useState(false)
-  const [insertLinkUrl, setInsertLinkUrl] = useState('')
-  const [insertLinkError, setInsertLinkError] = useState<string | null>(null)
-  const [insertLinkSelection, setInsertLinkSelection] = useState<{
-    start: number
-    end: number
-    label: string
-  } | null>(null)
+  const [pendingFolderRemoval, setPendingFolderRemoval] = useState<string | null>(null)
+  const [folderDeletionLoading, setFolderDeletionLoading] = useState(false)
+  const [pendingNoteRemoval, setPendingNoteRemoval] = useState<PendingNoteRemoval | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const tagInputRef = useRef<HTMLInputElement | null>(null)
   const draftSnapshotRef = useRef<string>(createDraftSnapshot(createEmptyDraft()))
@@ -1759,35 +1754,49 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     [isDesktop],
   )
 
-  const handleDeleteFolder = useCallback(
-    async (path: string) => {
-      if (typeof window === 'undefined') return
-      const confirmed = window.confirm('确定要删除该文件夹吗？文件夹中的笔记也会被一并删除。')
-      if (!confirmed) return
-      try {
-        await deleteNoteFolder(path)
-        await refreshNotes()
-        setActiveFolderPath(prev => {
-          if (!prev) return prev
-          if (prev === path || prev.startsWith(`${path}/`)) {
-            return ''
-          }
-          return prev
-        })
-        showToast({
-          title: '文件夹已删除',
-          description: `已从本地数据目录中移除：${path}`,
-          variant: 'success',
-        })
-        queueInspirationBackupSync(showToast)
-      } catch (err) {
-        console.error('Failed to delete inspiration note folder', err)
-        const message = err instanceof Error ? err.message : '删除文件夹失败，请稍后再试。'
-        showToast({ title: '删除失败', description: message, variant: 'error' })
-      }
-    },
-    [queueInspirationBackupSync, refreshNotes, showToast],
-  )
+  const handleDeleteFolder = useCallback((path: string) => {
+    if (typeof window === 'undefined') return
+    setPendingFolderRemoval(path)
+  }, [])
+
+  const handleConfirmDeleteFolder = useCallback(async () => {
+    if (!pendingFolderRemoval) return
+    try {
+      setFolderDeletionLoading(true)
+      await deleteNoteFolder(pendingFolderRemoval)
+      await refreshNotes()
+      setActiveFolderPath(prev => {
+        if (!prev) return prev
+        if (prev === pendingFolderRemoval || prev.startsWith(`${pendingFolderRemoval}/`)) {
+          return ''
+        }
+        return prev
+      })
+      showToast({
+        title: '文件夹已删除',
+        description: `已从本地数据目录中移除：${pendingFolderRemoval}`,
+        variant: 'success',
+      })
+      queueInspirationBackupSync(showToast)
+      setPendingFolderRemoval(null)
+    } catch (err) {
+      console.error('Failed to delete inspiration note folder', err)
+      const message = err instanceof Error ? err.message : '删除文件夹失败，请稍后再试。'
+      showToast({ title: '删除失败', description: message, variant: 'error' })
+    } finally {
+      setFolderDeletionLoading(false)
+    }
+  }, [
+    pendingFolderRemoval,
+    queueInspirationBackupSync,
+    refreshNotes,
+    showToast,
+  ])
+
+  const handleCancelDeleteFolder = useCallback(() => {
+    if (folderDeletionLoading) return
+    setPendingFolderRemoval(null)
+  }, [folderDeletionLoading])
 
   const handleInsertLinkUrlChange = useCallback((value: string) => {
     setInsertLinkUrl(value)
@@ -2149,25 +2158,32 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     [draft, isDesktop, performSave],
   )
 
-  const handleDelete = useCallback(async () => {
+  const handleDelete = useCallback(() => {
     if (!isDesktop || !draft.id) return
-    const confirmed = window.confirm('确定要删除当前笔记吗？此操作无法撤销。')
-    if (!confirmed) return
+    setPendingNoteRemoval({ id: draft.id, title: draft.title })
+  }, [draft.id, draft.title, isDesktop])
+
+  const handleConfirmDeleteNote = useCallback(async () => {
+    if (!pendingNoteRemoval) return
     try {
       setDeleting(true)
-      await deleteNote(draft.id)
-      await cleanupPendingAttachments()
+      const targetId = pendingNoteRemoval.id
+      await deleteNote(targetId)
+      if (draft.id === targetId) {
+        await cleanupPendingAttachments()
+        const empty = createEmptyDraft()
+        setDraft(empty)
+        setLastSavedAt(undefined)
+        draftSnapshotRef.current = createDraftSnapshot(empty)
+        skipNextAutoSaveRef.current = true
+        lastAttemptedSnapshotRef.current = null
+        resetTagEditor()
+        setSelectedId(null)
+      }
+      await refreshNotes()
       showToast({ title: '已删除', description: '笔记已从本地移除。', variant: 'success' })
       queueInspirationBackupSync(showToast)
-      const empty = createEmptyDraft()
-      setDraft(empty)
-      setLastSavedAt(undefined)
-      draftSnapshotRef.current = createDraftSnapshot(empty)
-      skipNextAutoSaveRef.current = true
-      lastAttemptedSnapshotRef.current = null
-      resetTagEditor()
-      setSelectedId(null)
-      await refreshNotes()
+      setPendingNoteRemoval(null)
     } catch (err) {
       console.error('Failed to delete inspiration note', err)
       const message = err instanceof Error ? err.message : '删除失败，请稍后再试。'
@@ -2178,12 +2194,19 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   }, [
     cleanupPendingAttachments,
     draft.id,
-    isDesktop,
+    pendingNoteRemoval,
     queueInspirationBackupSync,
     refreshNotes,
     resetTagEditor,
     showToast,
   ])
+
+  const handleCancelDeleteNote = useCallback(() => {
+    if (deleting) return
+    setPendingNoteRemoval(null)
+  }, [deleting])
+
+  const pendingNoteName = pendingNoteRemoval ? pendingNoteRemoval.title.trim() || '未命名笔记' : ''
 
   if (!isDesktop) {
     return <InspirationDisabledNotice className={className} />
@@ -2366,111 +2389,46 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         loading={createFolderSubmitting}
       />
       <ConfirmDialog
-        open={renameFolderDialogOpen}
-        title="重命名文件夹"
+        open={pendingFolderRemoval !== null}
+        title="删除文件夹"
         description={
-          <div className="mt-4 space-y-3">
-            <p className="text-sm text-muted">
-              请输入新的文件夹名称（可使用 / 表示层级）。
-              {renameFolderTargetPath ? ` 当前路径：${renameFolderTargetPath}` : null}
-            </p>
-            <div className="space-y-1">
-              <label htmlFor="rename-folder-path" className="text-sm font-medium text-text">
-                新的文件夹路径
-              </label>
-              <input
-                id="rename-folder-path"
-                type="text"
-                value={renameFolderInput}
-                onChange={event => {
-                  handleRenameFolderInputChange(event.currentTarget.value)
-                }}
-                onKeyDown={event => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    if (
-                      normalizedRenameFolderPath &&
-                      !renameFolderSubmitting &&
-                      renameFolderTargetPath
-                    ) {
-                      void handleConfirmRenameFolder()
-                    }
-                  }
-                }}
-                autoComplete="off"
-                aria-invalid={renameFolderError ? 'true' : 'false'}
-                className={clsx(
-                  'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary/40',
-                  renameFolderError && 'border-rose-500/70 focus:border-rose-500 focus-visible:ring-rose-500/40',
-                )}
-              />
-              {renameFolderError ? (
-                <p className="text-xs text-rose-500">{renameFolderError}</p>
-              ) : (
-                <p className="text-xs text-muted">示例：Projects/Ideas</p>
-              )}
-            </div>
-          </div>
+          pendingFolderRemoval ? (
+            <>
+              确定要删除文件夹{' '}
+              <span className="font-semibold text-text">{pendingFolderRemoval}</span>{' '}
+              吗？文件夹中的笔记也会被一并删除。
+            </>
+          ) : (
+            '确定要删除该文件夹吗？文件夹中的笔记也会被一并删除。'
+          )
         }
-        confirmLabel="重命名"
+        tone="danger"
         onConfirm={() => {
-          void handleConfirmRenameFolder()
+          void handleConfirmDeleteFolder()
         }}
-        onCancel={handleRenameFolderDialogCancel}
-        disableConfirm={
-          !normalizedRenameFolderPath || renameFolderSubmitting || !renameFolderTargetPath
-        }
-        loading={renameFolderSubmitting}
+        onCancel={handleCancelDeleteFolder}
+        loading={folderDeletionLoading}
       />
       <ConfirmDialog
-        open={insertLinkDialogOpen}
-        title="插入链接"
+        open={pendingNoteRemoval !== null}
+        title="删除笔记"
         description={
-          <div className="mt-4 space-y-3">
-            <p className="text-sm text-muted">请输入要插入的链接地址。</p>
-            {insertLinkSelection && (
-              <p className="text-xs text-muted">
-                链接标题：<span className="font-medium text-text">{insertLinkSelection.label}</span>
-              </p>
-            )}
-            <div className="space-y-1">
-              <label htmlFor="insert-link-url" className="text-sm font-medium text-text">
-                链接地址
-              </label>
-              <input
-                id="insert-link-url"
-                type="text"
-                value={insertLinkUrl}
-                onChange={event => {
-                  handleInsertLinkUrlChange(event.currentTarget.value)
-                }}
-                onKeyDown={event => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    if (normalizedInsertLinkUrl && insertLinkSelection) {
-                      handleConfirmInsertLink()
-                    }
-                  }
-                }}
-                autoComplete="off"
-                aria-invalid={insertLinkError ? 'true' : 'false'}
-                className={clsx(
-                  'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary/40',
-                  insertLinkError && 'border-rose-500/70 focus:border-rose-500 focus-visible:ring-rose-500/40',
-                )}
-              />
-              {insertLinkError ? (
-                <p className="text-xs text-rose-500">{insertLinkError}</p>
-              ) : (
-                <p className="text-xs text-muted">示例：https://example.com</p>
-              )}
-            </div>
-          </div>
+          pendingNoteRemoval ? (
+            <>
+              确定要删除笔记{' '}
+              <span className="font-semibold text-text">{pendingNoteName}</span>{' '}
+              吗？此操作无法撤销。
+            </>
+          ) : (
+            '确定要删除当前笔记吗？此操作无法撤销。'
+          )
         }
-        confirmLabel="插入"
-        onConfirm={handleConfirmInsertLink}
-        onCancel={handleInsertLinkDialogCancel}
-        disableConfirm={!normalizedInsertLinkUrl || !insertLinkSelection}
+        tone="danger"
+        onConfirm={() => {
+          void handleConfirmDeleteNote()
+        }}
+        onCancel={handleCancelDeleteNote}
+        loading={deleting}
       />
     </>
   )
