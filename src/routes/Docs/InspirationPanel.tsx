@@ -142,6 +142,12 @@ type PendingNoteRemoval = {
   title: string
 }
 
+type InsertLinkSelection = {
+  start: number
+  end: number
+  label: string
+}
+
 type InspirationHeaderProps = {
   onCreateFile: () => void
   onCreateFolder: () => void
@@ -981,9 +987,18 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const [createFolderInput, setCreateFolderInput] = useState('')
   const [createFolderError, setCreateFolderError] = useState<string | null>(null)
   const [createFolderSubmitting, setCreateFolderSubmitting] = useState(false)
+  const [renameFolderDialogOpen, setRenameFolderDialogOpen] = useState(false)
+  const [renameFolderInput, setRenameFolderInput] = useState('')
+  const [renameFolderError, setRenameFolderError] = useState<string | null>(null)
+  const [renameFolderTargetPath, setRenameFolderTargetPath] = useState<string | null>(null)
+  const [renameFolderSubmitting, setRenameFolderSubmitting] = useState(false)
   const [pendingFolderRemoval, setPendingFolderRemoval] = useState<string | null>(null)
   const [folderDeletionLoading, setFolderDeletionLoading] = useState(false)
   const [pendingNoteRemoval, setPendingNoteRemoval] = useState<PendingNoteRemoval | null>(null)
+  const [insertLinkDialogOpen, setInsertLinkDialogOpen] = useState(false)
+  const [insertLinkUrl, setInsertLinkUrl] = useState('')
+  const [insertLinkError, setInsertLinkError] = useState<string | null>(null)
+  const [insertLinkSelection, setInsertLinkSelection] = useState<InsertLinkSelection | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const tagInputRef = useRef<HTMLInputElement | null>(null)
   const draftSnapshotRef = useRef<string>(createDraftSnapshot(createEmptyDraft()))
@@ -2387,6 +2402,112 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         onCancel={handleCreateFolderDialogCancel}
         disableConfirm={!normalizedCreateFolderPath || createFolderSubmitting}
         loading={createFolderSubmitting}
+      />
+      <ConfirmDialog
+        open={renameFolderDialogOpen}
+        title="重命名文件夹"
+        description={
+          <div className="mt-4 space-y-3">
+            {renameFolderTargetPath ? (
+              <p className="text-sm text-muted">
+                正在重命名：<span className="font-medium text-text">{renameFolderTargetPath}</span>
+              </p>
+            ) : (
+              <p className="text-sm text-muted">请输入新的文件夹路径。</p>
+            )}
+            <div className="space-y-1">
+              <label htmlFor="rename-folder-path" className="text-sm font-medium text-text">
+                新的文件夹路径
+              </label>
+              <input
+                id="rename-folder-path"
+                type="text"
+                value={renameFolderInput}
+                onChange={event => {
+                  handleRenameFolderInputChange(event.currentTarget.value)
+                }}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    if (normalizedRenameFolderPath && !renameFolderSubmitting) {
+                      void handleConfirmRenameFolder()
+                    }
+                  }
+                }}
+                autoComplete="off"
+                aria-invalid={renameFolderError ? 'true' : 'false'}
+                className={clsx(
+                  'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary/40',
+                  renameFolderError && 'border-rose-500/70 focus:border-rose-500 focus-visible:ring-rose-500/40',
+                )}
+              />
+              {renameFolderError ? (
+                <p className="text-xs text-rose-500">{renameFolderError}</p>
+              ) : (
+                <p className="text-xs text-muted">示例：Projects/Ideas</p>
+              )}
+            </div>
+          </div>
+        }
+        confirmLabel="重命名"
+        onConfirm={() => {
+          void handleConfirmRenameFolder()
+        }}
+        onCancel={handleRenameFolderDialogCancel}
+        disableConfirm={!normalizedRenameFolderPath || renameFolderSubmitting}
+        loading={renameFolderSubmitting}
+      />
+      <ConfirmDialog
+        open={insertLinkDialogOpen}
+        title="插入链接"
+        description={
+          <div className="mt-4 space-y-3">
+            {insertLinkSelection ? (
+              <p className="text-sm text-muted">
+                将把文本 <span className="font-medium text-text">{insertLinkSelection.label}</span> 转换为链接。
+              </p>
+            ) : (
+              <p className="text-sm text-muted">请输入要插入的链接地址。</p>
+            )}
+            <div className="space-y-1">
+              <label htmlFor="insert-link-url" className="text-sm font-medium text-text">
+                链接地址
+              </label>
+              <input
+                id="insert-link-url"
+                type="text"
+                inputMode="url"
+                value={insertLinkUrl}
+                onChange={event => {
+                  handleInsertLinkUrlChange(event.currentTarget.value)
+                }}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    if (insertLinkSelection && normalizedInsertLinkUrl && !insertLinkError) {
+                      handleConfirmInsertLink()
+                    }
+                  }
+                }}
+                autoComplete="off"
+                aria-invalid={insertLinkError ? 'true' : 'false'}
+                className={clsx(
+                  'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary/40',
+                  insertLinkError && 'border-rose-500/70 focus:border-rose-500 focus-visible:ring-rose-500/40',
+                )}
+              />
+              {insertLinkError ? (
+                <p className="text-xs text-rose-500">{insertLinkError}</p>
+              ) : (
+                <p className="text-xs text-muted">请输入完整的 URL，例如：https://example.com</p>
+              )}
+            </div>
+          </div>
+        }
+        confirmLabel="插入"
+        onConfirm={handleConfirmInsertLink}
+        onCancel={handleInsertLinkDialogCancel}
+        disableConfirm={!insertLinkSelection || !normalizedInsertLinkUrl || Boolean(insertLinkError)}
       />
       <ConfirmDialog
         open={pendingFolderRemoval !== null}
