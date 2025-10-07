@@ -1336,52 +1336,66 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         const set = new Set(sanitizedFolders)
         return Array.from(set)
       })
-      setExpandedFolders(prev => {
-        if (prev.length > 0 || foldersInitializedRef.current) {
-          return prev
-        }
-
-        const paths = new Set<string>()
-        const addSegments = (segments: string[]) => {
-          let current = ''
-          for (const segment of segments) {
-            const trimmed = segment.trim()
-            if (!trimmed) continue
-            current = current ? `${current}/${trimmed}` : trimmed
-            paths.add(current)
+      const discoveredPaths = new Set<string>()
+      const addSegments = (segments: string[]) => {
+        let current = ''
+        for (const segment of segments) {
+          const trimmed = segment.trim()
+          if (!trimmed) continue
+          current = current ? `${current}/${trimmed}` : trimmed
+          if (current) {
+            discoveredPaths.add(current)
           }
         }
+      }
 
-        for (const note of results) {
-          const segments = note.id
-            .split('/')
-            .map(segment => segment.trim())
-            .filter(Boolean)
-          if (segments.length <= 1) continue
-          segments.pop()
-          if (segments.length > 0) {
-            addSegments(segments)
+      for (const note of results) {
+        const segments = note.id
+          .split('/')
+          .map(segment => segment.trim())
+          .filter(Boolean)
+        if (segments.length <= 1) continue
+        segments.pop()
+        if (segments.length > 0) {
+          addSegments(segments)
+        }
+      }
+
+      for (const folderPath of sanitizedFolders) {
+        const segments = folderPath
+          .split('/')
+          .map(segment => segment.trim())
+          .filter(Boolean)
+        if (segments.length > 0) {
+          addSegments(segments)
+        }
+      }
+
+      const previousKnown = knownFoldersRef.current
+      knownFoldersRef.current = discoveredPaths
+      foldersInitializedRef.current = discoveredPaths.size > 0
+
+      if (hasExpandedFolders && previousKnown.size > 0) {
+        const newlyDiscovered: string[] = []
+        for (const path of discoveredPaths) {
+          if (!previousKnown.has(path)) {
+            newlyDiscovered.push(path)
           }
         }
-
-        for (const folderPath of sanitizedFolders) {
-          const segments = folderPath
-            .split('/')
-            .map(segment => segment.trim())
-            .filter(Boolean)
-          if (segments.length > 0) {
-            addSegments(segments)
-          }
+        if (newlyDiscovered.length > 0) {
+          setExpandedFolders(prev => {
+            const set = new Set(prev)
+            const initialSize = set.size
+            for (const path of newlyDiscovered) {
+              set.add(path)
+            }
+            if (set.size === initialSize) {
+              return prev
+            }
+            return Array.from(set)
+          })
         }
-
-        const next = Array.from(paths)
-        if (next.length === 0) {
-          return prev
-        }
-        knownFoldersRef.current = new Set(next)
-        foldersInitializedRef.current = true
-        return next
-      })
+      }
       setError(null)
     } catch (err) {
       console.error('Failed to load inspiration notes', err)
@@ -1390,7 +1404,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     } finally {
       setLoadingList(false)
     }
-  }, [isDesktop])
+  }, [hasExpandedFolders, isDesktop])
 
   const performSave = useCallback(
     async (
