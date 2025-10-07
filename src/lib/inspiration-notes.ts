@@ -10,8 +10,10 @@ import {
   saveStoredDataPath,
 } from './storage-path'
 import { removeVaultFile, type VaultFileMeta } from './vault'
+import { NOTES_DIR_NAME } from './inspiration-constants'
+import { ensureGithubNoteFolder, syncGithubNoteFile } from './inspiration-github'
 
-export const NOTES_DIR_NAME = 'notes'
+export { NOTES_DIR_NAME } from './inspiration-constants'
 export const NOTE_FILE_EXTENSION = '.md'
 export const NOTE_FEATURE_DISABLED_MESSAGE = '灵感妙记仅在 Tauri 桌面应用中可用，请在桌面环境中访问。'
 
@@ -333,6 +335,19 @@ function extractErrorMessage(error: unknown) {
     }
   }
   return ''
+}
+
+function toGithubSyncError(error: unknown) {
+  const message = extractErrorMessage(error)
+  const baseMessage = message || 'GitHub 同步失败，请稍后再试。'
+  const normalized = baseMessage.startsWith('GitHub 同步失败')
+    ? baseMessage
+    : `GitHub 同步失败：${baseMessage}`
+  const result = new Error(normalized)
+  if (error instanceof Error && error !== result) {
+    Reflect.set(result, 'cause', error)
+  }
+  return result
 }
 
 function isMissingFsEntryError(error: unknown) {
@@ -1105,6 +1120,19 @@ export async function createNoteFile(titleOrPath: string): Promise<string> {
   const serialized = serializeNoteFile({ title, createdAt: now, updatedAt: now, tags: [], attachments: [] }, '')
   await writeTextFile(filePath, serialized)
 
+  try {
+    await syncGithubNoteFile(notePath, serialized)
+  } catch (error) {
+    try {
+      await remove(filePath)
+    } catch (cleanupError) {
+      if (!isMissingFsEntryError(cleanupError)) {
+        console.warn('Failed to rollback local inspiration note after GitHub sync failure', cleanupError)
+      }
+    }
+    throw toGithubSyncError(error)
+  }
+
   return notePath
 }
 
@@ -1114,7 +1142,33 @@ export async function createNoteFolder(path: string): Promise<string> {
   const sanitized = sanitizeDirectoryPath(path)
   const segments = sanitized.split('/').filter(Boolean)
   const targetDir = segments.length > 0 ? await join(dir, ...segments) : dir
+  let existedBefore = true
+  try {
+    await readDir(targetDir)
+  } catch (error) {
+    if (isMissingFsEntryError(error)) {
+      existedBefore = false
+    } else {
+      throw error
+    }
+  }
+
   await mkdir(targetDir, { recursive: true })
+
+  try {
+    await ensureGithubNoteFolder(sanitized)
+  } catch (error) {
+    if (!existedBefore) {
+      try {
+        await remove(targetDir, { recursive: true })
+      } catch (cleanupError) {
+        if (!isMissingFsEntryError(cleanupError)) {
+          console.warn('Failed to rollback inspiration note folder after GitHub sync failure', cleanupError)
+        }
+      }
+    }
+    throw toGithubSyncError(error)
+  }
 
   return sanitized
 }

@@ -23,6 +23,18 @@ vi.mock('../src/lib/vault', () => ({
   removeVaultFile: (...args: Parameters<typeof removeVaultFileMock>) => removeVaultFileMock(...args),
 }))
 
+const syncGithubNoteFileMock = vi.fn<
+  (relativePath: string, content: string) => Promise<boolean>
+>()
+const ensureGithubNoteFolderMock = vi.fn<(relativePath: string) => Promise<boolean>>()
+
+vi.mock('../src/lib/inspiration-github', () => ({
+  syncGithubNoteFile: (...args: Parameters<typeof syncGithubNoteFileMock>) =>
+    syncGithubNoteFileMock(...args),
+  ensureGithubNoteFolder: (...args: Parameters<typeof ensureGithubNoteFolderMock>) =>
+    ensureGithubNoteFolderMock(...args),
+}))
+
 import {
   NOTE_FEATURE_DISABLED_MESSAGE,
   createNoteFile,
@@ -90,6 +102,10 @@ describe('inspiration notes storage', () => {
     removeVaultFileMock.mockClear()
     removeVaultFileMock.mockResolvedValue(undefined)
     removeVaultFileMock.mockResolvedValue(undefined)
+    syncGithubNoteFileMock.mockReset()
+    syncGithubNoteFileMock.mockResolvedValue(false)
+    ensureGithubNoteFolderMock.mockReset()
+    ensureGithubNoteFolderMock.mockResolvedValue(false)
     mkdirMock.mockImplementation(async (path: string) => {
       trackDirectory(directories, path)
     })
@@ -130,6 +146,13 @@ describe('inspiration notes storage', () => {
           }
         }
       })
+      const hasDirectory = directories.has(normalized)
+      const hasNestedEntries =
+        entries.length > 0 ||
+        Array.from(files.keys()).some(key => key === normalized || key.startsWith(prefix))
+      if (!hasDirectory && !hasNestedEntries) {
+        throw new Error(`Directory not found: ${normalized}`)
+      }
       return entries
     })
     removeMock.mockImplementation(async (path: string, options?: { recursive?: boolean }) => {
@@ -230,6 +253,27 @@ describe('inspiration notes storage', () => {
     expect(created.attachments).toEqual([])
   })
 
+  it('syncs new note to GitHub when connection is available', async () => {
+    syncGithubNoteFileMock.mockResolvedValueOnce(true)
+
+    const noteId = await createNoteFile('GitHub 联动笔记')
+
+    expect(syncGithubNoteFileMock).toHaveBeenCalledTimes(1)
+    const [syncedPath, payload] = syncGithubNoteFileMock.mock.calls[0]!
+    expect(syncedPath).toBe(noteId)
+    expect(typeof payload).toBe('string')
+    expect(payload).toContain('title: GitHub 联动笔记')
+  })
+
+  it('rolls back local note when GitHub sync fails', async () => {
+    syncGithubNoteFileMock.mockRejectedValueOnce(new Error('GitHub 同步失败：上传失败'))
+
+    await expect(createNoteFile('GitHub 失败测试')).rejects.toThrow('GitHub 同步失败')
+
+    expect(syncGithubNoteFileMock).toHaveBeenCalledTimes(1)
+    expect(files.size).toBe(0)
+  })
+
   it('prevents overwriting an existing note when creating file with same path', async () => {
     const firstId = await createNoteFile('重复检查')
     await expect(createNoteFile(firstId)).rejects.toThrow('同名笔记已存在')
@@ -257,6 +301,37 @@ describe('inspiration notes storage', () => {
     expect(directories.has('C:/mock/AppData/Personal/data/notes/规划')).toBe(true)
     expect(directories.has('C:/mock/AppData/Personal/data/notes/规划/2024-OKR')).toBe(true)
     expect(Array.from(directories).every(path => !path.startsWith('D:/Backups'))).toBe(true)
+    expect(ensureGithubNoteFolderMock).toHaveBeenCalledWith('规划/2024-OKR')
+  })
+
+  it('syncs gitkeep placeholder when creating a folder with GitHub connection', async () => {
+    const uploadedPaths: string[] = []
+    ensureGithubNoteFolderMock.mockImplementationOnce(async relative => {
+      const normalized = relative.split('/').filter(Boolean)
+      uploadedPaths.push(['notes', ...normalized, '.gitkeep'].join('/'))
+      return true
+    })
+
+    const sanitized = await createNoteFolder('Ideas/2024 Launches')
+
+    expect(sanitized).toBe('Ideas/2024-Launches')
+    expect(ensureGithubNoteFolderMock).toHaveBeenCalledTimes(1)
+    expect(uploadedPaths[0]).toBe('notes/Ideas/2024-Launches/.gitkeep')
+  })
+
+  it('rolls back created folder when GitHub sync fails', async () => {
+    ensureGithubNoteFolderMock.mockRejectedValueOnce(new Error('GitHub 同步失败：目录上传失败'))
+
+    await expect(createNoteFolder('GitHub/失败目录')).rejects.toThrow('GitHub 同步失败')
+
+    expect(ensureGithubNoteFolderMock).toHaveBeenCalledTimes(1)
+    const failedRelative = ensureGithubNoteFolderMock.mock.calls[0]?.[0] ?? ''
+    const targetSegment = `/data/notes/${failedRelative}`
+    expect(
+      Array.from(directories).every(
+        path => !path.endsWith(targetSegment) && !path.includes(`${targetSegment}/`),
+      ),
+    ).toBe(true)
   })
 
   it('deletes an existing folder recursively', async () => {
