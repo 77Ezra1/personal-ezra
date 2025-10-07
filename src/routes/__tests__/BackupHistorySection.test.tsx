@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ToastProvider } from '../../components/ToastProvider'
-import { DataBackupSection } from '../Settings'
+import { BackupHistorySection } from '../Settings'
 import { useAuthStore } from '../../stores/auth'
 import { db } from '../../stores/database'
 import { encryptString } from '../../lib/crypto'
@@ -84,14 +84,14 @@ async function createHistoryEntries() {
   return backupHistory.listBackupHistory(email)
 }
 
-describe('DataBackupSection history panel', () => {
+describe('BackupHistorySection history panel', () => {
   it('renders backup history entries with preview and diff controls', async () => {
     const entries = await createHistoryEntries()
     expect(entries.length).toBeGreaterThanOrEqual(2)
 
     render(
       <ToastProvider>
-        <DataBackupSection />
+        <BackupHistorySection />
       </ToastProvider>,
     )
 
