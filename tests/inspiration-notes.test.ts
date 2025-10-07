@@ -24,7 +24,11 @@ vi.mock('../src/lib/vault', () => ({
 }))
 
 const syncGithubNoteFileMock = vi.fn<
-  (relativePath: string, content: string) => Promise<boolean>
+  (
+    relativePath: string,
+    content: string,
+    options?: { commitMessage?: string },
+  ) => Promise<boolean>
 >()
 const ensureGithubNoteFolderMock = vi.fn<(relativePath: string) => Promise<boolean>>()
 
@@ -429,6 +433,83 @@ describe('inspiration notes storage', () => {
     expect(reloaded.title).toBe('灵感合集 2.0')
     expect(reloaded.content).toContain('加入新的想法')
     expect(reloaded.attachments).toEqual([])
+  })
+
+  it('syncs GitHub with create commit message when saving a new note', async () => {
+    const saved = await saveNote({
+      title: '同步创建',
+      content: '同步内容',
+      tags: [],
+      attachments: [],
+    })
+
+    expect(syncGithubNoteFileMock).toHaveBeenCalledTimes(1)
+    expect(syncGithubNoteFileMock).toHaveBeenCalledWith(
+      saved.id,
+      expect.any(String),
+      { commitMessage: `Create inspiration note: ${saved.id}` },
+    )
+  })
+
+  it('syncs GitHub with update commit message when updating an existing note', async () => {
+    const saved = await saveNote({
+      title: '同步更新',
+      content: '初始版本',
+      tags: [],
+      attachments: [],
+    })
+
+    syncGithubNoteFileMock.mockClear()
+    syncGithubNoteFileMock.mockResolvedValue(false)
+
+    const updated = await saveNote({
+      id: saved.id,
+      title: '同步更新',
+      content: '第二版',
+      tags: [],
+      attachments: [],
+    })
+
+    expect(updated.id).toBe(saved.id)
+    expect(syncGithubNoteFileMock).toHaveBeenCalledTimes(1)
+    expect(syncGithubNoteFileMock).toHaveBeenCalledWith(
+      saved.id,
+      expect.any(String),
+      { commitMessage: `Update inspiration note: ${saved.id}` },
+    )
+  })
+
+  it('rolls back new note locally when GitHub sync fails during save', async () => {
+    syncGithubNoteFileMock.mockRejectedValueOnce(new Error('服务不可用'))
+
+    await expect(
+      saveNote({ title: '临时同步失败', content: '无法上传', tags: [], attachments: [] }),
+    ).rejects.toThrow('GitHub 同步失败：服务不可用')
+
+    expect(syncGithubNoteFileMock).toHaveBeenCalledTimes(1)
+    expect(files.size).toBe(0)
+  })
+
+  it('restores previous content when GitHub sync fails while updating a note', async () => {
+    const saved = await saveNote({
+      title: '需要回滚',
+      content: '旧版本内容',
+      tags: [],
+      attachments: [],
+    })
+
+    const [storedPath, storedContents] = Array.from(files.entries())[0]!
+
+    syncGithubNoteFileMock.mockClear()
+    syncGithubNoteFileMock.mockRejectedValueOnce(new Error('更新失败'))
+
+    await expect(
+      saveNote({ id: saved.id, title: '需要回滚', content: '新版本', tags: [], attachments: [] }),
+    ).rejects.toThrow('GitHub 同步失败：更新失败')
+
+    expect(syncGithubNoteFileMock).toHaveBeenCalledTimes(1)
+    expect(files.size).toBe(1)
+    expect(files.get(storedPath)).toBe(storedContents)
   })
 
   it('extracts hashtags from content and merges with provided tags when saving', async () => {

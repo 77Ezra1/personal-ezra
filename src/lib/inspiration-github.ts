@@ -102,9 +102,14 @@ async function resolveGithubSyncContext(): Promise<GithubSyncContext | null> {
   return { token, owner, repo, branch }
 }
 
+export interface SyncGithubNoteFileOptions {
+  commitMessage?: string
+}
+
 export async function syncGithubNoteFile(
   relativePath: string,
   content: string,
+  options?: SyncGithubNoteFileOptions,
 ): Promise<boolean> {
   const context = await resolveGithubSyncContext()
   if (!context) {
@@ -117,7 +122,9 @@ export async function syncGithubNoteFile(
   }
 
   const remotePath = buildFileRemotePath(normalizedRelative)
-  const commitMessage = `Create inspiration note: ${normalizedRelative}`
+  const commitMessage = options?.commitMessage?.trim()
+    ? options.commitMessage
+    : `Create inspiration note: ${normalizedRelative}`
 
   try {
     await uploadGithubBackup(

@@ -1057,7 +1057,45 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
   const targetDir = directories.length > 0 ? await join(dir, ...directories) : dir
   await mkdir(targetDir, { recursive: true })
   const filePath = await join(targetDir, fileName)
+
+  let previousFileContent: string | null = null
+  let fileExistedBeforeSave = true
+  try {
+    previousFileContent = await readTextFile(filePath)
+  } catch (error) {
+    if (isMissingFsEntryError(error)) {
+      fileExistedBeforeSave = false
+      previousFileContent = null
+    } else {
+      console.warn('Failed to read existing inspiration note before overwrite', error)
+      throw error
+    }
+  }
+
   await writeTextFile(filePath, serialized)
+
+  try {
+    await syncGithubNoteFile(notePath, serialized, {
+      commitMessage: draft.id
+        ? `Update inspiration note: ${notePath}`
+        : `Create inspiration note: ${notePath}`,
+    })
+  } catch (error) {
+    try {
+      if (fileExistedBeforeSave) {
+        if (previousFileContent !== null) {
+          await writeTextFile(filePath, previousFileContent)
+        }
+      } else {
+        await remove(filePath)
+      }
+    } catch (rollbackError) {
+      if (!isMissingFsEntryError(rollbackError)) {
+        console.warn('Failed to rollback inspiration note after GitHub sync failure', rollbackError)
+      }
+    }
+    throw toGithubSyncError(error)
+  }
 
   const removedAttachments = previousAttachments.filter(
     previous => !attachments.some(item => item.relPath === previous.relPath),
