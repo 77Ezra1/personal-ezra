@@ -3038,7 +3038,7 @@ function BackupHistorySection() {
         ) : null}
 
         {historyEntries.length > 0 ? (
-          <ul className="space-y-3">
+          <ul className="space-y-3 max-h-72 overflow-y-auto pr-1">
             {historyEntries.map(entry => {
               const sizeKb = entry.size > 0 ? entry.size / 1024 : 0
               const formattedSize = sizeKb >= 1 ? `${sizeKb.toFixed(1)} KB` : `${entry.size} B`
