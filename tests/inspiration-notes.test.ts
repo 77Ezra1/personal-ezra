@@ -939,3 +939,135 @@ describe('inspiration notes storage', () => {
     expect(summaries).toHaveLength(0)
   })
 })
+
+describe('GitHub inspiration note conflict handling', () => {
+  const uploadGithubBackupMock = vi.fn<
+    (config: Record<string, unknown>, options?: Record<string, unknown>) => Promise<unknown>
+  >()
+  const deleteGithubBackupMock = vi.fn<
+    (config: Record<string, unknown>, options?: Record<string, unknown>) => Promise<unknown>
+  >()
+  const decryptStringMock = vi.fn<(key: Uint8Array, cipher: string) => Promise<string>>()
+  const dbGetMock = vi.fn<(email: string) => Promise<unknown>>()
+
+  function setupGithubModuleMocks() {
+    vi.doMock('../src/stores/auth', () => ({
+      useAuthStore: {
+        getState: () => ({
+          email: 'user@example.com',
+          encryptionKey: new Uint8Array([1, 2, 3]),
+        }),
+      },
+    }))
+
+    vi.doMock('../src/stores/database', () => ({
+      db: {
+        users: {
+          get: dbGetMock,
+        },
+      },
+    }))
+
+    vi.doMock('../src/lib/crypto', () => ({
+      decryptString: decryptStringMock,
+    }))
+
+    vi.doMock('../src/lib/github-backup', () => ({
+      uploadGithubBackup: uploadGithubBackupMock,
+      deleteGithubBackup: deleteGithubBackupMock,
+    }))
+  }
+
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    vi.doUnmock('../src/lib/inspiration-github')
+    uploadGithubBackupMock.mockReset()
+    deleteGithubBackupMock.mockReset()
+    decryptStringMock.mockReset()
+    dbGetMock.mockReset()
+  })
+
+  it('retries note upload after resolving conflicting file', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const conflictMessage = 'GitHub 备份失败：notes/conflict does not match existing item'
+
+    dbGetMock.mockResolvedValue({
+      github: {
+        repositoryOwner: 'octo',
+        repositoryName: 'vault',
+        repositoryBranch: 'main',
+        tokenCipher: 'cipher',
+      },
+    })
+    decryptStringMock.mockResolvedValue('gh_token')
+    uploadGithubBackupMock.mockRejectedValueOnce(new Error(conflictMessage))
+    uploadGithubBackupMock.mockResolvedValueOnce({
+      contentPath: 'notes/conflict/test.md',
+      contentSha: 'sha',
+      commitSha: 'commit',
+    })
+    deleteGithubBackupMock.mockResolvedValue({
+      contentPath: 'notes/conflict',
+      contentSha: null,
+      commitSha: null,
+    })
+
+    setupGithubModuleMocks()
+
+    const { syncGithubNoteFile } = await import('../src/lib/inspiration-github')
+
+    const result = await syncGithubNoteFile('conflict/test.md', '# Hello')
+    expect(result).toBe(true)
+    expect(uploadGithubBackupMock).toHaveBeenCalledTimes(2)
+    expect(deleteGithubBackupMock).toHaveBeenCalledTimes(1)
+    const [deleteConfig, deleteOptions] = deleteGithubBackupMock.mock.calls[0] ?? []
+    expect(deleteConfig).toMatchObject({ path: 'notes/conflict' })
+    expect(deleteOptions).toMatchObject({ commitMessage: 'Resolve inspiration note conflict: conflict' })
+    expect(warnSpy).toHaveBeenCalled()
+
+    warnSpy.mockRestore()
+  })
+
+  it('retries folder upload after removing conflicting file', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const conflictMessage =
+      "GitHub 备份失败：A file exists where you're trying to create a subdirectory notes/planning/new"
+
+    dbGetMock.mockResolvedValue({
+      github: {
+        repositoryOwner: 'octo',
+        repositoryName: 'vault',
+        repositoryBranch: 'main',
+        tokenCipher: 'cipher',
+      },
+    })
+    decryptStringMock.mockResolvedValue('gh_token')
+    uploadGithubBackupMock.mockRejectedValueOnce(new Error(conflictMessage))
+    uploadGithubBackupMock.mockResolvedValueOnce({
+      contentPath: 'notes/planning/new/.gitkeep',
+      contentSha: 'sha',
+      commitSha: 'commit',
+    })
+    deleteGithubBackupMock.mockResolvedValue({
+      contentPath: 'notes/planning/new',
+      contentSha: null,
+      commitSha: null,
+    })
+
+    setupGithubModuleMocks()
+
+    const { ensureGithubNoteFolder } = await import('../src/lib/inspiration-github')
+
+    const result = await ensureGithubNoteFolder('planning/new')
+    expect(result).toBe(true)
+    expect(uploadGithubBackupMock).toHaveBeenCalledTimes(2)
+    expect(deleteGithubBackupMock).toHaveBeenCalledTimes(1)
+    const [deleteConfig, deleteOptions] = deleteGithubBackupMock.mock.calls[0] ?? []
+    expect(deleteConfig).toMatchObject({ path: 'notes/planning/new' })
+    expect(deleteOptions?.commitMessage).toContain('planning/new')
+    expect(warnSpy).toHaveBeenCalled()
+
+    warnSpy.mockRestore()
+  })
+})

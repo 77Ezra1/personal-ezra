@@ -61,6 +61,93 @@ function buildDirectoryRemotePath(relativePath: string): string {
   return segments.join('/')
 }
 
+type GithubConflictInfo = {
+  relativePath: string
+  message: string
+}
+
+function detectGithubConflict(error: unknown): GithubConflictInfo | null {
+  const message = readErrorMessage(error)
+  if (!message) {
+    return null
+  }
+
+  const normalized = message.toLowerCase()
+  if (
+    !normalized.includes('does not match') &&
+    !normalized.includes("file exists where you're trying to create a subdirectory")
+  ) {
+    return null
+  }
+
+  const match = /notes\/([^\s'"`]+)/i.exec(message)
+  if (!match) {
+    return null
+  }
+
+  const conflictPath = normalizeRelativePath(match[1].replace(/\/\.gitkeep$/i, ''))
+  if (!conflictPath) {
+    return null
+  }
+
+  return { relativePath: conflictPath, message }
+}
+
+async function runGithubUploadWithConflictRetry(
+  context: GithubSyncContext,
+  executor: () => Promise<void>,
+): Promise<void> {
+  let resolvedConflict = false
+  let lastError: unknown = null
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await executor()
+      return
+    } catch (error) {
+      lastError = error
+      if (resolvedConflict) {
+        throw error
+      }
+
+      const conflict = detectGithubConflict(error)
+      if (!conflict) {
+        throw error
+      }
+
+      resolvedConflict = true
+      console.warn(
+        `Detected GitHub note sync conflict at ${conflict.relativePath}, deleting remote file and retrying.`,
+        conflict.message,
+      )
+
+      try {
+        await deleteGithubBackup(
+          {
+            token: context.token,
+            owner: context.owner,
+            repo: context.repo,
+            branch: context.branch,
+            path: buildFileRemotePath(conflict.relativePath),
+          },
+          {
+            commitMessage: `Resolve inspiration note conflict: ${conflict.relativePath}`,
+            maxRetries: 1,
+          },
+        )
+      } catch (deleteError) {
+        console.warn(
+          `Failed to delete conflicting GitHub note at ${conflict.relativePath} before retry`,
+          deleteError,
+        )
+        throw error
+      }
+    }
+  }
+
+  throw lastError ?? new Error('GitHub note sync failed unexpectedly.')
+}
+
 async function resolveGithubSyncContext(): Promise<GithubSyncContext | null> {
   const state = useAuthStore.getState()
   const email = typeof state.email === 'string' ? state.email.trim() : ''
@@ -127,16 +214,18 @@ export async function syncGithubNoteFile(
     : `Create inspiration note: ${normalizedRelative}`
 
   try {
-    await uploadGithubBackup(
-      {
-        token: context.token,
-        owner: context.owner,
-        repo: context.repo,
-        branch: context.branch,
-        path: remotePath,
-        content,
-      },
-      { commitMessage, maxRetries: 1 },
+    await runGithubUploadWithConflictRetry(context, () =>
+      uploadGithubBackup(
+        {
+          token: context.token,
+          owner: context.owner,
+          repo: context.repo,
+          branch: context.branch,
+          path: remotePath,
+          content,
+        },
+        { commitMessage, maxRetries: 1 },
+      ),
     )
     return true
   } catch (error) {
@@ -157,16 +246,18 @@ export async function ensureGithubNoteFolder(relativePath: string): Promise<bool
   const commitMessage = `Ensure inspiration folder: ${targetLabel}`
 
   try {
-    await uploadGithubBackup(
-      {
-        token: context.token,
-        owner: context.owner,
-        repo: context.repo,
-        branch: context.branch,
-        path: remotePath,
-        content: '',
-      },
-      { commitMessage, maxRetries: 1 },
+    await runGithubUploadWithConflictRetry(context, () =>
+      uploadGithubBackup(
+        {
+          token: context.token,
+          owner: context.owner,
+          repo: context.repo,
+          branch: context.branch,
+          path: remotePath,
+          content: '',
+        },
+        { commitMessage, maxRetries: 1 },
+      ),
     )
     return true
   } catch (error) {
