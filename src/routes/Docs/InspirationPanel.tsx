@@ -27,7 +27,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
-  type KeyboardEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
   type ComponentPropsWithoutRef,
 } from 'react'
@@ -53,6 +53,7 @@ import {
   type NoteSummary,
 } from '../../lib/inspiration-notes'
 import { queueInspirationBackupSync } from '../../lib/inspiration-sync'
+import { normalizeUrl, openExternal } from '../../lib/external'
 import {
   importFileToVault,
   openDocument,
@@ -568,13 +569,15 @@ type InspirationEditorProps = {
   onAttachmentOpen: (attachment: VaultFileMeta) => void
   onAttachmentCopyPath: (attachment: VaultFileMeta) => void
   attachmentUploading: boolean
+  isDesktop: boolean
+  onOpenLink?: (href: string) => void
 }
 
 type MarkdownCodeProps = ComponentPropsWithoutRef<'code'> & ExtraProps & {
   inline?: boolean
 }
 
-const markdownComponents: Components = {
+const baseMarkdownComponents: Components = {
   h1: ({ node: _node, ...props }) => (
     <h1 className="mt-6 text-2xl font-semibold text-text first:mt-0" {...props} />
   ),
@@ -605,9 +608,6 @@ const markdownComponents: Components = {
   li: ({ node: _node, ...props }) => <li className="text-sm leading-relaxed text-text" {...props} />,
   blockquote: ({ node: _node, ...props }) => (
     <blockquote className="border-l-2 border-primary/40 pl-4 text-sm italic text-muted" {...props} />
-  ),
-  a: ({ node: _node, ...props }) => (
-    <a className="font-medium text-primary underline-offset-4 hover:underline" {...props} />
   ),
   hr: ({ node: _node, ...props }) => (
     <hr className="my-4 border-border/60" {...props} />
@@ -673,11 +673,13 @@ function InspirationEditor({
   onAttachmentOpen,
   onAttachmentCopyPath,
   attachmentUploading,
+  isDesktop,
+  onOpenLink,
 }: InspirationEditorProps) {
   const tagActionsDisabled = saving || autoSaving || deleting || loadingNote
   const attachmentActionsDisabled = saving || autoSaving || deleting || loadingNote || attachmentUploading
   const hasContent = draft.content.trim().length > 0
-  const handleTagInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const handleTagInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
       event.preventDefault()
       if (tagInput.trim()) {
@@ -688,6 +690,35 @@ function InspirationEditor({
       onTagEditCancel()
     }
   }
+
+  const markdownComponents = useMemo<Components>(() => {
+    const anchorClassName = 'font-medium text-primary underline-offset-4 hover:underline'
+    return {
+      ...baseMarkdownComponents,
+      a: ({ node: _node, href, className, onClick, ...props }) => {
+        const mergedClassName = clsx(anchorClassName, className)
+        return (
+          <a
+            {...props}
+            href={href}
+            className={mergedClassName}
+            onClick={event => {
+              onClick?.(event)
+              if (event.defaultPrevented) return
+              if (!href) return
+              if (isDesktop) {
+                event.preventDefault()
+                onOpenLink?.(href)
+              } else {
+                event.preventDefault()
+                void openExternal(href)
+              }
+            }}
+          />
+        )
+      },
+    }
+  }, [isDesktop, onOpenLink])
 
   return (
     <form
@@ -957,6 +988,53 @@ function InspirationDisabledNotice({ className }: { className?: string }) {
   )
 }
 
+type InspirationLinkViewerProps = {
+  url: string
+  onClose: () => void
+}
+
+function InspirationLinkViewer({ url, onClose }: InspirationLinkViewerProps) {
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-black/70 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="链接预览"
+    >
+      <div className="flex justify-end p-4">
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex items-center rounded-full bg-surface px-4 py-2 text-sm font-semibold text-text shadow-lg shadow-black/20 transition hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+        >
+          返回主页面
+        </button>
+      </div>
+      <div className="flex-1 px-4 pb-4">
+        <iframe
+          src={url}
+          title="链接预览"
+          className="h-full w-full rounded-3xl border border-border bg-background"
+        />
+      </div>
+    </div>
+  )
+}
+
 export function InspirationPanel({ className }: InspirationPanelProps) {
   const isDesktop = isTauriRuntime()
   const { showToast } = useToast()
@@ -999,6 +1077,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const [insertLinkUrl, setInsertLinkUrl] = useState('')
   const [insertLinkError, setInsertLinkError] = useState<string | null>(null)
   const [insertLinkSelection, setInsertLinkSelection] = useState<InsertLinkSelection | null>(null)
+  const [linkPreviewUrl, setLinkPreviewUrl] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const tagInputRef = useRef<HTMLInputElement | null>(null)
   const draftSnapshotRef = useRef<string>(createDraftSnapshot(createEmptyDraft()))
@@ -1007,6 +1086,11 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const knownFoldersRef = useRef<Set<string>>(new Set())
   const foldersInitializedRef = useRef(false)
   const pendingAttachmentsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (isDesktop) return
+    setLinkPreviewUrl(null)
+  }, [isDesktop])
 
   const cleanupPendingAttachments = useCallback(async () => {
     const pending = Array.from(pendingAttachmentsRef.current)
@@ -1843,6 +1927,15 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     setInsertLinkSelection(null)
   }, [])
 
+  const handleOpenLinkPreview = useCallback((href: string) => {
+    const normalized = normalizeUrl(href)
+    setLinkPreviewUrl(normalized || null)
+  }, [])
+
+  const handleCloseLinkPreview = useCallback(() => {
+    setLinkPreviewUrl(null)
+  }, [])
+
   const handleConfirmInsertLink = useCallback(() => {
     const textarea = textareaRef.current
     if (!textarea || !insertLinkSelection) return
@@ -1971,6 +2064,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     async (noteId: string) => {
       if (!isDesktop) return
       setSelectedId(noteId)
+      setLinkPreviewUrl(null)
       setLoadingNote(true)
       try {
         await cleanupPendingAttachments()
@@ -2317,9 +2411,14 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
             onAttachmentOpen={handleAttachmentOpen}
             onAttachmentCopyPath={handleAttachmentCopyPath}
             attachmentUploading={attachmentUploading}
+            isDesktop={isDesktop}
+            onOpenLink={handleOpenLinkPreview}
           />
         </div>
       </div>
+      {isDesktop && linkPreviewUrl && (
+        <InspirationLinkViewer url={linkPreviewUrl} onClose={handleCloseLinkPreview} />
+      )}
       <ConfirmDialog
         open={createNoteDialogOpen}
         title="新建 Markdown 笔记"
