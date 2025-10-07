@@ -27,12 +27,17 @@ const syncGithubNoteFileMock = vi.fn<
   (relativePath: string, content: string) => Promise<boolean>
 >()
 const ensureGithubNoteFolderMock = vi.fn<(relativePath: string) => Promise<boolean>>()
+const deleteGithubNoteFileMock = vi.fn<
+  (relativePath: string, options?: { commitMessage?: string }) => Promise<boolean>
+>()
 
 vi.mock('../src/lib/inspiration-github', () => ({
   syncGithubNoteFile: (...args: Parameters<typeof syncGithubNoteFileMock>) =>
     syncGithubNoteFileMock(...args),
   ensureGithubNoteFolder: (...args: Parameters<typeof ensureGithubNoteFolderMock>) =>
     ensureGithubNoteFolderMock(...args),
+  deleteGithubNoteFile: (...args: Parameters<typeof deleteGithubNoteFileMock>) =>
+    deleteGithubNoteFileMock(...args),
 }))
 
 import {
@@ -106,6 +111,8 @@ describe('inspiration notes storage', () => {
     syncGithubNoteFileMock.mockResolvedValue(false)
     ensureGithubNoteFolderMock.mockReset()
     ensureGithubNoteFolderMock.mockResolvedValue(false)
+    deleteGithubNoteFileMock.mockReset()
+    deleteGithubNoteFileMock.mockResolvedValue(false)
     mkdirMock.mockImplementation(async (path: string) => {
       trackDirectory(directories, path)
     })
@@ -532,6 +539,56 @@ describe('inspiration notes storage', () => {
 
     expect(removeVaultFileMock).toHaveBeenCalledTimes(1)
     expect(removeVaultFileMock).toHaveBeenCalledWith('vault/screenshot.png')
+  })
+
+  it('attempts to delete remote note when GitHub sync is configured', async () => {
+    deleteGithubNoteFileMock.mockResolvedValue(true)
+    const saved = await saveNote({
+      title: '同步到 GitHub 的笔记',
+      content: '准备删除',
+      tags: [],
+      attachments: [],
+    })
+
+    await deleteNote(saved.id)
+
+    expect(deleteGithubNoteFileMock).toHaveBeenCalledTimes(1)
+    expect(deleteGithubNoteFileMock).toHaveBeenCalledWith(saved.id)
+  })
+
+  it('restores local content when GitHub deletion fails', async () => {
+    const attachment = {
+      name: '保留附件.png',
+      relPath: 'vault/keep.png',
+      size: 256,
+      mime: 'image/png',
+      sha256: 'hash-restore',
+    }
+    const saved = await saveNote({
+      title: '删除失败回滚',
+      content: '需要回滚的内容',
+      tags: [],
+      attachments: [attachment],
+    })
+
+    const initialEntries = Array.from(files.entries())
+    const [storedPath] = initialEntries[0]!
+
+    deleteGithubNoteFileMock.mockRejectedValue(new Error('API down'))
+
+    await expect(deleteNote(saved.id)).rejects.toThrow('GitHub 同步失败')
+
+    expect(deleteGithubNoteFileMock).toHaveBeenCalledTimes(1)
+    expect(deleteGithubNoteFileMock).toHaveBeenCalledWith(saved.id)
+    const afterEntries = Array.from(files.entries())
+    expect(afterEntries).toEqual(initialEntries)
+    expect(removeVaultFileMock).not.toHaveBeenCalled()
+    expect(removeMock).not.toHaveBeenCalled()
+
+    const writeCallsForPath = writeTextFileMock.mock.calls.filter(
+      ([path]) => normalizePath(path) === storedPath,
+    )
+    expect(writeCallsForPath.length).toBeGreaterThanOrEqual(2)
   })
 
   it('includes attachments when exporting notes for backup', async () => {
