@@ -134,6 +134,7 @@ const AUTO_BACKUP_INTERVAL_OPTIONS = [
 
 const BACKUP_HISTORY_DISPLAY_LIMIT = 50
 const BACKUP_HISTORY_DAY_MS = 24 * 60 * 60 * 1000
+const BACKUP_HISTORY_UPDATED_EVENT = 'pms-backup-history-updated'
 
 type StoredAutoBackupState = {
   enabled?: boolean
@@ -162,6 +163,11 @@ function useAutoDismissFormMessage(
 
     return () => window.clearTimeout(timer)
   }, [message, setMessage])
+}
+
+function dispatchBackupHistoryUpdated() {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(BACKUP_HISTORY_UPDATED_EVENT))
 }
 
 const THEME_OPTIONS: ThemeOption[] = [
@@ -777,7 +783,10 @@ export default function Settings() {
       {
         key: 'data',
         label: '数据管理',
-        sections: [{ key: 'data-backup', label: '数据备份', render: () => <DataBackupSection /> }],
+        sections: [
+          { key: 'data-backup', label: '数据备份', render: () => <DataBackupSection /> },
+          { key: 'backup-history', label: '备份历史', render: () => <BackupHistorySection /> },
+        ],
       },
     ],
     [],
@@ -948,7 +957,7 @@ function ThemeModeSection() {
   )
 }
 
-export { DataBackupSection }
+export { DataBackupSection, BackupHistorySection }
 
 function DataBackupSection() {
   const email = useAuthStore(state => state.email)
@@ -991,14 +1000,6 @@ function DataBackupSection() {
   const [githubBackupLastError, setGithubBackupLastError] = useState<string | null>(null)
   const [githubBackupStatusMessage, setGithubBackupStatusMessage] = useState<string | null>(null)
   const [tauriBackgroundAvailable, setTauriBackgroundAvailable] = useState(false)
-  const [historyEntries, setHistoryEntries] = useState<BackupHistoryEntry[]>([])
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [historyError, setHistoryError] = useState<string | null>(null)
-  const [historyPreviewId, setHistoryPreviewId] = useState<number | null>(null)
-  const [historyDiffSelection, setHistoryDiffSelection] = useState<number[]>([])
-  const [historyRetentionEntries, setHistoryRetentionEntries] = useState('')
-  const [historyRetentionDays, setHistoryRetentionDays] = useState('')
-  const [historyRetentionSaving, setHistoryRetentionSaving] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const autoBackupTimerRef = useRef<number | null>(null)
   const autoBackupEnabledRef = useRef(false)
@@ -1018,22 +1019,6 @@ function DataBackupSection() {
 
   const backupDisabled = !email || !encryptionKey
   const passwordDisabled = backupDisabled || exporting || importing
-  const historyDateFormatter = useMemo(
-    () => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }),
-    [],
-  )
-  const historyDiffResult = useMemo(() => {
-    if (historyDiffSelection.length !== 2) {
-      return null
-    }
-    const [firstId, secondId] = historyDiffSelection
-    const first = historyEntries.find(entry => entry.id === firstId)
-    const second = historyEntries.find(entry => entry.id === secondId)
-    if (!first || !second) {
-      return null
-    }
-    return { first, second, lines: diffBackupSummaries(first, second) }
-  }, [historyDiffSelection, historyEntries])
 
   useAutoDismissFormMessage(githubSettingsMessage, setGithubSettingsMessage)
 
@@ -1058,52 +1043,6 @@ function DataBackupSection() {
       console.warn('Failed to clear legacy repository path', error)
     }
   }, [])
-
-  const refreshBackupHistory = useCallback(async () => {
-    if (!email) {
-      setHistoryEntries([])
-      setHistoryError(null)
-      return
-    }
-    setHistoryLoading(true)
-    setHistoryError(null)
-    try {
-      const entries = await listBackupHistory(email, { limit: BACKUP_HISTORY_DISPLAY_LIMIT })
-      setHistoryEntries(entries)
-    } catch (error) {
-      console.error('Failed to load backup history', error)
-      const message = error instanceof Error ? error.message : '无法加载备份历史。'
-      setHistoryError(message)
-    } finally {
-      setHistoryLoading(false)
-    }
-  }, [email])
-
-  useEffect(() => {
-    const retention = readStoredBackupHistoryRetention()
-    if (retention.maxEntries === null) {
-      setHistoryRetentionEntries('')
-    } else if (typeof retention.maxEntries === 'number') {
-      setHistoryRetentionEntries(String(retention.maxEntries))
-    }
-    if (retention.maxAgeMs === null) {
-      setHistoryRetentionDays('')
-    } else if (typeof retention.maxAgeMs === 'number' && Number.isFinite(retention.maxAgeMs)) {
-      const days = Math.max(1, Math.round(retention.maxAgeMs / BACKUP_HISTORY_DAY_MS))
-      setHistoryRetentionDays(String(days))
-    }
-  }, [])
-
-  useEffect(() => {
-    void refreshBackupHistory()
-  }, [refreshBackupHistory])
-
-  useEffect(() => {
-    setHistoryDiffSelection(prev => prev.filter(id => historyEntries.some(entry => entry.id === id)))
-    if (historyPreviewId !== null && !historyEntries.some(entry => entry.id === historyPreviewId)) {
-      setHistoryPreviewId(null)
-    }
-  }, [historyEntries, historyPreviewId])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1417,7 +1356,7 @@ function DataBackupSection() {
           (trigger === 'manual' ? `备份成功：${result.fileName}` : `自动备份完成：${result.fileName}`) +
           remoteSummary
         setAutoBackupStatusMessage(successMessage)
-        void refreshBackupHistory()
+        dispatchBackupHistoryUpdated()
 
         if (trigger === 'manual') {
           const description = result.github?.htmlUrl ?? result.destinationPath ?? result.fileName
@@ -1761,56 +1700,6 @@ function DataBackupSection() {
     }
   }
 
-  const handleApplyHistoryRetention = async () => {
-    const entriesInput = historyRetentionEntries.trim()
-    const daysInput = historyRetentionDays.trim()
-
-    let maxEntriesValue: number | null = null
-    if (entriesInput) {
-      const parsed = Number(entriesInput)
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        showToast({ title: '清理策略无效', description: '数量限制需为正整数或留空。', variant: 'error' })
-        return
-      }
-      maxEntriesValue = Math.floor(parsed)
-    }
-
-    let maxAgeValue: number | null = null
-    if (daysInput) {
-      const parsedDays = Number(daysInput)
-      if (!Number.isFinite(parsedDays) || parsedDays <= 0) {
-        showToast({ title: '清理策略无效', description: '时间限制需为正整数或留空。', variant: 'error' })
-        return
-      }
-      maxAgeValue = Math.floor(parsedDays) * BACKUP_HISTORY_DAY_MS
-    }
-
-    const policy = { maxEntries: maxEntriesValue, maxAgeMs: maxAgeValue }
-    persistBackupHistoryRetention(policy)
-
-    if (!email) {
-      showToast({ title: '保留策略已保存', description: '登录账号后将自动应用。', variant: 'success' })
-      return
-    }
-
-    try {
-      setHistoryRetentionSaving(true)
-      const removed = await applyBackupHistoryRetention(email, policy)
-      if (removed > 0) {
-        showToast({ title: '已应用保留策略', description: `删除 ${removed} 条旧备份记录。`, variant: 'success' })
-      } else {
-        showToast({ title: '已应用保留策略', description: '当前备份历史无需清理。', variant: 'success' })
-      }
-      await refreshBackupHistory()
-    } catch (error) {
-      console.error('Failed to apply backup history retention', error)
-      const message = error instanceof Error ? error.message : '更新备份历史策略失败，请稍后再试。'
-      showToast({ title: '更新失败', description: message, variant: 'error' })
-    } finally {
-      setHistoryRetentionSaving(false)
-    }
-  }
-
   const dateFormatter = useMemo(
     () => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }),
     [],
@@ -1963,21 +1852,6 @@ function DataBackupSection() {
     void runAutoBackup('manual')
   }
 
-  const handleHistoryPreviewToggle = useCallback((entryId: number) => {
-    setHistoryPreviewId(current => (current === entryId ? null : entryId))
-  }, [])
-
-  const handleHistoryDiffToggle = useCallback((entryId: number, checked: boolean) => {
-    setHistoryDiffSelection(current => {
-      if (checked) {
-        const filtered = current.filter(id => id !== entryId)
-        const next = [...filtered, entryId]
-        return next.length > 2 ? next.slice(next.length - 2) : next
-      }
-      return current.filter(id => id !== entryId)
-    })
-  }, [])
-
   const handlePasswordChange = (event: ChangeEvent<HTMLInputElement>) => {
     setMasterPassword(event.currentTarget.value)
     setPasswordError(null)
@@ -2015,7 +1889,7 @@ function DataBackupSection() {
         description: '请妥善保管下载的备份文件。',
         variant: 'success',
       })
-      void refreshBackupHistory()
+      dispatchBackupHistoryUpdated()
       setPasswordError(null)
       if (!autoBackupEnabled) {
         setMasterPassword('')
@@ -2066,19 +1940,6 @@ function DataBackupSection() {
     } finally {
       setImporting(false)
     }
-  }
-
-  const handleRestoreFromHistory = async (entry: BackupHistoryEntry) => {
-    if (!email || !encryptionKey) {
-      showToast({ title: '无法恢复备份', description: '请先登录并解锁账号后再试。', variant: 'error' })
-      return
-    }
-    if (!masterPassword) {
-      setPasswordError('请先输入主密码再导入备份。')
-      showToast({ title: '缺少主密码', description: '恢复备份前请输入主密码。', variant: 'error' })
-      return
-    }
-    await performImport(entry.content)
   }
 
   const handleImportClick = async () => {
@@ -2435,206 +2296,6 @@ function DataBackupSection() {
 
     {githubBackupStatusMessage ? (
       <p className={clsx('text-xs', githubBackupStatusClass)}>{githubBackupStatusMessage}</p>
-    ) : null}
-  </div>
-
-  <div className="space-y-3 rounded-2xl border border-border/50 bg-surface/60 p-4">
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div className="space-y-1">
-        <h3 className="text-sm font-semibold text-text">备份历史</h3>
-        <p className="text-xs leading-relaxed text-muted">
-          最近的备份记录会保留在本地，可离线查看摘要、对比变更并从任意一次备份恢复数据。
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={() => void refreshBackupHistory()}
-        disabled={historyLoading}
-        className={clsx(
-          'inline-flex items-center justify-center rounded-xl border border-border px-3 py-1 text-xs font-medium transition',
-          'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
-        )}
-      >
-        {historyLoading ? '刷新中…' : '刷新'}
-      </button>
-    </div>
-
-    {historyError ? (
-      <div className="rounded-xl border border-red-400/60 bg-red-500/10 px-3 py-2 text-xs text-red-400">
-        {historyError}
-      </div>
-    ) : null}
-
-    {historyEntries.length === 0 && !historyLoading ? (
-      <p className="text-xs text-muted">暂无备份记录，完成一次自动或手动备份后将显示在此处。</p>
-    ) : null}
-
-    {historyEntries.length > 0 ? (
-      <ul className="space-y-3">
-        {historyEntries.map(entry => {
-          const sizeKb = entry.size > 0 ? entry.size / 1024 : 0
-          const formattedSize = sizeKb >= 1 ? `${sizeKb.toFixed(1)} KB` : `${entry.size} B`
-          const diffChecked = historyDiffSelection.includes(entry.id)
-          return (
-            <li key={entry.id} className="space-y-3 rounded-xl border border-border/60 bg-surface px-3 py-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-text">
-                    {historyDateFormatter.format(new Date(entry.exportedAt))}
-                  </p>
-                  <p className="break-words text-xs text-muted">{entry.fileName}</p>
-                  <p className="text-[11px] font-mono text-muted">
-                    SHA-256：{entry.checksum.slice(0, 12)}… ｜ {formattedSize}
-                  </p>
-                  <p className="text-[11px] text-muted">
-                    密码 {entry.summary.counts.passwords} ｜ 网站 {entry.summary.counts.sites} ｜ 文档 {entry.summary.counts.docs} ｜ 灵感
-                    {` ${entry.summary.counts.notes}`}
-                  </p>
-                  {entry.github?.path ? (
-                    <p className="text-[11px] text-muted">GitHub：{entry.github.path}</p>
-                  ) : null}
-                  {entry.destinationPath ? (
-                    <p className="text-[11px] text-muted">本地：{entry.destinationPath}</p>
-                  ) : null}
-                </div>
-                <div className="flex flex-col items-end gap-2 sm:items-center">
-                  <label className="flex items-center gap-2 text-[11px] text-muted">
-                    <input
-                      type="checkbox"
-                      checked={diffChecked}
-                      onChange={event => handleHistoryDiffToggle(entry.id, event.currentTarget.checked)}
-                      className="h-4 w-4 rounded border-border"
-                    />
-                    对比
-                  </label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleHistoryPreviewToggle(entry.id)}
-                      className={clsx(
-                        'inline-flex items-center rounded-xl border border-border px-3 py-1 text-xs font-medium transition',
-                        'hover:border-border hover:bg-surface-hover',
-                      )}
-                    >
-                      {historyPreviewId === entry.id ? '收起' : '预览'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleRestoreFromHistory(entry)}
-                      disabled={importing}
-                      className={clsx(
-                        'inline-flex items-center rounded-xl bg-primary px-3 py-1 text-xs font-semibold text-background shadow-sm transition',
-                        'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50',
-                      )}
-                    >
-                      {importing ? '恢复中…' : '恢复'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {historyPreviewId === entry.id ? (
-                <div className="rounded-lg border border-border/60 bg-background/80 px-3 py-2">
-                  <pre className="max-h-48 overflow-auto text-[11px] leading-5 text-text">
-                    {JSON.stringify(entry.summary, null, 2)}
-                  </pre>
-                  {entry.github?.htmlUrl ? (
-                    <p className="mt-2 text-[11px] text-muted">
-                      提交链接：
-                      <a
-                        href={entry.github.htmlUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-primary underline-offset-2 hover:underline"
-                      >
-                        打开 GitHub
-                      </a>
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-            </li>
-          )
-        })}
-      </ul>
-    ) : null}
-
-    <div className="space-y-2 rounded-xl border border-dashed border-border/60 bg-background/60 px-3 py-3">
-      <h4 className="text-xs font-semibold text-text">历史保留策略</h4>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-medium text-muted">最多保留条数</span>
-          <input
-            type="number"
-            min="0"
-            inputMode="numeric"
-            value={historyRetentionEntries}
-            onChange={event => setHistoryRetentionEntries(event.currentTarget.value)}
-            placeholder="留空表示不限"
-            className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-xs text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-medium text-muted">保留天数</span>
-          <input
-            type="number"
-            min="0"
-            inputMode="numeric"
-            value={historyRetentionDays}
-            onChange={event => setHistoryRetentionDays(event.currentTarget.value)}
-            placeholder="留空表示不限"
-            className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-xs text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
-          />
-        </label>
-      </div>
-      <p className="text-[11px] text-muted">更新后将立即按照新的规则清理旧备份，输入 0 或留空表示不限制。</p>
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={handleApplyHistoryRetention}
-          disabled={historyRetentionSaving || historyLoading}
-          className={clsx(
-            'inline-flex items-center rounded-xl bg-primary px-3 py-1 text-xs font-semibold text-background shadow-sm transition',
-            'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50',
-          )}
-        >
-          {historyRetentionSaving ? '应用中…' : '应用策略'}
-        </button>
-      </div>
-    </div>
-
-    {historyDiffResult ? (
-      <div className="rounded-xl border border-border/60 bg-background/80 p-3">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs font-semibold text-text">
-            JSON 差异：{historyDiffResult.first.fileName} ↔ {historyDiffResult.second.fileName}
-          </p>
-          <p className="text-[11px] text-muted">
-            {historyDateFormatter.format(new Date(historyDiffResult.first.exportedAt))} ｜{' '}
-            {historyDateFormatter.format(new Date(historyDiffResult.second.exportedAt))}
-          </p>
-        </div>
-        <div className="mt-2 max-h-56 overflow-auto rounded-lg border border-border/60 bg-surface px-3 py-2">
-          <pre className="text-[11px] leading-5 text-text">
-            {historyDiffResult.lines.map(line => (
-              <span
-                key={line.id}
-                className={clsx(
-                  'block font-mono',
-                  line.type === 'added'
-                    ? 'text-emerald-500'
-                    : line.type === 'removed'
-                      ? 'text-red-400'
-                      : 'text-muted',
-                )}
-              >
-                {line.type === 'added' ? '+ ' : line.type === 'removed' ? '- ' : '  '}
-                {line.value}
-              </span>
-            ))}
-          </pre>
-        </div>
-      </div>
     ) : null}
   </div>
 
@@ -3114,6 +2775,429 @@ function ChangePasswordSection() {
           </button>
         </div>
       </form>
+    </section>
+  )
+}
+
+function BackupHistorySection() {
+  const email = useAuthStore(state => state.email)
+  const encryptionKey = useAuthStore(state => state.encryptionKey)
+  const { showToast } = useToast()
+  const passwordInputId = useId()
+  const [masterPassword, setMasterPassword] = useState('')
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [restoring, setRestoring] = useState(false)
+  const [historyEntries, setHistoryEntries] = useState<BackupHistoryEntry[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [historyPreviewId, setHistoryPreviewId] = useState<number | null>(null)
+  const [historyDiffSelection, setHistoryDiffSelection] = useState<number[]>([])
+  const [historyRetentionEntries, setHistoryRetentionEntries] = useState('')
+  const [historyRetentionDays, setHistoryRetentionDays] = useState('')
+  const [historyRetentionSaving, setHistoryRetentionSaving] = useState(false)
+
+  const restoreDisabled = !email || !encryptionKey
+  const passwordDisabled = restoreDisabled || restoring
+
+  const historyDateFormatter = useMemo(
+    () => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }),
+    [],
+  )
+
+  const historyDiffResult = useMemo(() => {
+    if (historyDiffSelection.length !== 2) {
+      return null
+    }
+    const [firstId, secondId] = historyDiffSelection
+    const first = historyEntries.find(entry => entry.id === firstId)
+    const second = historyEntries.find(entry => entry.id === secondId)
+    if (!first || !second) {
+      return null
+    }
+    return { first, second, lines: diffBackupSummaries(first, second) }
+  }, [historyDiffSelection, historyEntries])
+
+  const refreshBackupHistory = useCallback(async () => {
+    if (!email) {
+      setHistoryEntries([])
+      setHistoryError(null)
+      return
+    }
+    setHistoryLoading(true)
+    setHistoryError(null)
+    try {
+      const entries = await listBackupHistory(email, { limit: BACKUP_HISTORY_DISPLAY_LIMIT })
+      setHistoryEntries(entries)
+    } catch (error) {
+      console.error('Failed to load backup history', error)
+      const message = error instanceof Error ? error.message : '无法加载备份历史。'
+      setHistoryError(message)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [email])
+
+  useEffect(() => {
+    const retention = readStoredBackupHistoryRetention()
+    if (retention.maxEntries === null) {
+      setHistoryRetentionEntries('')
+    } else if (typeof retention.maxEntries === 'number') {
+      setHistoryRetentionEntries(String(retention.maxEntries))
+    }
+    if (retention.maxAgeMs === null) {
+      setHistoryRetentionDays('')
+    } else if (typeof retention.maxAgeMs === 'number' && Number.isFinite(retention.maxAgeMs)) {
+      const days = Math.max(1, Math.round(retention.maxAgeMs / BACKUP_HISTORY_DAY_MS))
+      setHistoryRetentionDays(String(days))
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshBackupHistory()
+  }, [refreshBackupHistory])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const handler = () => {
+      void refreshBackupHistory()
+    }
+    window.addEventListener(BACKUP_HISTORY_UPDATED_EVENT, handler)
+    return () => {
+      window.removeEventListener(BACKUP_HISTORY_UPDATED_EVENT, handler)
+    }
+  }, [refreshBackupHistory])
+
+  useEffect(() => {
+    setHistoryDiffSelection(prev => prev.filter(id => historyEntries.some(entry => entry.id === id)))
+    if (historyPreviewId !== null && !historyEntries.some(entry => entry.id === historyPreviewId)) {
+      setHistoryPreviewId(null)
+    }
+  }, [historyEntries, historyPreviewId])
+
+  const handleHistoryPreviewToggle = useCallback((entryId: number) => {
+    setHistoryPreviewId(current => (current === entryId ? null : entryId))
+  }, [])
+
+  const handleHistoryDiffToggle = useCallback((entryId: number, checked: boolean) => {
+    setHistoryDiffSelection(current => {
+      if (checked) {
+        const filtered = current.filter(id => id !== entryId)
+        const next = [...filtered, entryId]
+        return next.length > 2 ? next.slice(next.length - 2) : next
+      }
+      return current.filter(id => id !== entryId)
+    })
+  }, [])
+
+  const handlePasswordChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setMasterPassword(event.currentTarget.value)
+    setPasswordError(null)
+  }
+
+  const handleApplyHistoryRetention = async () => {
+    const entriesInput = historyRetentionEntries.trim()
+    const daysInput = historyRetentionDays.trim()
+
+    let maxEntriesValue: number | null = null
+    if (entriesInput) {
+      const parsed = Number(entriesInput)
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        showToast({ title: '清理策略无效', description: '数量限制需为正整数或留空。', variant: 'error' })
+        return
+      }
+      maxEntriesValue = Math.floor(parsed)
+    }
+
+    let maxAgeValue: number | null = null
+    if (daysInput) {
+      const parsedDays = Number(daysInput)
+      if (!Number.isFinite(parsedDays) || parsedDays <= 0) {
+        showToast({ title: '清理策略无效', description: '时间限制需为正整数或留空。', variant: 'error' })
+        return
+      }
+      maxAgeValue = Math.floor(parsedDays) * BACKUP_HISTORY_DAY_MS
+    }
+
+    const policy = { maxEntries: maxEntriesValue, maxAgeMs: maxAgeValue }
+    persistBackupHistoryRetention(policy)
+
+    if (!email) {
+      showToast({ title: '保留策略已保存', description: '登录账号后将自动应用。', variant: 'success' })
+      dispatchBackupHistoryUpdated()
+      return
+    }
+
+    try {
+      setHistoryRetentionSaving(true)
+      const removed = await applyBackupHistoryRetention(email, policy)
+      if (removed > 0) {
+        showToast({ title: '已应用保留策略', description: `删除 ${removed} 条旧备份记录。`, variant: 'success' })
+      } else {
+        showToast({ title: '已应用保留策略', description: '当前备份历史无需清理。', variant: 'success' })
+      }
+      dispatchBackupHistoryUpdated()
+    } catch (error) {
+      console.error('Failed to apply backup history retention', error)
+      const message = error instanceof Error ? error.message : '更新备份历史策略失败，请稍后再试。'
+      showToast({ title: '更新失败', description: message, variant: 'error' })
+    } finally {
+      setHistoryRetentionSaving(false)
+    }
+  }
+
+  const handleRestoreFromHistory = async (entry: BackupHistoryEntry) => {
+    if (!email || !encryptionKey) {
+      showToast({ title: '无法恢复备份', description: '请先登录并解锁账号后再试。', variant: 'error' })
+      return
+    }
+    const password = masterPassword.trim()
+    if (!password) {
+      setPasswordError('请先输入主密码再导入备份。')
+      showToast({ title: '缺少主密码', description: '恢复备份前请输入主密码。', variant: 'error' })
+      return
+    }
+    try {
+      setRestoring(true)
+      const result = await importUserData(entry.content, encryptionKey, password)
+      showToast({
+        title: '导入成功',
+        description: `密码 ${result.passwords} 条｜网站 ${result.sites} 个｜文档 ${result.docs} 条`,
+        variant: 'success',
+      })
+      setPasswordError(null)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(BACKUP_IMPORTED_EVENT))
+      }
+    } catch (error) {
+      console.error('Failed to import user backup from history', error)
+      const message = error instanceof Error ? error.message : '导入备份失败，请确认文件无误后重试。'
+      if (message.includes('密码')) {
+        setPasswordError(message)
+      }
+      showToast({ title: '导入失败', description: message, variant: 'error' })
+    } finally {
+      setRestoring(false)
+    }
+  }
+
+  return (
+    <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
+      <div className="space-y-1">
+        <h2 className="text-lg font-medium text-text">备份历史</h2>
+        <p className="text-sm text-muted">
+          最近的备份记录会保留在本地，可离线查看摘要、对比变更并从任意一次备份恢复数据。
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <label htmlFor={passwordInputId} className="text-sm font-medium text-text">
+          主密码
+        </label>
+        <input
+          id={passwordInputId}
+          type="password"
+          value={masterPassword}
+          onChange={handlePasswordChange}
+          placeholder="请输入当前主密码"
+          autoComplete="current-password"
+          disabled={passwordDisabled}
+          className={clsx(
+            'w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+            !passwordDisabled && 'placeholder:text-muted',
+          )}
+        />
+        <p className="text-xs leading-relaxed text-muted">恢复备份历史需要当前主密码，请确认输入无误。</p>
+        {passwordError ? <p className="text-xs text-red-500">{passwordError}</p> : null}
+      </div>
+
+      <div className="space-y-3 rounded-2xl border border-border/50 bg-surface/60 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-text">历史记录</h3>
+            <p className="text-xs leading-relaxed text-muted">查看最近导出的备份摘要并进行恢复或差异对比。</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void refreshBackupHistory()}
+            disabled={historyLoading}
+            className={clsx(
+              'inline-flex items-center justify-center rounded-xl border border-border px-3 py-1 text-xs font-medium transition',
+              'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
+            )}
+          >
+            {historyLoading ? '刷新中…' : '刷新'}
+          </button>
+        </div>
+
+        {historyError ? (
+          <div className="rounded-xl border border-red-400/60 bg-red-500/10 px-3 py-2 text-xs text-red-400">{historyError}</div>
+        ) : null}
+
+        {historyEntries.length === 0 && !historyLoading ? (
+          <p className="text-xs text-muted">暂无备份记录，完成一次自动或手动备份后将显示在此处。</p>
+        ) : null}
+
+        {historyEntries.length > 0 ? (
+          <ul className="space-y-3">
+            {historyEntries.map(entry => {
+              const sizeKb = entry.size > 0 ? entry.size / 1024 : 0
+              const formattedSize = sizeKb >= 1 ? `${sizeKb.toFixed(1)} KB` : `${entry.size} B`
+              const diffChecked = historyDiffSelection.includes(entry.id)
+              return (
+                <li key={entry.id} className="space-y-3 rounded-xl border border-border/60 bg-surface px-3 py-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-text">
+                        {historyDateFormatter.format(new Date(entry.exportedAt))}
+                      </p>
+                      <p className="break-words text-xs text-muted">{entry.fileName}</p>
+                      <p className="text-[11px] font-mono text-muted">SHA-256：{entry.checksum.slice(0, 12)}… ｜ {formattedSize}</p>
+                      <p className="text-[11px] text-muted">
+                        密码 {entry.summary.counts.passwords} ｜ 网站 {entry.summary.counts.sites} ｜ 文档 {entry.summary.counts.docs} ｜ 灵感 {` ${entry.summary.counts.notes}`}
+                      </p>
+                      {entry.github?.path ? <p className="text-[11px] text-muted">GitHub：{entry.github.path}</p> : null}
+                      {entry.destinationPath ? <p className="text-[11px] text-muted">本地：{entry.destinationPath}</p> : null}
+                    </div>
+                    <div className="flex flex-col items-end gap-2 sm:items-center">
+                      <label className="flex items-center gap-2 text-[11px] text-muted">
+                        <input
+                          type="checkbox"
+                          checked={diffChecked}
+                          onChange={event => handleHistoryDiffToggle(entry.id, event.currentTarget.checked)}
+                          className="h-4 w-4 rounded border-border"
+                        />
+                        对比
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleHistoryPreviewToggle(entry.id)}
+                          className={clsx(
+                            'inline-flex items-center rounded-xl border border-border px-3 py-1 text-xs font-medium transition',
+                            'hover:border-border hover:bg-surface-hover',
+                          )}
+                        >
+                          {historyPreviewId === entry.id ? '收起' : '预览'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleRestoreFromHistory(entry)}
+                          disabled={restoring || restoreDisabled}
+                          className={clsx(
+                            'inline-flex items-center rounded-xl bg-primary px-3 py-1 text-xs font-semibold text-background shadow-sm transition',
+                            'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50',
+                          )}
+                        >
+                          {restoring ? '恢复中…' : '恢复'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {historyPreviewId === entry.id ? (
+                    <div className="rounded-lg border border-border/60 bg-background/80 px-3 py-2">
+                      <pre className="max-h-48 overflow-auto text-[11px] leading-5 text-text">
+                        {JSON.stringify(entry.summary, null, 2)}
+                      </pre>
+                      {entry.github?.htmlUrl ? (
+                        <p className="mt-2 text-[11px] text-muted">
+                          提交链接：
+                          <a
+                            href={entry.github.htmlUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-primary underline-offset-2 hover:underline"
+                          >
+                            打开 GitHub
+                          </a>
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </li>
+              )
+            })}
+          </ul>
+        ) : null}
+
+        <div className="space-y-2 rounded-xl border border-dashed border-border/60 bg-background/60 px-3 py-3">
+          <h4 className="text-xs font-semibold text-text">历史保留策略</h4>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-muted">最多保留条数</span>
+              <input
+                type="number"
+                min="0"
+                inputMode="numeric"
+                value={historyRetentionEntries}
+                onChange={event => setHistoryRetentionEntries(event.currentTarget.value)}
+                placeholder="留空表示不限"
+                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-xs text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-muted">保留天数</span>
+              <input
+                type="number"
+                min="0"
+                inputMode="numeric"
+                value={historyRetentionDays}
+                onChange={event => setHistoryRetentionDays(event.currentTarget.value)}
+                placeholder="留空表示不限"
+                className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-xs text-text outline-none transition focus:border-primary/60 focus:bg-surface-hover"
+              />
+            </label>
+          </div>
+          <p className="text-[11px] text-muted">更新后将立即按照新的规则清理旧备份，输入 0 或留空表示不限制。</p>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleApplyHistoryRetention}
+              disabled={historyRetentionSaving || historyLoading}
+              className={clsx(
+                'inline-flex items-center rounded-xl bg-primary px-3 py-1 text-xs font-semibold text-background shadow-sm transition',
+                'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50',
+              )}
+            >
+              {historyRetentionSaving ? '应用中…' : '应用策略'}
+            </button>
+          </div>
+        </div>
+
+        {historyDiffResult ? (
+          <div className="rounded-xl border border-border/60 bg-background/80 p-3">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs font-semibold text-text">
+                JSON 差异：{historyDiffResult.first.fileName} ↔ {historyDiffResult.second.fileName}
+              </p>
+              <p className="text-[11px] text-muted">
+                {historyDateFormatter.format(new Date(historyDiffResult.first.exportedAt))} ｜{' '}
+                {historyDateFormatter.format(new Date(historyDiffResult.second.exportedAt))}
+              </p>
+            </div>
+            <div className="mt-2 max-h-56 overflow-auto rounded-lg border border-border/60 bg-surface px-3 py-2">
+              <pre className="text-[11px] leading-5 text-text">
+                {historyDiffResult.lines.map(line => (
+                  <span
+                    key={line.id}
+                    className={clsx(
+                      'block font-mono',
+                      line.type === 'added'
+                        ? 'text-emerald-500'
+                        : line.type === 'removed'
+                          ? 'text-red-400'
+                          : 'text-muted',
+                    )}
+                  >
+                    {line.type === 'added' ? '+ ' : line.type === 'removed' ? '- ' : '  '}
+                    {line.value}
+                  </span>
+                ))}
+              </pre>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </section>
   )
 }
