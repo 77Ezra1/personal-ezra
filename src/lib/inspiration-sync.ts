@@ -13,6 +13,8 @@ type AuthStateSnapshot = ReturnType<typeof useAuthStore.getState>
 
 type StoredAutoBackupState = {
   githubEnabled?: boolean | null
+  masterPasswordVerified?: boolean | null
+  masterPasswordVerifiedAt?: number | null
 }
 
 const AUTO_BACKUP_STORAGE_KEY = 'pms-auto-backup-settings'
