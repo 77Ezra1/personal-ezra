@@ -59,6 +59,12 @@ const removeVaultFileMock = vi.fn<(relPath: string) => Promise<void>>()
 
 const clipboardWriteTextMock = vi.fn<(text: string) => Promise<void>>()
 const queueInspirationBackupSyncMock = vi.fn()
+const AUTO_BACKUP_FAILURE_TOAST_OPTIONS = {
+  errorToast: {
+    title: '自动备份未完成',
+    description: 'GitHub 自动备份暂时失败，但笔记内容已成功保存；稍后会继续尝试。',
+  },
+} as const
 
 vi.mock('../src/lib/inspiration-notes', () => ({
   NOTE_FEATURE_DISABLED_MESSAGE: '仅在桌面端可用',
@@ -719,6 +725,11 @@ describe('InspirationPanel handleCreateFile', () => {
     await waitFor(() => {
       expect(queueInspirationBackupSyncMock).toHaveBeenCalledTimes(1)
     })
+    const lastCall =
+      queueInspirationBackupSyncMock.mock.calls[
+        queueInspirationBackupSyncMock.mock.calls.length - 1
+      ]
+    expect(lastCall?.[1]).toEqual({ errorToast: false })
   })
 
   it('prefills the create file dialog with the active folder and appends it when missing', async () => {
@@ -1038,6 +1049,11 @@ describe('InspirationPanel synchronization queue', () => {
     await waitFor(() => {
       expect(queueInspirationBackupSyncMock).toHaveBeenCalledTimes(1)
     })
+    const lastCall =
+      queueInspirationBackupSyncMock.mock.calls[
+        queueInspirationBackupSyncMock.mock.calls.length - 1
+      ]
+    expect(lastCall?.[1]).toEqual(AUTO_BACKUP_FAILURE_TOAST_OPTIONS)
   })
 
   it('does not queue sync when saving fails', async () => {
