@@ -311,6 +311,143 @@ describe('InspirationPanel folder listing', () => {
     expect(folderRow).toHaveClass('border-primary')
     expect(await screen.findByRole('button', { name: /Project Plan/ })).toBeInTheDocument()
   })
+
+  it('keeps folders collapsed when switching notes', async () => {
+    const now = Date.now()
+    const folderNote = {
+      id: 'Projects/Project Plan',
+      title: 'Project Plan',
+      createdAt: now,
+      updatedAt: now,
+      excerpt: '',
+      searchText: '',
+      tags: [],
+      attachments: [],
+    }
+    const rootNote = {
+      id: 'Inbox Note',
+      title: 'Inbox Note',
+      createdAt: now,
+      updatedAt: now,
+      excerpt: '',
+      searchText: '',
+      tags: [],
+      attachments: [],
+    }
+    listNotesMock.mockResolvedValue([folderNote, rootNote])
+    listNoteFoldersMock.mockResolvedValue(['Projects'])
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    const collapseToggle = await screen.findByRole('button', { name: '折叠 Projects' })
+    await user.click(collapseToggle)
+
+    const expandToggle = await screen.findByRole('button', { name: '展开 Projects' })
+    await waitFor(() => {
+      expect(expandToggle).toHaveAttribute('aria-expanded', 'false')
+    })
+
+    await user.click(await screen.findByRole('button', { name: 'Inbox Note' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '展开 Projects' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      )
+    })
+  })
+
+  it('keeps folders collapsed after refreshing the list', async () => {
+    const now = Date.now()
+    const note = {
+      id: 'Projects/Project Plan',
+      title: 'Project Plan',
+      createdAt: now,
+      updatedAt: now,
+      excerpt: '',
+      searchText: '',
+      tags: [],
+      attachments: [],
+    }
+    listNotesMock.mockResolvedValue([note])
+    listNoteFoldersMock.mockResolvedValue(['Projects'])
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    const collapseToggle = await screen.findByRole('button', { name: '折叠 Projects' })
+    await user.click(collapseToggle)
+
+    const expandToggle = await screen.findByRole('button', { name: '展开 Projects' })
+    await waitFor(() => {
+      expect(expandToggle).toHaveAttribute('aria-expanded', 'false')
+    })
+
+    await user.click(screen.getByRole('button', { name: '刷新列表' }))
+
+    await waitFor(() => {
+      expect(listNotesMock).toHaveBeenCalledTimes(2)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '展开 Projects' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      )
+    })
+  })
+
+  it('keeps folders collapsed after toggling search mode', async () => {
+    const now = Date.now()
+    const note = {
+      id: 'Projects/Project Plan',
+      title: 'Project Plan',
+      createdAt: now,
+      updatedAt: now,
+      excerpt: '',
+      searchText: '',
+      tags: [],
+      attachments: [],
+    }
+    listNotesMock.mockResolvedValue([note])
+    listNoteFoldersMock.mockResolvedValue(['Projects'])
+    const user = userEvent.setup()
+
+    renderPanel()
+
+    const collapseToggle = await screen.findByRole('button', { name: '折叠 Projects' })
+    await user.click(collapseToggle)
+
+    const expandToggle = await screen.findByRole('button', { name: '展开 Projects' })
+    await waitFor(() => {
+      expect(expandToggle).toHaveAttribute('aria-expanded', 'false')
+    })
+
+    const searchInput = screen.getByRole('searchbox', { name: '搜索笔记' })
+    await user.type(searchInput, 'Project')
+
+    await waitFor(() => {
+      expect(screen.getByText(/搜索结果/)).toBeInTheDocument()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '展开 Projects' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      )
+    })
+
+    const clearButton = await screen.findByRole('button', { name: '清除搜索' })
+    await user.click(clearButton)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '展开 Projects' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      )
+    })
+  })
 })
 
 describe('InspirationPanel handleCreateFolder', () => {

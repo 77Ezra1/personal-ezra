@@ -1280,14 +1280,13 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     })
   }, [collectAllFolderPaths])
 
+  const [pendingFolderHighlight, setPendingFolderHighlight] = useState<string | null>(null)
+
   useEffect(() => {
-    if (!selectedId) return
-    const segments = selectedId.split('/').filter(Boolean)
-    if (segments.length <= 1) return
-    segments.pop()
-    const targetPath = segments.join('/')
-    expandFolderPath(targetPath)
-  }, [expandFolderPath, selectedId])
+    if (!pendingFolderHighlight) return
+    expandFolderPath(pendingFolderHighlight)
+    setPendingFolderHighlight(null)
+  }, [expandFolderPath, pendingFolderHighlight])
 
   useEffect(() => {
     const handler = window.setTimeout(() => {
@@ -1601,7 +1600,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         .slice(0, -1)
         .join('/')
       if (parentPath) {
-        expandFolderPath(parentPath)
+        setPendingFolderHighlight(parentPath)
         setActiveFolderPath(parentPath)
       }
 
@@ -1645,7 +1644,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     activeFolderPath,
     createNoteFile,
     createNoteInput,
-    expandFolderPath,
+    setPendingFolderHighlight,
     cleanupPendingAttachments,
     isDesktop,
     loadNote,
@@ -1670,7 +1669,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         set.add(sanitized)
         return Array.from(set)
       })
-      expandFolderPath(sanitized)
+      setPendingFolderHighlight(sanitized)
       setActiveFolderPath(sanitized)
       await refreshNotes()
       showToast({
@@ -1693,7 +1692,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   }, [
     createNoteFolder,
     createFolderInput,
-    expandFolderPath,
+    setPendingFolderHighlight,
     queueInspirationBackupSync,
     refreshNotes,
     showToast,
@@ -1719,7 +1718,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     try {
       const sanitized = await renameNoteFolder(renameFolderTargetPath, nextPath)
       await refreshNotes()
-      expandFolderPath(sanitized)
+      setPendingFolderHighlight(sanitized)
       setActiveFolderPath(prev => {
         if (!prev) return prev
         if (prev === renameFolderTargetPath) return sanitized
@@ -1747,7 +1746,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
       setRenameFolderSubmitting(false)
     }
   }, [
-    expandFolderPath,
+    setPendingFolderHighlight,
     isDesktop,
     queueInspirationBackupSync,
     refreshNotes,
