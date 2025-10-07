@@ -1066,7 +1066,15 @@ function InspirationLinkViewer({ url, onClose }: InspirationLinkViewerProps) {
         />
         {loadState === 'error' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-border bg-surface/90 p-6 text-center text-sm text-muted">
-            <p>链接无法在应用内预览，可能是因为目标站点禁止在第三方应用中嵌入。</p>
+            <div className="space-y-2">
+              <p>
+                链接无法在应用内预览，常见原因是目标站点设置了 <code>X-Frame-Options</code> 或
+                <code> Content-Security-Policy (frame-ancestors)</code> 来禁止第三方 iframe。
+              </p>
+              <p>
+                如果确实需要在应用内部展示此内容，可考虑：自建一个代理服务去除相关响应头（需注意目标站点的使用条款），或改用截图/摘要等间接形式呈现。否则请直接在系统浏览器中打开。
+              </p>
+            </div>
             <button
               type="button"
               onClick={handleOpenExternal}
