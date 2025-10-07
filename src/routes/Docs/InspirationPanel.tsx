@@ -976,6 +976,19 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const [createFolderInput, setCreateFolderInput] = useState('')
   const [createFolderError, setCreateFolderError] = useState<string | null>(null)
   const [createFolderSubmitting, setCreateFolderSubmitting] = useState(false)
+  const [renameFolderDialogOpen, setRenameFolderDialogOpen] = useState(false)
+  const [renameFolderInput, setRenameFolderInput] = useState('')
+  const [renameFolderError, setRenameFolderError] = useState<string | null>(null)
+  const [renameFolderSubmitting, setRenameFolderSubmitting] = useState(false)
+  const [renameFolderTargetPath, setRenameFolderTargetPath] = useState<string | null>(null)
+  const [insertLinkDialogOpen, setInsertLinkDialogOpen] = useState(false)
+  const [insertLinkUrl, setInsertLinkUrl] = useState('')
+  const [insertLinkError, setInsertLinkError] = useState<string | null>(null)
+  const [insertLinkSelection, setInsertLinkSelection] = useState<{
+    start: number
+    end: number
+    label: string
+  } | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const tagInputRef = useRef<HTMLInputElement | null>(null)
   const draftSnapshotRef = useRef<string>(createDraftSnapshot(createEmptyDraft()))
@@ -1061,6 +1074,11 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     () => normalizePathInput(createFolderInput),
     [createFolderInput],
   )
+  const normalizedRenameFolderPath = useMemo(
+    () => normalizePathInput(renameFolderInput),
+    [renameFolderInput],
+  )
+  const normalizedInsertLinkUrl = useMemo(() => insertLinkUrl.trim(), [insertLinkUrl])
 
   const filteredFolderSet = useMemo(() => {
     const paths = new Set<string>()
@@ -1294,20 +1312,65 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     try {
       setLoadingList(true)
       const [results, folders] = await Promise.all([listNotes(), listNoteFolders()])
+      const sanitizedFolders = folders
+        .map(folder =>
+          folder
+            .split('/')
+            .map(segment => segment.trim())
+            .filter(Boolean)
+            .join('/'),
+        )
+        .filter(Boolean)
       setNotes(results)
       setExtraFolders(() => {
-        const set = new Set(
-          folders
-            .map(folder =>
-              folder
-                .split('/')
-                .map(segment => segment.trim())
-                .filter(Boolean)
-                .join('/'),
-            )
-            .filter(Boolean),
-        )
+        const set = new Set(sanitizedFolders)
         return Array.from(set)
+      })
+      setExpandedFolders(prev => {
+        if (prev.length > 0 || foldersInitializedRef.current) {
+          return prev
+        }
+
+        const paths = new Set<string>()
+        const addSegments = (segments: string[]) => {
+          let current = ''
+          for (const segment of segments) {
+            const trimmed = segment.trim()
+            if (!trimmed) continue
+            current = current ? `${current}/${trimmed}` : trimmed
+            paths.add(current)
+          }
+        }
+
+        for (const note of results) {
+          const segments = note.id
+            .split('/')
+            .map(segment => segment.trim())
+            .filter(Boolean)
+          if (segments.length <= 1) continue
+          segments.pop()
+          if (segments.length > 0) {
+            addSegments(segments)
+          }
+        }
+
+        for (const folderPath of sanitizedFolders) {
+          const segments = folderPath
+            .split('/')
+            .map(segment => segment.trim())
+            .filter(Boolean)
+          if (segments.length > 0) {
+            addSegments(segments)
+          }
+        }
+
+        const next = Array.from(paths)
+        if (next.length === 0) {
+          return prev
+        }
+        knownFoldersRef.current = new Set(next)
+        foldersInitializedRef.current = true
+        return next
       })
       setError(null)
     } catch (err) {
@@ -1455,6 +1518,16 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     setCreateFolderDialogOpen(true)
   }, [])
 
+  const handleRenameFolderInputChange = useCallback((value: string) => {
+    setRenameFolderInput(value)
+    const normalized = normalizePathInput(value)
+    if (!normalized && value.length > 0) {
+      setRenameFolderError('文件夹名称不能为空，请重新输入。')
+    } else {
+      setRenameFolderError(null)
+    }
+  }, [])
+
   const handleCreateNoteInputChange = useCallback((value: string) => {
     setCreateNoteInput(value)
     const normalized = normalizePathInput(value)
@@ -1488,6 +1561,14 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     setCreateFolderInput('')
     setCreateFolderError(null)
   }, [createFolderSubmitting])
+
+  const handleRenameFolderDialogCancel = useCallback(() => {
+    if (renameFolderSubmitting) return
+    setRenameFolderDialogOpen(false)
+    setRenameFolderInput('')
+    setRenameFolderError(null)
+    setRenameFolderTargetPath(null)
+  }, [renameFolderSubmitting])
 
   const handleConfirmCreateNote = useCallback(async () => {
     if (!isDesktop) return
@@ -1608,63 +1689,74 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     showToast,
   ])
 
+  const handleConfirmRenameFolder = useCallback(async () => {
+    if (!isDesktop || !renameFolderTargetPath) return
+    const normalized = normalizePathInput(renameFolderInput)
+    if (!normalized) {
+      setRenameFolderError('文件夹名称不能为空，请重新输入。')
+      return
+    }
+
+    const segments = renameFolderTargetPath.split('/').filter(Boolean)
+    const parentPath = segments.slice(0, -1).join('/')
+    const nextPath = normalized.includes('/')
+      ? normalized
+      : parentPath
+      ? `${parentPath}/${normalized}`
+      : normalized
+
+    setRenameFolderSubmitting(true)
+    try {
+      const sanitized = await renameNoteFolder(renameFolderTargetPath, nextPath)
+      await refreshNotes()
+      expandFolderPath(sanitized)
+      setActiveFolderPath(prev => {
+        if (!prev) return prev
+        if (prev === renameFolderTargetPath) return sanitized
+        if (prev.startsWith(`${renameFolderTargetPath}/`)) {
+          const suffix = prev.slice(renameFolderTargetPath.length + 1)
+          return suffix ? `${sanitized}/${suffix}` : sanitized
+        }
+        return prev
+      })
+      showToast({
+        title: '文件夹已重命名',
+        description: `已更新为：${sanitized}`,
+        variant: 'success',
+      })
+      queueInspirationBackupSync(showToast)
+      setRenameFolderDialogOpen(false)
+      setRenameFolderInput('')
+      setRenameFolderError(null)
+      setRenameFolderTargetPath(null)
+    } catch (err) {
+      console.error('Failed to rename inspiration note folder', err)
+      const message = err instanceof Error ? err.message : '重命名文件夹失败，请稍后再试。'
+      showToast({ title: '重命名失败', description: message, variant: 'error' })
+    } finally {
+      setRenameFolderSubmitting(false)
+    }
+  }, [
+    expandFolderPath,
+    isDesktop,
+    queueInspirationBackupSync,
+    refreshNotes,
+    renameFolderInput,
+    renameFolderTargetPath,
+    showToast,
+  ])
+
   const handleRenameFolder = useCallback(
-    async (path: string) => {
-      if (typeof window === 'undefined') return
+    (path: string) => {
+      if (!isDesktop) return
       const segments = path.split('/').filter(Boolean)
       const currentName = segments.at(-1) ?? path
-      const parentPath = segments.slice(0, -1).join('/')
-      const input = window.prompt(
-        '请输入新的文件夹名称或路径（可使用 / 表示层级）',
-        currentName,
-      )
-      if (input === null) return
-      const normalizedInput = input
-        .split('/')
-        .map(segment => segment.trim())
-        .filter(Boolean)
-        .join('/')
-      if (!normalizedInput) {
-        showToast({
-          title: '重命名失败',
-          description: '文件夹名称不能为空，请重新输入。',
-          variant: 'error',
-        })
-        return
-      }
-
-      const nextPath = normalizedInput.includes('/')
-        ? normalizedInput
-        : parentPath
-        ? `${parentPath}/${normalizedInput}`
-        : normalizedInput
-
-      try {
-        const sanitized = await renameNoteFolder(path, nextPath)
-        await refreshNotes()
-        expandFolderPath(sanitized)
-        setActiveFolderPath(prev => {
-          if (!prev) return prev
-          if (prev === path) return sanitized
-          if (prev.startsWith(`${path}/`)) {
-            const suffix = prev.slice(path.length + 1)
-            return suffix ? `${sanitized}/${suffix}` : sanitized
-          }
-          return prev
-        })
-        showToast({
-          title: '文件夹已重命名',
-          description: `已更新为：${sanitized}`,
-          variant: 'success',
-        })
-        queueInspirationBackupSync(showToast)
-      } catch (err) {
-        console.error('Failed to rename inspiration note folder', err)
-        const message = err instanceof Error ? err.message : '重命名文件夹失败，请稍后再试。'
-        showToast({ title: '重命名失败', description: message, variant: 'error' })
-      }
+      setRenameFolderTargetPath(path)
+      setRenameFolderInput(currentName)
+      setRenameFolderError(null)
+      setRenameFolderDialogOpen(true)
     },
-    [expandFolderPath, queueInspirationBackupSync, refreshNotes, showToast],
+    [isDesktop],
   )
 
   const handleDeleteFolder = useCallback(
@@ -1696,6 +1788,52 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
     },
     [queueInspirationBackupSync, refreshNotes, showToast],
   )
+
+  const handleInsertLinkUrlChange = useCallback((value: string) => {
+    setInsertLinkUrl(value)
+    const trimmed = value.trim()
+    if (!trimmed && value.length > 0) {
+      setInsertLinkError('链接地址不能为空，请输入有效的 URL。')
+    } else {
+      setInsertLinkError(null)
+    }
+  }, [])
+
+  const handleInsertLinkDialogCancel = useCallback(() => {
+    setInsertLinkDialogOpen(false)
+    setInsertLinkUrl('')
+    setInsertLinkError(null)
+    setInsertLinkSelection(null)
+  }, [])
+
+  const handleConfirmInsertLink = useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea || !insertLinkSelection) return
+    const trimmedUrl = insertLinkUrl.trim()
+    if (!trimmedUrl) {
+      setInsertLinkError('链接地址不能为空，请输入有效的 URL。')
+      return
+    }
+
+    const { start, end, label } = insertLinkSelection
+    const markdown = `[${label}](${trimmedUrl})`
+    setDraft(prev => {
+      const value = prev.content
+      const nextValue = `${value.slice(0, start)}${markdown}${value.slice(end)}`
+      return { ...prev, content: nextValue }
+    })
+    setInsertLinkDialogOpen(false)
+    setInsertLinkUrl('')
+    setInsertLinkError(null)
+    setInsertLinkSelection(null)
+    window.requestAnimationFrame(() => {
+      const target = textareaRef.current
+      if (!target) return
+      target.focus()
+      const caret = start + markdown.length
+      target.setSelectionRange(caret, caret)
+    })
+  }, [insertLinkSelection, insertLinkUrl, setDraft])
 
   const handleTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const { value } = event.currentTarget
@@ -1829,18 +1967,15 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
   const handleInsertLink = useCallback(() => {
     const textarea = textareaRef.current
     if (!textarea) return
-    const url = window.prompt('请输入要插入的链接地址')
-    if (!url) return
-    const { selectionStart, selectionEnd, value } = textarea
-    const label = selectionStart !== selectionEnd ? value.slice(selectionStart, selectionEnd) : '链接标题'
-    const markdown = `[${label}](${url})`
-    const nextValue = `${value.slice(0, selectionStart)}${markdown}${value.slice(selectionEnd)}`
-    setDraft(prev => ({ ...prev, content: nextValue }))
-    window.requestAnimationFrame(() => {
-      textarea.focus()
-      const caret = selectionStart + markdown.length
-      textarea.setSelectionRange(caret, caret)
-    })
+    const start = textarea.selectionStart ?? 0
+    const end = textarea.selectionEnd ?? start
+    const value = textarea.value
+    const selectedText = start !== end ? value.slice(start, end) : ''
+    const label = selectedText || '链接标题'
+    setInsertLinkSelection({ start, end, label })
+    setInsertLinkUrl('')
+    setInsertLinkError(null)
+    setInsertLinkDialogOpen(true)
   }, [])
 
   const handleAttachmentUpload = useCallback(
@@ -2229,6 +2364,113 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         onCancel={handleCreateFolderDialogCancel}
         disableConfirm={!normalizedCreateFolderPath || createFolderSubmitting}
         loading={createFolderSubmitting}
+      />
+      <ConfirmDialog
+        open={renameFolderDialogOpen}
+        title="重命名文件夹"
+        description={
+          <div className="mt-4 space-y-3">
+            <p className="text-sm text-muted">
+              请输入新的文件夹名称（可使用 / 表示层级）。
+              {renameFolderTargetPath ? ` 当前路径：${renameFolderTargetPath}` : null}
+            </p>
+            <div className="space-y-1">
+              <label htmlFor="rename-folder-path" className="text-sm font-medium text-text">
+                新的文件夹路径
+              </label>
+              <input
+                id="rename-folder-path"
+                type="text"
+                value={renameFolderInput}
+                onChange={event => {
+                  handleRenameFolderInputChange(event.currentTarget.value)
+                }}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    if (
+                      normalizedRenameFolderPath &&
+                      !renameFolderSubmitting &&
+                      renameFolderTargetPath
+                    ) {
+                      void handleConfirmRenameFolder()
+                    }
+                  }
+                }}
+                autoComplete="off"
+                aria-invalid={renameFolderError ? 'true' : 'false'}
+                className={clsx(
+                  'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary/40',
+                  renameFolderError && 'border-rose-500/70 focus:border-rose-500 focus-visible:ring-rose-500/40',
+                )}
+              />
+              {renameFolderError ? (
+                <p className="text-xs text-rose-500">{renameFolderError}</p>
+              ) : (
+                <p className="text-xs text-muted">示例：Projects/Ideas</p>
+              )}
+            </div>
+          </div>
+        }
+        confirmLabel="重命名"
+        onConfirm={() => {
+          void handleConfirmRenameFolder()
+        }}
+        onCancel={handleRenameFolderDialogCancel}
+        disableConfirm={
+          !normalizedRenameFolderPath || renameFolderSubmitting || !renameFolderTargetPath
+        }
+        loading={renameFolderSubmitting}
+      />
+      <ConfirmDialog
+        open={insertLinkDialogOpen}
+        title="插入链接"
+        description={
+          <div className="mt-4 space-y-3">
+            <p className="text-sm text-muted">请输入要插入的链接地址。</p>
+            {insertLinkSelection && (
+              <p className="text-xs text-muted">
+                链接标题：<span className="font-medium text-text">{insertLinkSelection.label}</span>
+              </p>
+            )}
+            <div className="space-y-1">
+              <label htmlFor="insert-link-url" className="text-sm font-medium text-text">
+                链接地址
+              </label>
+              <input
+                id="insert-link-url"
+                type="text"
+                value={insertLinkUrl}
+                onChange={event => {
+                  handleInsertLinkUrlChange(event.currentTarget.value)
+                }}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    if (normalizedInsertLinkUrl && insertLinkSelection) {
+                      handleConfirmInsertLink()
+                    }
+                  }
+                }}
+                autoComplete="off"
+                aria-invalid={insertLinkError ? 'true' : 'false'}
+                className={clsx(
+                  'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition focus:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary/40',
+                  insertLinkError && 'border-rose-500/70 focus:border-rose-500 focus-visible:ring-rose-500/40',
+                )}
+              />
+              {insertLinkError ? (
+                <p className="text-xs text-rose-500">{insertLinkError}</p>
+              ) : (
+                <p className="text-xs text-muted">示例：https://example.com</p>
+              )}
+            </div>
+          </div>
+        }
+        confirmLabel="插入"
+        onConfirm={handleConfirmInsertLink}
+        onCancel={handleInsertLinkDialogCancel}
+        disableConfirm={!normalizedInsertLinkUrl || !insertLinkSelection}
       />
     </>
   )
