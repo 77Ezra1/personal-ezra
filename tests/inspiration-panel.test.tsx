@@ -463,12 +463,14 @@ describe('InspirationPanel folder actions', () => {
     listNoteFoldersMock.mockResolvedValueOnce(['Projects'])
     listNoteFoldersMock.mockResolvedValueOnce([])
     deleteNoteFolderMock.mockResolvedValue()
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
 
     renderPanel()
 
     await user.click(await screen.findByRole('button', { name: '删除文件夹 Projects' }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: '确认' }))
 
     await waitFor(() => {
       expect(deleteNoteFolderMock).toHaveBeenCalledWith('Projects')
@@ -486,19 +488,19 @@ describe('InspirationPanel folder actions', () => {
     await waitFor(() => {
       expect(queueInspirationBackupSyncMock).toHaveBeenCalledTimes(1)
     })
-
-    confirmSpy.mockRestore()
   })
 
   it('surfaces errors when folder deletion fails', async () => {
     listNoteFoldersMock.mockResolvedValue(['Projects'])
     deleteNoteFolderMock.mockRejectedValue(new Error('文件夹不存在'))
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
 
     renderPanel()
 
     await user.click(await screen.findByRole('button', { name: '删除文件夹 Projects' }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: '确认' }))
 
     await waitFor(() => {
       expect(deleteNoteFolderMock).toHaveBeenCalledWith('Projects')
@@ -510,8 +512,6 @@ describe('InspirationPanel folder actions', () => {
       expect(listNotesMock).toHaveBeenCalledTimes(1)
     })
     expect(queueInspirationBackupSyncMock).not.toHaveBeenCalled()
-
-    confirmSpy.mockRestore()
   })
 })
 
@@ -713,7 +713,7 @@ describe('InspirationPanel link insertion', () => {
     const input = within(dialog).getByLabelText('链接地址')
     await user.type(input, '   ')
 
-    expect(await screen.findByText('链接地址不能为空，请输入有效的 URL。')).toBeInTheDocument()
+    expect(await within(dialog).findByText('链接地址不能为空，请输入有效的 URL。')).toBeInTheDocument()
     const confirmButton = within(dialog).getByRole('button', { name: '插入' })
     expect(confirmButton).toBeDisabled()
 
@@ -913,7 +913,6 @@ describe('InspirationPanel synchronization queue', () => {
     listNotesMock.mockResolvedValue([noteSummary])
     listNoteFoldersMock.mockResolvedValue(['Projects'])
     loadNoteMock.mockResolvedValue(noteDetail)
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
 
     renderPanel()
@@ -923,13 +922,14 @@ describe('InspirationPanel synchronization queue', () => {
 
     await user.click(await screen.findByRole('button', { name: '删除' }))
 
+    const dialog = await screen.findByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: '确认' }))
+
     await waitFor(() => {
       expect(deleteNoteMock).toHaveBeenCalledWith('Projects/Foo.md')
     })
     await waitFor(() => {
       expect(queueInspirationBackupSyncMock).toHaveBeenCalledTimes(1)
     })
-
-    confirmSpy.mockRestore()
   })
 })
