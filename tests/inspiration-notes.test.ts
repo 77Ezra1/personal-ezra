@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest'
+import { GLOBAL_TOAST_EVENT, type GlobalToastPayload } from '../src/lib/global-toast'
+import * as inspirationNoteSyncQueue from '../src/lib/inspiration-note-sync-queue'
 
 vi.mock('../src/env', () => ({
   isTauriRuntime: vi.fn(() => true),
@@ -78,6 +80,15 @@ const invokeMock = vi.mocked(invoke)
 type FileMap = Map<string, string>
 type FsDirEntry = Awaited<ReturnType<typeof readDir>>[number]
 
+const globalToastEvents: GlobalToastPayload[] = []
+
+const handleGlobalToast = (event: Event) => {
+  const detail = (event as CustomEvent<GlobalToastPayload>).detail
+  if (detail) {
+    globalToastEvents.push(detail)
+  }
+}
+
 function normalizePath(path: string) {
   return path.replace(/\\/g, '/')
 }
@@ -98,7 +109,10 @@ describe('inspiration notes storage', () => {
   const directories = new Set<string>()
 
   beforeEach(() => {
+    vi.useFakeTimers()
     vi.clearAllMocks()
+    globalToastEvents.length = 0
+    window.addEventListener(GLOBAL_TOAST_EVENT, handleGlobalToast as EventListener)
     files.clear()
     directories.clear()
     isTauriRuntimeMock.mockReturnValue(true)
@@ -229,6 +243,13 @@ describe('inspiration notes storage', () => {
         throw new Error(`File not found: ${source}`)
       }
     })
+  })
+
+  afterEach(async () => {
+    window.removeEventListener(GLOBAL_TOAST_EVENT, handleGlobalToast as EventListener)
+    await inspirationNoteSyncQueue.flushPendingGithubNoteSync()
+    vi.runOnlyPendingTimers()
+    vi.useRealTimers()
   })
 
   it('raises friendly error when runtime is not Tauri', async () => {
@@ -442,13 +463,20 @@ describe('inspiration notes storage', () => {
     expect(reloaded.attachments).toEqual([])
   })
 
-  it('syncs GitHub with create commit message when saving a new note', async () => {
+  it('queues GitHub sync with create commit message when saving a new note', async () => {
     const saved = await saveNote({
       title: '同步创建',
       content: '同步内容',
       tags: [],
       attachments: [],
     })
+
+    expect(syncGithubNoteFileMock).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(inspirationNoteSyncQueue.NOTE_CONTENT_SYNC_DELAY_MS - 1)
+    expect(syncGithubNoteFileMock).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
 
     expect(syncGithubNoteFileMock).toHaveBeenCalledTimes(1)
     expect(syncGithubNoteFileMock).toHaveBeenCalledWith(
@@ -458,16 +486,13 @@ describe('inspiration notes storage', () => {
     )
   })
 
-  it('syncs GitHub with update commit message when updating an existing note', async () => {
+  it('resets pending GitHub sync and uploads latest content on repeated saves', async () => {
     const saved = await saveNote({
       title: '同步更新',
       content: '初始版本',
       tags: [],
       attachments: [],
     })
-
-    syncGithubNoteFileMock.mockClear()
-    syncGithubNoteFileMock.mockResolvedValue(false)
 
     const updated = await saveNote({
       id: saved.id,
@@ -478,26 +503,54 @@ describe('inspiration notes storage', () => {
     })
 
     expect(updated.id).toBe(saved.id)
+    expect(syncGithubNoteFileMock).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(inspirationNoteSyncQueue.NOTE_CONTENT_SYNC_DELAY_MS)
+
     expect(syncGithubNoteFileMock).toHaveBeenCalledTimes(1)
-    expect(syncGithubNoteFileMock).toHaveBeenCalledWith(
-      saved.id,
-      expect.any(String),
-      { commitMessage: `Update inspiration note: ${saved.id}` },
-    )
+    const [syncedPath, syncedContent, options] = syncGithubNoteFileMock.mock.calls[0]!
+    expect(syncedPath).toBe(saved.id)
+    expect(syncedContent).toContain('第二版')
+    expect(options).toEqual({ commitMessage: `Update inspiration note: ${saved.id}` })
   })
 
-  it('rolls back new note locally when GitHub sync fails during save', async () => {
-    syncGithubNoteFileMock.mockRejectedValueOnce(new Error('服务不可用'))
+  it('rolls back new note locally when GitHub sync queueing fails', async () => {
+    const queueSpy = vi
+      .spyOn(inspirationNoteSyncQueue, 'queueGithubNoteContentSync')
+      .mockImplementation(() => false)
 
     await expect(
       saveNote({ title: '临时同步失败', content: '无法上传', tags: [], attachments: [] }),
-    ).rejects.toThrow('GitHub 同步失败：服务不可用')
+    ).rejects.toThrow('GitHub 同步失败')
 
-    expect(syncGithubNoteFileMock).toHaveBeenCalledTimes(1)
+    expect(syncGithubNoteFileMock).not.toHaveBeenCalled()
     expect(files.size).toBe(0)
+
+    queueSpy.mockRestore()
   })
 
-  it('restores previous content when GitHub sync fails while updating a note', async () => {
+  it('emits toast notification when GitHub sync fails after delay', async () => {
+    syncGithubNoteFileMock.mockRejectedValueOnce(new Error('服务不可用'))
+
+    const saved = await saveNote({
+      title: '延迟同步失败',
+      content: '最终内容',
+      tags: [],
+      attachments: [],
+    })
+
+    await vi.advanceTimersByTimeAsync(inspirationNoteSyncQueue.NOTE_CONTENT_SYNC_DELAY_MS)
+    await vi.runAllTimersAsync()
+
+    expect(globalToastEvents).toHaveLength(1)
+    expect(globalToastEvents[0]?.variant).toBe('error')
+    expect(globalToastEvents[0]?.description).toContain('服务不可用')
+
+    const localPath = `C:/mock/AppData/Personal/data/notes/${saved.id}`
+    expect(files.get(localPath)).toContain('最终内容')
+  })
+
+  it('restores previous content when GitHub sync queueing fails during update', async () => {
     const saved = await saveNote({
       title: '需要回滚',
       content: '旧版本内容',
@@ -507,16 +560,20 @@ describe('inspiration notes storage', () => {
 
     const [storedPath, storedContents] = Array.from(files.entries())[0]!
 
-    syncGithubNoteFileMock.mockClear()
-    syncGithubNoteFileMock.mockRejectedValueOnce(new Error('更新失败'))
+    const queueSpy = vi
+      .spyOn(inspirationNoteSyncQueue, 'queueGithubNoteContentSync')
+      .mockImplementation(() => {
+        throw new Error('更新失败')
+      })
 
     await expect(
       saveNote({ id: saved.id, title: '需要回滚', content: '新版本', tags: [], attachments: [] }),
     ).rejects.toThrow('GitHub 同步失败：更新失败')
 
-    expect(syncGithubNoteFileMock).toHaveBeenCalledTimes(1)
+    expect(syncGithubNoteFileMock).not.toHaveBeenCalled()
     expect(files.size).toBe(1)
     expect(files.get(storedPath)).toBe(storedContents)
+    queueSpy.mockRestore()
   })
 
   it('extracts hashtags from content and merges with provided tags when saving', async () => {

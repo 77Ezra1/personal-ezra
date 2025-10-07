@@ -12,6 +12,8 @@ import {
 import { removeVaultFile, type VaultFileMeta } from './vault'
 import { NOTES_DIR_NAME } from './inspiration-constants'
 import { deleteGithubNoteFile, ensureGithubNoteFolder, syncGithubNoteFile } from './inspiration-github'
+import { queueGithubNoteContentSync } from './inspiration-note-sync-queue'
+import { showGlobalToast } from './global-toast'
 
 export { NOTES_DIR_NAME } from './inspiration-constants'
 export const NOTE_FILE_EXTENSION = '.md'
@@ -1075,11 +1077,25 @@ export async function saveNote(draft: NoteDraft): Promise<NoteDetail> {
   await writeTextFile(filePath, serialized)
 
   try {
-    await syncGithubNoteFile(notePath, serialized, {
+    const queued = queueGithubNoteContentSync(notePath, serialized, {
       commitMessage: draft.id
         ? `Update inspiration note: ${notePath}`
         : `Create inspiration note: ${notePath}`,
+      onError: error => {
+        console.error('Failed to synchronize inspiration note to GitHub', error)
+        const normalized = toGithubSyncError(error)
+        showGlobalToast({
+          title: '同步未完成',
+          description: normalized.message,
+          variant: 'error',
+          duration: 7000,
+        })
+      },
     })
+
+    if (!queued) {
+      throw new Error('Failed to queue inspiration note sync task')
+    }
   } catch (error) {
     try {
       if (fileExistedBeforeSave) {
