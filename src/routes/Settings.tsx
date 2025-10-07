@@ -21,11 +21,13 @@ import { openDialog } from '../lib/tauri-dialog'
 import { isTauriRuntime } from '../env'
 import {
   useCallback,
+  useContext,
   useEffect,
   useId,
   useMemo,
   useRef,
   useState,
+  createContext,
   type ChangeEvent,
   type Dispatch,
   type FormEvent,
@@ -746,6 +748,8 @@ function GitHubConnectionSection() {
 }
 
 export default function Settings() {
+  const backupState = useBackupSettingsState()
+
   const sectionCategories = useMemo<SettingsCategory[]>(
     () => [
       {
@@ -784,12 +788,29 @@ export default function Settings() {
         key: 'data',
         label: '数据管理',
         sections: [
-          { key: 'data-backup', label: '数据备份', render: () => <DataBackupSection /> },
+          {
+            key: 'local-backup',
+            label: '本地备份',
+            render: () => (
+              <BackupSettingsContext.Provider value={backupState}>
+                <LocalBackupSection />
+              </BackupSettingsContext.Provider>
+            ),
+          },
+          {
+            key: 'github-backup',
+            label: 'GitHub 备份',
+            render: () => (
+              <BackupSettingsContext.Provider value={backupState}>
+                <GithubBackupSection />
+              </BackupSettingsContext.Provider>
+            ),
+          },
           { key: 'backup-history', label: '备份历史', render: () => <BackupHistorySection /> },
         ],
       },
     ],
-    [],
+    [backupState],
   )
 
   const allSections = useMemo(
@@ -957,9 +978,22 @@ function ThemeModeSection() {
   )
 }
 
-export { DataBackupSection, BackupHistorySection }
+export { LocalBackupSection, GithubBackupSection, BackupHistorySection }
 
-function DataBackupSection() {
+type BackupSettingsState = ReturnType<typeof useBackupSettingsState>
+
+const BackupSettingsContext = createContext<BackupSettingsState | null>(null)
+
+function useBackupSettings(): BackupSettingsState {
+  const context = useContext(BackupSettingsContext)
+  if (!context) {
+    throw new Error('useBackupSettings must be used within BackupSettingsContext provider')
+  }
+  return context
+}
+
+function useBackupSettingsState() {
+
   const email = useAuthStore(state => state.email)
   const encryptionKey = useAuthStore(state => state.encryptionKey)
   const profile = useAuthStore(selectAuthProfile)
@@ -1987,13 +2021,119 @@ function DataBackupSection() {
     }
     await performImport(file)
   }
+  return {
+    passwordInputId,
+    masterPassword,
+    passwordError,
+    passwordDisabled,
+    handlePasswordChange,
+    dataPath,
+    defaultDataPath,
+    selectingDataPath,
+    resettingDataPath,
+    handleSelectDataPath,
+    handleResetDataPath,
+    backupPath,
+    defaultBackupPath,
+    selectingBackupPath,
+    resettingBackupPath,
+    handleSelectBackupPath,
+    handleResetBackupPath,
+    isTauri,
+    autoBackupEnabled,
+    autoBackupRunning,
+    autoBackupTesting,
+    handleToggleAutoBackup,
+    autoBackupInterval,
+    handleAutoBackupIntervalChange,
+    handleTestAutoBackup,
+    formattedAutoBackupLastSuccess,
+    formattedAutoBackupNextRun,
+    autoBackupSupportMessage,
+    autoBackupSwitchLabel,
+    autoBackupStatusMessage,
+    autoBackupStatusClass,
+    autoBackupFailureCount,
+    handleExport,
+    handleImportClick,
+    handleFileChange,
+    exporting,
+    importing,
+    backupDisabled,
+    fileInputRef,
+    githubProfile,
+    githubBackupEnabled,
+    handleToggleGithubBackup,
+    githubSettingsMessage,
+    githubSettingsDisabled,
+    githubOwner,
+    setGithubOwner,
+    githubRepo,
+    setGithubRepo,
+    githubBranch,
+    setGithubBranch,
+    githubPath,
+    setGithubPath,
+    setGithubSettingsMessage,
+    canSubmitGithubSettings,
+    savingGithubSettings,
+    handleSaveGithubSettings,
+    formattedGithubLastSuccess,
+    formattedGithubLastAttempt,
+    githubBackupStatusMessage,
+    githubBackupStatusClass,
+  }
+}
+
+function LocalBackupSection() {
+  const {
+    passwordInputId,
+    masterPassword,
+    passwordError,
+    passwordDisabled,
+    handlePasswordChange,
+    isTauri,
+    dataPath,
+    defaultDataPath,
+    selectingDataPath,
+    resettingDataPath,
+    handleSelectDataPath,
+    handleResetDataPath,
+    backupPath,
+    defaultBackupPath,
+    selectingBackupPath,
+    resettingBackupPath,
+    handleSelectBackupPath,
+    handleResetBackupPath,
+    autoBackupEnabled,
+    autoBackupRunning,
+    autoBackupTesting,
+    handleToggleAutoBackup,
+    autoBackupInterval,
+    handleAutoBackupIntervalChange,
+    handleTestAutoBackup,
+    formattedAutoBackupLastSuccess,
+    formattedAutoBackupNextRun,
+    autoBackupSupportMessage,
+    autoBackupSwitchLabel,
+    autoBackupStatusMessage,
+    autoBackupStatusClass,
+    autoBackupFailureCount,
+    handleExport,
+    handleImportClick,
+    handleFileChange,
+    exporting,
+    importing,
+    backupDisabled,
+    fileInputRef,
+  } = useBackupSettings()
 
   return (
     <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
       <div className="space-y-1">
-        <h2 className="text-lg font-medium text-text">数据备份</h2>
+        <h2 className="text-lg font-medium text-text">本地备份</h2>
         <p className="text-sm text-muted">
-          导出或导入当前账号的密码、网站、文档数据，以及用户资料（用户名与头像）。
+          管理数据存储路径、自动备份计划，以及手动导入或导出当前账号的加密数据文件。
         </p>
       </div>
 
@@ -2014,18 +2154,14 @@ function DataBackupSection() {
             !passwordDisabled && 'placeholder:text-muted',
           )}
         />
-        <p className="text-xs leading-relaxed text-muted">
-          导出与导入备份时会使用该密码派生密钥，请确保输入正确的当前主密码。
-        </p>
+        <p className="text-xs leading-relaxed text-muted">备份操作会使用该密码派生密钥，请确保输入当前主密码。</p>
         {passwordError ? <p className="text-xs text-red-500">{passwordError}</p> : null}
       </div>
 
       <div className="space-y-3 rounded-2xl border border-border/50 bg-surface/60 p-4">
         <div className="space-y-1">
           <h3 className="text-sm font-semibold text-text">文件管理</h3>
-          <p className="text-xs leading-relaxed text-muted">
-            自定义本地数据库与备份导出路径，方便按照个人习惯管理数据。
-          </p>
+          <p className="text-xs leading-relaxed text-muted">自定义本地数据库与备份导出路径，方便按照个人习惯管理数据。</p>
         </div>
         {isTauri ? (
           <div className="space-y-4">
@@ -2066,9 +2202,7 @@ function DataBackupSection() {
                   {selectingDataPath ? '选择中…' : '选择路径'}
                 </button>
               </div>
-              <p className="text-xs leading-relaxed text-muted">
-                本地数据库文件（{DATABASE_FILE_NAME}）将存储在所选目录，调整后请重启应用以生效。
-              </p>
+              <p className="text-xs leading-relaxed text-muted">本地数据库文件（{DATABASE_FILE_NAME}）将存储在所选目录，调整后请重启应用以生效。</p>
             </div>
 
             <div className="space-y-2">
@@ -2108,291 +2242,108 @@ function DataBackupSection() {
                   {selectingBackupPath ? '选择中…' : '选择路径'}
                 </button>
               </div>
-              <p className="text-xs leading-relaxed text-muted">
-                备份文件将默认写入该目录，如遇写入权限问题会自动回退为系统保存对话框。
-              </p>
+              <p className="text-xs leading-relaxed text-muted">备份文件将默认写入该目录，如遇写入权限问题会自动回退为系统保存对话框。</p>
             </div>
+          </div>
+        ) : (
+          <p className="text-xs leading-relaxed text-muted">仅桌面端支持自定义文件路径，Web 端会使用浏览器的默认存储位置。</p>
+        )}
       </div>
-    ) : (
-      <p className="text-xs leading-relaxed text-muted">
-        仅桌面端支持自定义文件路径，Web 端会使用浏览器的默认存储位置。
-      </p>
-    )}
-  </div>
 
-  <div className="space-y-3 rounded-2xl border border-border/50 bg-surface/60 p-4">
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div className="space-y-1">
-        <h3 className="text-sm font-semibold text-text">GitHub 仓库备份</h3>
-        <p className="text-xs leading-relaxed text-muted">
-          指定仓库后，自动备份会同步包含密码库与文档的最新加密文件至 GitHub，提交消息会包含当前时间戳。
-        </p>
-      </div>
-      <label className="inline-flex items-center gap-2">
-        <span className="text-xs font-medium text-muted">{githubBackupEnabled ? '已启用' : '未启用'}</span>
-        <span className="relative inline-flex h-6 w-11 items-center">
-          <input
-            type="checkbox"
-            className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
-            checked={githubBackupEnabled}
-            onChange={handleToggleGithubBackup}
-            disabled={autoBackupRunning || autoBackupTesting}
-          />
-          <span
-            className={clsx(
-              'h-6 w-11 rounded-full bg-border/80 transition-colors',
-              'peer-checked:bg-primary/70 peer-disabled:cursor-not-allowed peer-disabled:opacity-60',
-            )}
-          />
-          <span
-            className={clsx(
-              'absolute left-1 top-1 h-4 w-4 rounded-full bg-surface shadow transition-transform',
-              githubBackupEnabled ? 'translate-x-5' : 'translate-x-0',
-              'peer-disabled:cursor-not-allowed',
-            )}
-          />
-        </span>
-      </label>
-    </div>
-
-    {githubProfile ? (
-      <form className="space-y-4" onSubmit={handleSaveGithubSettings}>
-        {githubSettingsMessage ? (
-          <div
-            role="alert"
-            className={clsx(
-              'rounded-xl border px-3 py-2 text-xs shadow-sm',
-              githubSettingsMessage.type === 'success'
-                ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-500'
-                : 'border-red-400/70 bg-red-500/10 text-red-400',
-            )}
-          >
-            {githubSettingsMessage.text}
+      <div className="space-y-3 rounded-2xl border border-border/50 bg-surface/60 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-text">自动备份</h3>
+            <p className="text-xs leading-relaxed text-muted">{autoBackupSupportMessage}</p>
           </div>
-        ) : null}
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-2">
-            <label htmlFor="github-repo-owner" className="text-xs font-medium text-muted">
-              仓库拥有者
-            </label>
-            <input
-              id="github-repo-owner"
-              type="text"
-              value={githubOwner}
-              onChange={event => {
-                setGithubOwner(event.currentTarget.value)
-                setGithubSettingsMessage(null)
-              }}
-              autoComplete="off"
-              disabled={githubSettingsDisabled}
-              placeholder="例如：octocat"
-              className={clsx(
-                'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition',
-                'focus:border-primary/60 focus:bg-surface-hover',
-                githubSettingsDisabled && 'disabled:cursor-not-allowed disabled:opacity-60',
-              )}
-            />
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="github-repo-name" className="text-xs font-medium text-muted">
-              仓库名称
-            </label>
-            <input
-              id="github-repo-name"
-              type="text"
-              value={githubRepo}
-              onChange={event => {
-                setGithubRepo(event.currentTarget.value)
-                setGithubSettingsMessage(null)
-              }}
-              autoComplete="off"
-              disabled={githubSettingsDisabled}
-              placeholder="例如：personal-backup"
-              className={clsx(
-                'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition',
-                'focus:border-primary/60 focus:bg-surface-hover',
-                githubSettingsDisabled && 'disabled:cursor-not-allowed disabled:opacity-60',
-              )}
-            />
-          </div>
+          <label className="inline-flex items-center gap-2">
+            <span className="text-xs font-medium text-muted">{autoBackupSwitchLabel}</span>
+            <span className="relative inline-flex h-6 w-11 items-center">
+              <input
+                type="checkbox"
+                className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                checked={autoBackupEnabled}
+                onChange={handleToggleAutoBackup}
+                disabled={autoBackupRunning || autoBackupTesting}
+              />
+              <span
+                className={clsx(
+                  'h-6 w-11 rounded-full bg-border/80 transition-colors',
+                  'peer-checked:bg-primary/70 peer-disabled:cursor-not-allowed peer-disabled:opacity-60',
+                )}
+              />
+              <span
+                className={clsx(
+                  'absolute left-1 top-1 h-4 w-4 rounded-full bg-surface shadow transition-transform',
+                  autoBackupEnabled ? 'translate-x-5' : 'translate-x-0',
+                  'peer-disabled:cursor-not-allowed',
+                )}
+              />
+            </span>
+          </label>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
           <div className="space-y-2">
-            <label htmlFor="github-repo-branch" className="text-xs font-medium text-muted">
-              分支
+            <label htmlFor="auto-backup-interval" className="text-xs font-medium text-muted">
+              备份频率
             </label>
-            <input
-              id="github-repo-branch"
-              type="text"
-              value={githubBranch}
-              onChange={event => {
-                setGithubBranch(event.currentTarget.value)
-                setGithubSettingsMessage(null)
-              }}
-              autoComplete="off"
-              disabled={githubSettingsDisabled}
-              placeholder="例如：main"
+            <select
+              id="auto-backup-interval"
+              value={String(autoBackupInterval)}
+              onChange={handleAutoBackupIntervalChange}
+              disabled={!autoBackupEnabled || autoBackupRunning || autoBackupTesting}
               className={clsx(
                 'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition',
                 'focus:border-primary/60 focus:bg-surface-hover',
-                githubSettingsDisabled && 'disabled:cursor-not-allowed disabled:opacity-60',
+                (!autoBackupEnabled || autoBackupRunning || autoBackupTesting) &&
+                  'disabled:cursor-not-allowed disabled:opacity-60',
               )}
-            />
+            >
+              {AUTO_BACKUP_INTERVAL_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
-          <div className="space-y-2">
-            <label htmlFor="github-repo-path" className="text-xs font-medium text-muted">
-              文件路径
-            </label>
-            <input
-              id="github-repo-path"
-              type="text"
-              value={githubPath}
-              onChange={event => {
-                setGithubPath(event.currentTarget.value)
-                setGithubSettingsMessage(null)
-              }}
-              autoComplete="off"
-              disabled={githubSettingsDisabled}
-              placeholder="例如：backups/pms-backup.json"
-              className={clsx(
-                'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition',
-                'focus:border-primary/60 focus:bg-surface-hover',
-                githubSettingsDisabled && 'disabled:cursor-not-allowed disabled:opacity-60',
-              )}
-            />
-            <p className="text-xs text-muted">请输入仓库中的相对路径，可包含多级目录。</p>
-          </div>
-        </div>
-
-        <div className="flex justify-end">
           <button
-            type="submit"
-            disabled={!canSubmitGithubSettings || githubSettingsDisabled}
+            type="button"
+            onClick={handleTestAutoBackup}
+            disabled={autoBackupTesting || autoBackupRunning || backupDisabled}
             className={clsx(
-              'inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-background shadow-sm transition',
-              'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50',
+              'inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-sm transition',
+              'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
             )}
           >
-            {savingGithubSettings ? '保存中…' : '保存设置'}
+            {autoBackupTesting ? '测试中…' : '立即测试备份'}
           </button>
         </div>
-      </form>
-    ) : (
-      <div className="rounded-xl border border-dashed border-border/60 bg-surface/60 px-4 py-3 text-xs text-muted">
-        请先在上方连接 GitHub 账号后再配置仓库信息。
+
+        <div className="space-y-1 text-xs leading-relaxed text-muted">
+          <p>
+            最近自动备份：<span className="font-medium text-text">{formattedAutoBackupLastSuccess}</span>
+          </p>
+          <p>
+            下次计划时间：<span className="font-medium text-text">{formattedAutoBackupNextRun}</span>
+          </p>
+        </div>
+
+        {autoBackupStatusMessage ? (
+          <p className={clsx('text-xs', autoBackupStatusClass)}>{autoBackupStatusMessage}</p>
+        ) : null}
+
+        {autoBackupFailureCount > 0 && autoBackupEnabled ? (
+          <p className="text-xs text-red-500">
+            连续失败 {autoBackupFailureCount} 次，达到 {AUTO_BACKUP_FAILURE_LIMIT} 次将自动停用。
+          </p>
+        ) : null}
       </div>
-    )}
 
-    <div className="grid gap-2 text-xs leading-relaxed text-muted sm:grid-cols-2">
-      <p>
-        最近同步：<span className="font-medium text-text">{formattedGithubLastSuccess}</span>
-      </p>
-      <p>
-        最近尝试：<span className="font-medium text-text">{formattedGithubLastAttempt}</span>
-      </p>
-    </div>
-
-    {githubBackupStatusMessage ? (
-      <p className={clsx('text-xs', githubBackupStatusClass)}>{githubBackupStatusMessage}</p>
-    ) : null}
-  </div>
-
-  <div className="space-y-3 rounded-2xl border border-border/50 bg-surface/60 p-4">
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div className="space-y-1">
-        <h3 className="text-sm font-semibold text-text">自动备份</h3>
-        <p className="text-xs leading-relaxed text-muted">{autoBackupSupportMessage}</p>
-      </div>
-      <label className="inline-flex items-center gap-2">
-        <span className="text-xs font-medium text-muted">{autoBackupSwitchLabel}</span>
-        <span className="relative inline-flex h-6 w-11 items-center">
-          <input
-            type="checkbox"
-            className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
-            checked={autoBackupEnabled}
-            onChange={handleToggleAutoBackup}
-            disabled={autoBackupRunning || autoBackupTesting}
-          />
-          <span
-            className={clsx(
-              'h-6 w-11 rounded-full bg-border/80 transition-colors',
-              'peer-checked:bg-primary/70 peer-disabled:cursor-not-allowed peer-disabled:opacity-60',
-            )}
-          />
-          <span
-            className={clsx(
-              'absolute left-1 top-1 h-4 w-4 rounded-full bg-surface shadow transition-transform',
-              autoBackupEnabled ? 'translate-x-5' : 'translate-x-0',
-              'peer-disabled:cursor-not-allowed',
-            )}
-          />
-        </span>
-      </label>
-    </div>
-
-    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-      <div className="space-y-2">
-        <label htmlFor="auto-backup-interval" className="text-xs font-medium text-muted">
-          备份频率
-        </label>
-        <select
-          id="auto-backup-interval"
-          value={String(autoBackupInterval)}
-          onChange={handleAutoBackupIntervalChange}
-          disabled={!autoBackupEnabled || autoBackupRunning || autoBackupTesting}
-          className={clsx(
-            'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition',
-            'focus:border-primary/60 focus:bg-surface-hover',
-            (!autoBackupEnabled || autoBackupRunning || autoBackupTesting) &&
-              'disabled:cursor-not-allowed disabled:opacity-60',
-          )}
-        >
-          {AUTO_BACKUP_INTERVAL_OPTIONS.map(option => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <button
-        type="button"
-        onClick={handleTestAutoBackup}
-        disabled={autoBackupTesting || autoBackupRunning || backupDisabled}
-        className={clsx(
-          'inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-sm transition',
-          'hover:border-border hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60',
-        )}
-      >
-        {autoBackupTesting ? '测试中…' : '立即测试备份'}
-      </button>
-    </div>
-
-    <div className="space-y-1 text-xs leading-relaxed text-muted">
-      <p>
-        最近自动备份：<span className="font-medium text-text">{formattedAutoBackupLastSuccess}</span>
-      </p>
-      <p>
-        下次计划时间：<span className="font-medium text-text">{formattedAutoBackupNextRun}</span>
-      </p>
-    </div>
-
-    {autoBackupStatusMessage ? (
-      <p className={clsx('text-xs', autoBackupStatusClass)}>{autoBackupStatusMessage}</p>
-    ) : null}
-
-    {autoBackupFailureCount > 0 && autoBackupEnabled ? (
-      <p className="text-xs text-red-500">
-        连续失败 {autoBackupFailureCount} 次，达到 {AUTO_BACKUP_FAILURE_LIMIT} 次将自动停用。
-      </p>
-    ) : null}
-  </div>
-
-  <div className="flex flex-wrap gap-3">
-    <button
-      type="button"
-      onClick={handleExport}
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={handleExport}
           disabled={backupDisabled || exporting}
           className={clsx(
             'inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-background shadow-sm transition',
@@ -2430,6 +2381,225 @@ function DataBackupSection() {
     </section>
   )
 }
+
+function GithubBackupSection() {
+  const {
+    githubProfile,
+    githubBackupEnabled,
+    handleToggleGithubBackup,
+    autoBackupRunning,
+    autoBackupTesting,
+    githubSettingsMessage,
+    githubSettingsDisabled,
+    githubOwner,
+    setGithubOwner,
+    githubRepo,
+    setGithubRepo,
+    githubBranch,
+    setGithubBranch,
+    githubPath,
+    setGithubPath,
+    setGithubSettingsMessage,
+    canSubmitGithubSettings,
+    savingGithubSettings,
+    handleSaveGithubSettings,
+    formattedGithubLastSuccess,
+    formattedGithubLastAttempt,
+    githubBackupStatusMessage,
+    githubBackupStatusClass,
+  } = useBackupSettings()
+
+  return (
+    <section className="space-y-5 rounded-2xl border border-border/60 bg-surface/80 p-6 shadow-sm">
+      <div className="space-y-1">
+        <h2 className="text-lg font-medium text-text">GitHub 备份</h2>
+        <p className="text-sm text-muted">
+          启用自动同步后，加密备份文件会推送至指定仓库，便于跨设备存储与版本留存。
+        </p>
+      </div>
+
+      <div className="space-y-3 rounded-2xl border border-border/50 bg-surface/60 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-text">仓库配置</h3>
+            <p className="text-xs leading-relaxed text-muted">
+              自动备份将使用 GitHub 访问令牌提交更新，提交消息会包含时间戳与摘要。
+            </p>
+          </div>
+          <label className="inline-flex items-center gap-2">
+            <span className="text-xs font-medium text-muted">{githubBackupEnabled ? '已启用' : '未启用'}</span>
+            <span className="relative inline-flex h-6 w-11 items-center">
+              <input
+                type="checkbox"
+                className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                checked={githubBackupEnabled}
+                onChange={handleToggleGithubBackup}
+                disabled={autoBackupRunning || autoBackupTesting}
+              />
+              <span
+                className={clsx(
+                  'h-6 w-11 rounded-full bg-border/80 transition-colors',
+                  'peer-checked:bg-primary/70 peer-disabled:cursor-not-allowed peer-disabled:opacity-60',
+                )}
+              />
+              <span
+                className={clsx(
+                  'absolute left-1 top-1 h-4 w-4 rounded-full bg-surface shadow transition-transform',
+                  githubBackupEnabled ? 'translate-x-5' : 'translate-x-0',
+                  'peer-disabled:cursor-not-allowed',
+                )}
+              />
+            </span>
+          </label>
+        </div>
+
+        {githubProfile ? (
+          <form className="space-y-4" onSubmit={handleSaveGithubSettings}>
+            {githubSettingsMessage ? (
+              <div
+                role="alert"
+                className={clsx(
+                  'rounded-xl border px-3 py-2 text-xs shadow-sm',
+                  githubSettingsMessage.type === 'success'
+                    ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-500'
+                    : 'border-red-400/70 bg-red-500/10 text-red-400',
+                )}
+              >
+                {githubSettingsMessage.text}
+              </div>
+            ) : null}
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label htmlFor="github-repo-owner" className="text-xs font-medium text-muted">
+                  仓库拥有者
+                </label>
+                <input
+                  id="github-repo-owner"
+                  type="text"
+                  value={githubOwner}
+                  onChange={event => {
+                    setGithubOwner(event.currentTarget.value)
+                    setGithubSettingsMessage(null)
+                  }}
+                  autoComplete="off"
+                  disabled={githubSettingsDisabled}
+                  placeholder="例如：octocat"
+                  className={clsx(
+                    'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition',
+                    'focus:border-primary/60 focus:bg-surface-hover',
+                    githubSettingsDisabled && 'disabled:cursor-not-allowed disabled:opacity-60',
+                  )}
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="github-repo-name" className="text-xs font-medium text-muted">
+                  仓库名称
+                </label>
+                <input
+                  id="github-repo-name"
+                  type="text"
+                  value={githubRepo}
+                  onChange={event => {
+                    setGithubRepo(event.currentTarget.value)
+                    setGithubSettingsMessage(null)
+                  }}
+                  autoComplete="off"
+                  disabled={githubSettingsDisabled}
+                  placeholder="例如：personal-backup"
+                  className={clsx(
+                    'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition',
+                    'focus:border-primary/60 focus:bg-surface-hover',
+                    githubSettingsDisabled && 'disabled:cursor-not-allowed disabled:opacity-60',
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label htmlFor="github-repo-branch" className="text-xs font-medium text-muted">
+                  分支
+                </label>
+                <input
+                  id="github-repo-branch"
+                  type="text"
+                  value={githubBranch}
+                  onChange={event => {
+                    setGithubBranch(event.currentTarget.value)
+                    setGithubSettingsMessage(null)
+                  }}
+                  autoComplete="off"
+                  disabled={githubSettingsDisabled}
+                  placeholder="例如：main"
+                  className={clsx(
+                    'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition',
+                    'focus:border-primary/60 focus:bg-surface-hover',
+                    githubSettingsDisabled && 'disabled:cursor-not-allowed disabled:opacity-60',
+                  )}
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="github-repo-path" className="text-xs font-medium text-muted">
+                  文件路径
+                </label>
+                <input
+                  id="github-repo-path"
+                  type="text"
+                  value={githubPath}
+                  onChange={event => {
+                    setGithubPath(event.currentTarget.value)
+                    setGithubSettingsMessage(null)
+                  }}
+                  autoComplete="off"
+                  disabled={githubSettingsDisabled}
+                  placeholder="例如：backups/pms-backup.json"
+                  className={clsx(
+                    'w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none transition',
+                    'focus:border-primary/60 focus:bg-surface-hover',
+                    githubSettingsDisabled && 'disabled:cursor-not-allowed disabled:opacity-60',
+                  )}
+                />
+                <p className="text-xs text-muted">请输入仓库中的相对路径，可包含多级目录。</p>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={!canSubmitGithubSettings || githubSettingsDisabled}
+                className={clsx(
+                  'inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-background shadow-sm transition',
+                  'hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/50',
+                )}
+              >
+                {savingGithubSettings ? '保存中…' : '保存设置'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="rounded-xl border border-dashed border-border/60 bg-surface/60 px-4 py-3 text-xs text-muted">
+            请先在“GitHub 连接”中完成账号授权后再配置仓库信息。
+          </div>
+        )}
+      </div>
+
+      <div className="grid gap-2 text-xs leading-relaxed text-muted sm:grid-cols-2">
+        <p>
+          最近同步：<span className="font-medium text-text">{formattedGithubLastSuccess}</span>
+        </p>
+        <p>
+          最近尝试：<span className="font-medium text-text">{formattedGithubLastAttempt}</span>
+        </p>
+      </div>
+
+      {githubBackupStatusMessage ? (
+        <p className={clsx('text-xs', githubBackupStatusClass)}>{githubBackupStatusMessage}</p>
+      ) : null}
+    </section>
+  )
+}
+
 
 function IdleTimeoutSettingsSection() {
   const duration = useIdleTimeoutStore(state => state.duration)
