@@ -9,6 +9,15 @@ type ShowToast = (toast: {
   duration?: number
 }) => void
 
+export type InspirationBackupSyncOptions = {
+  errorToast?:
+    | false
+    | {
+        title?: string
+        description?: string
+      }
+}
+
 type AuthStateSnapshot = ReturnType<typeof useAuthStore.getState>
 
 type StoredAutoBackupState = {
@@ -73,7 +82,16 @@ function shouldQueueSync(state: AuthStateSnapshot) {
   return true
 }
 
-async function performGithubSync(showToast: ShowToast) {
+const DEFAULT_ERROR_TITLE = '自动备份未完成'
+const DEFAULT_ERROR_DESCRIPTION =
+  'GitHub 自动备份暂时失败，但笔记内容已成功保存；稍后会继续尝试。'
+
+let latestOptions: InspirationBackupSyncOptions | undefined
+
+async function performGithubSync(
+  showToast: ShowToast,
+  options: InspirationBackupSyncOptions | undefined,
+) {
   const state = useAuthStore.getState()
   if (!shouldQueueSync(state)) {
     return
@@ -97,7 +115,14 @@ async function performGithubSync(showToast: ShowToast) {
   } catch (error) {
     console.error('Failed to upload inspiration backup to GitHub', error)
     const message = error instanceof Error ? error.message : 'GitHub 同步失败，请稍后再试。'
-    showToast({ title: 'GitHub 同步失败', description: message, variant: 'error' })
+    const toastSetting = options?.errorToast
+    if (toastSetting !== false) {
+      const title = toastSetting?.title ?? DEFAULT_ERROR_TITLE
+      const description =
+        toastSetting?.description ??
+        `${DEFAULT_ERROR_DESCRIPTION}错误信息：${message}`
+      showToast({ title, description, variant: 'error' })
+    }
   }
 }
 
@@ -108,16 +133,20 @@ function scheduleSyncExecution(showToast: ShowToast) {
   }
 
   syncRunning = true
-  void performGithubSync(showToast).finally(() => {
+  const options = latestOptions
+  void performGithubSync(showToast, options).finally(() => {
     syncRunning = false
     if (pendingWhileRunning) {
       pendingWhileRunning = false
-      queueInspirationBackupSync(showToast)
+      queueInspirationBackupSync(showToast, latestOptions)
     }
   })
 }
 
-export function queueInspirationBackupSync(showToast: ShowToast) {
+export function queueInspirationBackupSync(
+  showToast: ShowToast,
+  options?: InspirationBackupSyncOptions,
+) {
   if (typeof window === 'undefined') {
     return
   }
@@ -128,6 +157,7 @@ export function queueInspirationBackupSync(showToast: ShowToast) {
       window.clearTimeout(syncTimer)
       syncTimer = null
     }
+    latestOptions = options
     return
   }
 
@@ -135,6 +165,7 @@ export function queueInspirationBackupSync(showToast: ShowToast) {
     window.clearTimeout(syncTimer)
   }
 
+  latestOptions = options
   syncTimer = window.setTimeout(() => {
     syncTimer = null
     scheduleSyncExecution(showToast)

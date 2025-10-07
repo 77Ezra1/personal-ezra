@@ -52,7 +52,10 @@ import {
   type NoteDetail,
   type NoteSummary,
 } from '../../lib/inspiration-notes'
-import { queueInspirationBackupSync } from '../../lib/inspiration-sync'
+import {
+  queueInspirationBackupSync,
+  type InspirationBackupSyncOptions,
+} from '../../lib/inspiration-sync'
 import { normalizeUrl, openExternal } from '../../lib/external'
 import {
   importFileToVault,
@@ -132,6 +135,13 @@ function toNoteSummary(detail: NoteDetail): NoteSummary {
     tags: detail.tags,
     attachments: detail.attachments,
   }
+}
+
+const AUTO_BACKUP_FAILURE_TOAST_OPTIONS: InspirationBackupSyncOptions = {
+  errorToast: {
+    title: '自动备份未完成',
+    description: 'GitHub 自动备份暂时失败，但笔记内容已成功保存；稍后会继续尝试。',
+  },
 }
 
 type InspirationPanelProps = {
@@ -1609,7 +1619,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         if (showSuccessToast) {
           showToast({ title: '保存成功', description: '笔记内容已更新。', variant: 'success' })
         }
-        queueInspirationBackupSync(showToast)
+        queueInspirationBackupSync(showToast, AUTO_BACKUP_FAILURE_TOAST_OPTIONS)
         return saved
       } catch (err) {
         console.error('Failed to save inspiration note', err)
@@ -1779,7 +1789,7 @@ export function InspirationPanel({ className }: InspirationPanelProps) {
         description: `已新建 Markdown 文件：${note.id}`,
         variant: 'success',
       })
-      queueInspirationBackupSync(showToast)
+      queueInspirationBackupSync(showToast, { errorToast: false })
 
       setCreateNoteDialogOpen(false)
       setCreateNoteInput('')
