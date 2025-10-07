@@ -49,7 +49,7 @@ import {
   loadStoredDataPath,
   saveStoredDataPath,
 } from '../lib/storage-path'
-import { BACKUP_IMPORTED_EVENT, importUserData } from '../lib/backup'
+import { BACKUP_IMPORTED_EVENT, exportUserData, importUserData } from '../lib/backup'
 import { syncNotesRoot } from '../lib/inspiration-notes'
 import { estimatePasswordStrength, PASSWORD_STRENGTH_REQUIREMENT } from '../lib/password-utils'
 import { runScheduledBackup } from '../lib/auto-backup'
@@ -146,6 +146,8 @@ type StoredAutoBackupState = {
   failureCount?: number
   nextRunAt?: number | null
   lastError?: string | null
+  masterPasswordVerified?: boolean
+  masterPasswordVerifiedAt?: number | null
   githubEnabled?: boolean
   githubLastSuccessAt?: number | null
   githubLastAttemptAt?: number | null
@@ -1031,6 +1033,8 @@ function useBackupSettingsState() {
   const [autoBackupStatusMessage, setAutoBackupStatusMessage] = useState<string | null>(null)
   const [autoBackupTesting, setAutoBackupTesting] = useState(false)
   const [autoBackupRunning, setAutoBackupRunning] = useState(false)
+  const [autoBackupMasterPasswordVerified, setAutoBackupMasterPasswordVerified] = useState(false)
+  const [autoBackupMasterPasswordVerifiedAt, setAutoBackupMasterPasswordVerifiedAt] = useState<number | null>(null)
   const [githubOwner, setGithubOwner] = useState('')
   const [githubRepo, setGithubRepo] = useState('')
   const [githubBranch, setGithubBranch] = useState('main')
@@ -1120,6 +1124,14 @@ function useBackupSettingsState() {
       if (typeof state.lastError === 'string' && state.lastError) {
         setAutoBackupLastError(state.lastError)
       }
+      if (typeof state.masterPasswordVerified === 'boolean') {
+        setAutoBackupMasterPasswordVerified(state.masterPasswordVerified)
+      }
+      if (typeof state.masterPasswordVerifiedAt === 'number' && Number.isFinite(state.masterPasswordVerifiedAt)) {
+        setAutoBackupMasterPasswordVerifiedAt(state.masterPasswordVerifiedAt)
+      } else if (state.masterPasswordVerifiedAt === null) {
+        setAutoBackupMasterPasswordVerifiedAt(null)
+      }
       if (typeof state.githubEnabled === 'boolean') {
         setGithubBackupEnabled(state.githubEnabled)
       }
@@ -1190,6 +1202,8 @@ function useBackupSettingsState() {
       nextRunAt: autoBackupNextRun ?? null,
       failureCount: autoBackupFailureCount,
       lastError: autoBackupLastError ?? null,
+      masterPasswordVerified: autoBackupMasterPasswordVerified,
+      masterPasswordVerifiedAt: autoBackupMasterPasswordVerifiedAt ?? null,
       githubEnabled: githubBackupEnabled,
       githubLastSuccessAt: githubBackupLastSuccess ?? null,
       githubLastAttemptAt: githubBackupLastAttempt ?? null,
@@ -1212,6 +1226,8 @@ function useBackupSettingsState() {
     githubBackupLastAttempt,
     githubBackupLastError,
     githubBackupLastSuccess,
+    autoBackupMasterPasswordVerified,
+    autoBackupMasterPasswordVerifiedAt,
   ])
 
   useEffect(() => {
@@ -1314,7 +1330,7 @@ function useBackupSettingsState() {
         return
       }
 
-      const allowSessionKey = true
+      const allowSessionKey = autoBackupMasterPasswordVerified
 
       if (!masterPassword && !allowSessionKey) {
         const message = '自动备份需要主密码，请在上方输入。'
@@ -1470,6 +1486,7 @@ function useBackupSettingsState() {
       masterPassword,
       scheduleNextAutoBackup,
       githubConfigured,
+      autoBackupMasterPasswordVerified,
       showToast,
     ],
   )
@@ -1500,7 +1517,7 @@ function useBackupSettingsState() {
       return
     }
 
-    if (!masterPassword) {
+    if (!masterPassword && !autoBackupMasterPasswordVerified) {
       const message = '自动备份需要主密码，请在上方输入。'
       setAutoBackupLastError(message)
       setAutoBackupStatusMessage(message)
@@ -1526,7 +1543,15 @@ function useBackupSettingsState() {
 
     setAutoBackupLastError(null)
     scheduleNextAutoBackup()
-  }, [autoBackupEnabled, backupDisabled, backupPath, isTauri, masterPassword, scheduleNextAutoBackup])
+  }, [
+    autoBackupEnabled,
+    autoBackupMasterPasswordVerified,
+    backupDisabled,
+    backupPath,
+    isTauri,
+    masterPassword,
+    scheduleNextAutoBackup,
+  ])
 
   useEffect(() => {
     if (!isTauri) return
@@ -1847,7 +1872,7 @@ function useBackupSettingsState() {
     }
   }
 
-  const handleToggleAutoBackup = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleToggleAutoBackup = async (event: ChangeEvent<HTMLInputElement>) => {
     const nextEnabled = event.currentTarget.checked
     if (nextEnabled) {
       if (backupDisabled) {
@@ -1858,17 +1883,43 @@ function useBackupSettingsState() {
         })
         return
       }
-      if (!masterPassword) {
-        const message = '启用自动备份前请输入当前主密码。'
-        setPasswordError(message)
-        showToast({ title: '缺少主密码', description: message, variant: 'error' })
-        return
-      }
       if (isTauri && !backupPath) {
         const message = '请先选择一个有效的备份导出路径。'
         showToast({ title: '备份目录缺失', description: message, variant: 'error' })
         return
       }
+
+      if (!autoBackupMasterPasswordVerified) {
+        if (!masterPassword) {
+          const message = '启用自动备份前请输入当前主密码。'
+          setPasswordError(message)
+          showToast({ title: '缺少主密码', description: message, variant: 'error' })
+          return
+        }
+
+        try {
+          setAutoBackupStatusMessage('正在验证主密码…')
+          setAutoBackupLastError(null)
+          await exportUserData(email, encryptionKey, { masterPassword })
+          const verifiedAt = Date.now()
+          setAutoBackupMasterPasswordVerified(true)
+          setAutoBackupMasterPasswordVerifiedAt(verifiedAt)
+          setPasswordError(null)
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : '主密码验证失败，请确认后再试。'
+          setAutoBackupMasterPasswordVerified(false)
+          setAutoBackupMasterPasswordVerifiedAt(null)
+          setAutoBackupLastError(message)
+          setAutoBackupStatusMessage(message)
+          if (message.includes('密码')) {
+            setPasswordError(message)
+          }
+          showToast({ title: '无法启用自动备份', description: message, variant: 'error' })
+          return
+        }
+      }
+
       setAutoBackupFailureCount(0)
       setAutoBackupLastError(null)
       setAutoBackupStatusMessage('自动备份已启用，等待下一次计划任务。')
@@ -1879,6 +1930,8 @@ function useBackupSettingsState() {
     setAutoBackupEnabled(false)
     setAutoBackupLastError(null)
     setAutoBackupStatusMessage('自动备份已停用。')
+    setAutoBackupMasterPasswordVerified(false)
+    setAutoBackupMasterPasswordVerifiedAt(null)
   }
 
   const handleAutoBackupIntervalChange = (event: ChangeEvent<HTMLSelectElement>) => {
