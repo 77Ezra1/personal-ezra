@@ -214,8 +214,8 @@ export async function syncGithubNoteFile(
     : `Create inspiration note: ${normalizedRelative}`
 
   try {
-    await runGithubUploadWithConflictRetry(context, () =>
-      uploadGithubBackup(
+    await runGithubUploadWithConflictRetry(context, async () => {
+      await uploadGithubBackup(
         {
           token: context.token,
           owner: context.owner,
@@ -225,8 +225,8 @@ export async function syncGithubNoteFile(
           content,
         },
         { commitMessage, maxRetries: 1 },
-      ),
-    )
+      )
+    })
     return true
   } catch (error) {
     const message = readErrorMessage(error) || '上传 GitHub 文件失败，请稍后再试。'
@@ -246,8 +246,8 @@ export async function ensureGithubNoteFolder(relativePath: string): Promise<bool
   const commitMessage = `Ensure inspiration folder: ${targetLabel}`
 
   try {
-    await runGithubUploadWithConflictRetry(context, () =>
-      uploadGithubBackup(
+    await runGithubUploadWithConflictRetry(context, async () => {
+      await uploadGithubBackup(
         {
           token: context.token,
           owner: context.owner,
@@ -257,8 +257,8 @@ export async function ensureGithubNoteFolder(relativePath: string): Promise<bool
           content: '',
         },
         { commitMessage, maxRetries: 1 },
-      ),
-    )
+      )
+    })
     return true
   } catch (error) {
     const message = readErrorMessage(error) || '上传 GitHub 文件失败，请稍后再试。'
